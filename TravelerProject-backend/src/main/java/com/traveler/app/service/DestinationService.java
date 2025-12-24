@@ -42,23 +42,30 @@ public class DestinationService {
         this.tourApiService = tourApiService;
         this.destinationDao = destinationDao;
     }
+    
+    /**
+     * API에서 해당 관광타입의 총 데이터 개수 조회
+     */
+    public int getApiTotalCount(String contenttypeid) {
+        return tourApiService.fetchDestinationTotalCount(contenttypeid);
+    }
 
     /**
      * 특정 관광타입 여행지 동기화
      * @param contenttypeid 관광타입ID
-     * @param maxCount 최대 수집 건수 (API 호출 제한 고려)
+     * @param startPage 시작 페이지 (1부터 시작)
+     * @param endPage 끝 페이지
      * @return 저장된 건수
      */
     @Transactional
-    public int syncDestinationsByType(String contenttypeid, int maxCount) {
+    public int syncDestinationsByType(String contenttypeid, int startPage, int endPage) {
         String typeName = CONTENT_TYPES.getOrDefault(contenttypeid, "알수없음");
-        log.info("========== [{}] 여행지 동기화 시작 ==========", typeName);
+        log.info("========== [{}] 여행지 동기화 시작 (페이지 {}-{}) ==========", typeName, startPage, endPage);
 
         int savedCount = 0;
-        int pageNo = 1;
         int numOfRows = 100;  // 한 페이지당 100건
 
-        while (savedCount < maxCount) {
+        for (int pageNo = startPage; pageNo <= endPage; pageNo++) {
             // API 호출
             List<DestinationDto> destinations = tourApiService.fetchDestinations(contenttypeid, pageNo, numOfRows);
 
@@ -70,25 +77,16 @@ public class DestinationService {
 
             // DB 저장
             for (DestinationDto dto : destinations) {
-                if (savedCount >= maxCount) {
-                    break;
-                }
-
                 try {
                     Destination destination = convertToEntity(dto);
                     destinationDao.mergeDestination(destination);
                     savedCount++;
-
-                    if (savedCount % 100 == 0) {
-                        log.info("[{}] 진행 중... {}건 저장됨", typeName, savedCount);
-                    }
                 } catch (Exception e) {
                     log.error("여행지 저장 실패 (contentid: {}): {}", dto.getContentid(), e.getMessage());
                 }
             }
 
-            // 다음 페이지
-            pageNo++;
+            log.info("[{}] 페이지 {} 완료 - 총 {}건 저장됨", typeName, pageNo, savedCount);
 
             // API 호출 간격 조절 (과부하 방지)
             try {
@@ -104,13 +102,13 @@ public class DestinationService {
     }
 
     /**
-     * 전체 관광타입 여행지 동기화
-     * @param maxCountPerType 타입당 최대 수집 건수
-     * @return 총 저장 건수
+     * 전체 관광타입 여행지 동기화 (페이지 기반)
+     * @param maxPagesPerType 타입당 최대 페이지 수
+     * @return 타입별 저장 건수
      */
     @Transactional
-    public Map<String, Integer> syncAllDestinations(int maxCountPerType) {
-        log.info("========== 전체 여행지 동기화 시작 (타입당 최대 {}건) ==========", maxCountPerType);
+    public Map<String, Integer> syncAllDestinations(int maxPagesPerType) {
+        log.info("========== 전체 여행지 동기화 시작 (타입당 최대 {}페이지) ==========", maxPagesPerType);
 
         Map<String, Integer> result = new HashMap<>();
         int totalCount = 0;
@@ -119,7 +117,7 @@ public class DestinationService {
             String typeId = entry.getKey();
             String typeName = entry.getValue();
 
-            int count = syncDestinationsByType(typeId, maxCountPerType);
+            int count = syncDestinationsByType(typeId, 1, maxPagesPerType);
             result.put(typeName, count);
             totalCount += count;
 
@@ -135,6 +133,66 @@ public class DestinationService {
         result.put("총합계", totalCount);
         log.info("========== 전체 여행지 동기화 완료: 총 {}건 ==========", totalCount);
         return result;
+    }
+    
+    /**
+     * 변경된 여행지만 동기화 (어제 이후 수정된 데이터)
+     * @return 업데이트된 건수
+     */
+    @Transactional
+    public int syncModifiedDestinations() {
+        // 어제 날짜 계산 (yyyyMMdd 형식)
+        String yesterday = java.time.LocalDate.now()
+                .minusDays(1)
+                .format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd"));
+        
+        log.info("========== 변경 데이터 동기화 시작 (기준일: {}) ==========", yesterday);
+
+        int savedCount = 0;
+        int pageNo = 1;
+        int numOfRows = 100;
+
+        // 먼저 총 개수 확인
+        int totalCount = tourApiService.fetchModifiedTotalCount(yesterday);
+        log.info("변경된 데이터 총 개수: {}건", totalCount);
+
+        if (totalCount == 0) {
+            log.info("변경된 데이터가 없습니다.");
+            return 0;
+        }
+
+        // 모든 페이지 조회
+        while (true) {
+            List<DestinationDto> destinations = tourApiService.fetchModifiedDestinations(yesterday, pageNo, numOfRows);
+
+            if (destinations.isEmpty()) {
+                break;
+            }
+
+            for (DestinationDto dto : destinations) {
+                try {
+                    Destination destination = convertToEntity(dto);
+                    destinationDao.mergeDestination(destination);
+                    savedCount++;
+                } catch (Exception e) {
+                    log.error("여행지 저장 실패 (contentid: {}): {}", dto.getContentid(), e.getMessage());
+                }
+            }
+
+            log.info("페이지 {} 완료 - 총 {}건 저장됨", pageNo, savedCount);
+            pageNo++;
+
+            // API 호출 간격
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+
+        log.info("========== 변경 데이터 동기화 완료: {}건 ==========", savedCount);
+        return savedCount;
     }
 
     /**

@@ -270,4 +270,95 @@ public class TourApiService {
             return null;
         }
     }
+    
+    /**
+     * 여행지 동기화 목록 조회 (특정 날짜 이후 수정된 데이터)
+     * API: detailSync2
+     * @param modifiedTime 수정일 기준 (yyyyMMdd 형식)
+     * @param pageNo 페이지 번호
+     * @param numOfRows 한 페이지 결과 수
+     * @return 수정된 여행지 목록
+     */
+    public List<DestinationDto> fetchModifiedDestinations(String modifiedTime, int pageNo, int numOfRows) {
+        try {
+            URI uri = UriComponentsBuilder
+                    .fromUriString(tourApiConfig.getBaseUrl() + "/detailSync2")
+                    .queryParam("serviceKey", tourApiConfig.getServiceKey())
+                    .queryParam("numOfRows", numOfRows)
+                    .queryParam("pageNo", pageNo)
+                    .queryParam("MobileOS", tourApiConfig.getMobileOs())
+                    .queryParam("MobileApp", tourApiConfig.getMobileApp())
+                    .queryParam("_type", "json")
+                    .queryParam("modifiedTime", modifiedTime)
+                    .build(true)
+                    .toUri();
+
+            log.info("동기화 API 호출 (수정일: {}, 페이지: {}): {}", modifiedTime, pageNo, uri);
+
+            String response = restTemplate.getForObject(uri, String.class);
+            
+            log.info("동기화 API 원본 응답: {}", response);
+
+            TourApiResponse<DestinationDto> apiResponse = objectMapper.readValue(
+                    response,
+                    new TypeReference<TourApiResponse<DestinationDto>>() {}
+            );
+
+            if (apiResponse.getResponse() != null
+                    && apiResponse.getResponse().getBody() != null
+                    && apiResponse.getResponse().getBody().getItems() != null) {
+
+                List<DestinationDto> items = apiResponse.getResponse().getBody().getItems().getItem();
+                log.info("동기화 목록 조회 완료 (수정일: {}, 페이지: {}): {}건", modifiedTime, pageNo, items != null ? items.size() : 0);
+                return items != null ? items : Collections.emptyList();
+            }
+
+            return Collections.emptyList();
+
+        } catch (Exception e) {
+            log.error("동기화 API 호출 실패: {}", e.getMessage(), e);
+            return Collections.emptyList();
+        }
+    }
+
+    /**
+     * 동기화 목록 총 개수 조회
+     * @param modifiedTime 수정일 기준 (yyyyMMdd 형식)
+     * @return 총 개수
+     */
+    public int fetchModifiedTotalCount(String modifiedTime) {
+        try {
+            URI uri = UriComponentsBuilder
+                    .fromUriString(tourApiConfig.getBaseUrl() + "/detailSync2")
+                    .queryParam("serviceKey", tourApiConfig.getServiceKey())
+                    .queryParam("numOfRows", 1)
+                    .queryParam("pageNo", 1)
+                    .queryParam("MobileOS", tourApiConfig.getMobileOs())
+                    .queryParam("MobileApp", tourApiConfig.getMobileApp())
+                    .queryParam("_type", "json")
+                    .queryParam("modifiedTime", modifiedTime)
+                    .build(true)
+                    .toUri();
+
+            String response = restTemplate.getForObject(uri, String.class);
+
+            TourApiResponse<DestinationDto> apiResponse = objectMapper.readValue(
+                    response,
+                    new TypeReference<TourApiResponse<DestinationDto>>() {}
+            );
+
+            if (apiResponse.getResponse() != null
+                    && apiResponse.getResponse().getBody() != null) {
+                int totalCount = apiResponse.getResponse().getBody().getTotalCount();
+                log.info("동기화 총 개수 (수정일: {}): {}건", modifiedTime, totalCount);
+                return totalCount;
+            }
+
+            return 0;
+
+        } catch (Exception e) {
+            log.error("동기화 총 개수 조회 실패: {}", e.getMessage(), e);
+            return 0;
+        }
+    }
 }
