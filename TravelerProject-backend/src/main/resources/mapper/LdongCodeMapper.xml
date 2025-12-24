@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" 
+    "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+    법정동 코드 Mapper XML
+    시도/시군구 코드 CRUD 쿼리 정의
+-->
+<mapper namespace="com.traveler.app.dao.LdongCodeDao">
+
+    <!-- 시도 코드 전체 조회 -->
+    <select id="selectAllRegnCode" resultType="com.traveler.app.entity.LdongRegnCode">
+        SELECT 
+            lDongRegnCd,
+            regn_name AS regnName
+        FROM ldong_regn_code
+        ORDER BY lDongRegnCd
+    </select>
+    
+    <!-- 시도 코드 단건 조회 -->
+    <select id="selectRegnCodeById" parameterType="String" resultType="com.traveler.app.entity.LdongRegnCode">
+        SELECT 
+            lDongRegnCd,
+            regn_name AS regnName
+        FROM ldong_regn_code
+        WHERE lDongRegnCd = #{lDongRegnCd}
+    </select>
+    
+    <!-- 시도 코드 저장 (MERGE: 없으면 INSERT, 있으면 UPDATE) -->
+    <insert id="mergeRegnCode" parameterType="com.traveler.app.entity.LdongRegnCode">
+        MERGE INTO ldong_regn_code target
+        USING (
+            SELECT 
+                #{lDongRegnCd} AS lDongRegnCd,
+                #{regnName} AS regn_name
+            FROM DUAL
+        ) source
+        ON (target.lDongRegnCd = source.lDongRegnCd)
+        WHEN MATCHED THEN
+            UPDATE SET target.regn_name = source.regn_name
+        WHEN NOT MATCHED THEN
+            INSERT (lDongRegnCd, regn_name)
+            VALUES (source.lDongRegnCd, source.regn_name)
+    </insert>
+    
+    <!-- 시군구 코드 조회 (시도코드별) -->
+    <select id="selectSignguCodeByRegnCd" parameterType="String" resultType="com.traveler.app.entity.LdongSignguCode">
+        SELECT 
+            lDongRegnCd,
+            lDongSignguCd,
+            signgu_name AS signguName
+        FROM ldong_signgu_code
+        WHERE lDongRegnCd = #{lDongRegnCd}
+        ORDER BY lDongSignguCd
+    </select>
+    
+    <!-- 시군구 코드 저장 (MERGE: 없으면 INSERT, 있으면 UPDATE) -->
+    <insert id="mergeSignguCode" parameterType="com.traveler.app.entity.LdongSignguCode">
+        MERGE INTO ldong_signgu_code target
+        USING (
+            SELECT 
+                #{lDongRegnCd} AS lDongRegnCd,
+                #{lDongSignguCd} AS lDongSignguCd,
+                #{signguName} AS signgu_name
+            FROM DUAL
+        ) source
+        ON (target.lDongRegnCd = source.lDongRegnCd AND target.lDongSignguCd = source.lDongSignguCd)
+        WHEN MATCHED THEN
+            UPDATE SET target.signgu_name = source.signgu_name
+        WHEN NOT MATCHED THEN
+            INSERT (lDongRegnCd, lDongSignguCd, signgu_name)
+            VALUES (source.lDongRegnCd, source.lDongSignguCd, source.signgu_name)
+    </insert>
+    
+    <!-- 시도 코드 개수 조회 -->
+    <select id="countRegnCode" resultType="int">
+        SELECT COUNT(*) FROM ldong_regn_code
+    </select>
+    
+    <!-- 시군구 코드 개수 조회 -->
+    <select id="countSignguCode" resultType="int">
+        SELECT COUNT(*) FROM ldong_signgu_code
+    </select>
+
+</mapper>

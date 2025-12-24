@@ -1,0 +1,35 @@
+# ============================
+# Backend (Spring Boot)
+# ============================
+TravelerProject-backend/build/
+TravelerProject-backend/.gradle/
+TravelerProject-backend/bin/
+TravelerProject-backend/.settings/
+TravelerProject-backend/.classpath
+TravelerProject-backend/.project
+
+# ============================
+# Frontend (React)
+# ============================
+traveler-frontend/node_modules/
+traveler-frontend/build/
+
+# ============================
+# IDE
+# ============================
+.idea/
+*.iml
+.vscode/
+
+# ============================
+# OS
+# ============================
+.DS_Store
+Thumbs.db
+
+# ============================
+# 환경 설정 (보안)
+# ============================
+*.env
+application-prod.properties
+**/application-secret.properties

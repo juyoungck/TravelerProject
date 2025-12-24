@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" 
+    "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.traveler.app.dao.DestinationDao">
+
+    <insert id="mergeDestination" parameterType="com.traveler.app.entity.Destination">
+        MERGE INTO destination target
+        USING (
+            SELECT
+                #{contentid, jdbcType=VARCHAR} AS contentid,
+                #{contenttypeid, jdbcType=VARCHAR} AS contenttypeid,
+                #{title, jdbcType=VARCHAR} AS title,
+                #{tel, jdbcType=VARCHAR} AS tel,
+                #{addr1, jdbcType=VARCHAR} AS addr1,
+                #{addr2, jdbcType=VARCHAR} AS addr2,
+                #{zipcode, jdbcType=VARCHAR} AS zipcode,
+                #{lDongRegnCd, jdbcType=VARCHAR} AS lDongRegnCd,
+                #{lDongSignguCd, jdbcType=VARCHAR} AS lDongSignguCd,
+                #{mapx, jdbcType=NUMERIC} AS mapx,
+                #{mapy, jdbcType=NUMERIC} AS mapy,
+                #{mlevel, jdbcType=NUMERIC} AS mlevel,
+                #{firstimage, jdbcType=VARCHAR} AS firstimage,
+                #{firstimage2, jdbcType=VARCHAR} AS firstimage2,
+                #{modifiedtime, jdbcType=VARCHAR} AS modifiedtime
+            FROM DUAL
+        ) source
+        ON (target.contentid = source.contentid)
+        WHEN MATCHED THEN
+            UPDATE SET
+                target.contenttypeid = source.contenttypeid,
+                target.title = source.title,
+                target.tel = source.tel,
+                target.addr1 = source.addr1,
+                target.addr2 = source.addr2,
+                target.zipcode = source.zipcode,
+                target.lDongRegnCd = source.lDongRegnCd,
+                target.lDongSignguCd = source.lDongSignguCd,
+                target.mapx = source.mapx,
+                target.mapy = source.mapy,
+                target.mlevel = source.mlevel,
+                target.firstimage = source.firstimage,
+                target.firstimage2 = source.firstimage2,
+                target.modifiedtime = source.modifiedtime,
+                target.sync_date = CURRENT_TIMESTAMP
+        WHEN NOT MATCHED THEN
+            INSERT (
+                contentid, contenttypeid, title, tel,
+                addr1, addr2, zipcode,
+                lDongRegnCd, lDongSignguCd,
+                mapx, mapy, mlevel,
+                firstimage, firstimage2, modifiedtime,
+                view_count, sync_date, created_at
+            )
+            VALUES (
+                source.contentid, source.contenttypeid, source.title, source.tel,
+                source.addr1, source.addr2, source.zipcode,
+                source.lDongRegnCd, source.lDongSignguCd,
+                source.mapx, source.mapy, source.mlevel,
+                source.firstimage, source.firstimage2, source.modifiedtime,
+                0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+            )
+    </insert>
+
+    <select id="selectDestinationById" parameterType="String" resultType="com.traveler.app.entity.Destination">
+        SELECT
+            contentid,
+            contenttypeid,
+            title,
+            overview,
+            homepage,
+            tel,
+            addr1,
+            addr2,
+            zipcode,
+            lDongRegnCd,
+            lDongSignguCd,
+            mapx,
+            mapy,
+            mlevel,
+            firstimage,
+            firstimage2,
+            modifiedtime,
+            view_count AS viewCount,
+            sync_date AS syncDate,
+            created_at AS createdAt
+        FROM destination
+        WHERE contentid = #{contentid}
+    </select>
+
+    <select id="selectDestinationsByType" parameterType="String" resultType="com.traveler.app.entity.Destination">
+        SELECT
+            contentid,
+            contenttypeid,
+            title,
+            tel,
+            addr1,
+            addr2,
+            lDongRegnCd,
+            lDongSignguCd,
+            mapx,
+            mapy,
+            firstimage,
+            firstimage2,
+            view_count AS viewCount
+        FROM destination
+        WHERE contenttypeid = #{contenttypeid}
+        ORDER BY modifiedtime DESC
+    </select>
+
+    <select id="selectDestinationsByRegion" resultType="com.traveler.app.entity.Destination">
+        SELECT
+            contentid,
+            contenttypeid,
+            title,
+            tel,
+            addr1,
+            addr2,
+            lDongRegnCd,
+            lDongSignguCd,
+            mapx,
+            mapy,
+            firstimage,
+            firstimage2,
+            view_count AS viewCount
+        FROM destination
+        WHERE lDongRegnCd = #{lDongRegnCd}
+        <if test="lDongSignguCd != null and lDongSignguCd != ''">
+            AND lDongSignguCd = #{lDongSignguCd}
+        </if>
+        ORDER BY modifiedtime DESC
+    </select>
+
+    <select id="countDestination" resultType="int">
+        SELECT COUNT(*) FROM destination
+    </select>
+
+    <select id="countDestinationByType" parameterType="String" resultType="int">
+        SELECT COUNT(*) FROM destination
+        WHERE contenttypeid = #{contenttypeid}
+    </select>
+
+    <update id="updateDestinationDetail">
+        UPDATE destination
+        SET
+            overview = #{overview, jdbcType=CLOB},
+            homepage = #{homepage, jdbcType=VARCHAR},
+            sync_date = CURRENT_TIMESTAMP
+        WHERE contentid = #{contentid}
+    </update>
+
+</mapper>
