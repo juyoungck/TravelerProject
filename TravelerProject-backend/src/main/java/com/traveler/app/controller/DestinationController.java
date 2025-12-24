@@ -218,4 +218,120 @@ public class DestinationController {
         
         return response;
     }
+    
+    /**
+     * 상세정보 수집 (overview, homepage)
+     * URL: GET /api/destination/sync-detail?startIndex=1&endIndex=1000
+     * 예시: 1~1000번째: startIndex=1&endIndex=1000
+     *       1001~2000번째: startIndex=1001&endIndex=2000
+     */
+    @GetMapping("/sync-detail")
+    public Map<String, Object> syncDetail(
+            @RequestParam(value = "startIndex", defaultValue = "1") int startIndex,
+            @RequestParam(value = "endIndex", defaultValue = "1000") int endIndex) {
+        
+        Map<String, Object> response = new HashMap<>();
+        
+        try {
+            int count = destinationService.syncDestinationDetails(startIndex, endIndex);
+            
+            response.put("status", "success");
+            response.put("message", "상세정보 수집 완료");
+            response.put("startIndex", startIndex);
+            response.put("endIndex", endIndex);
+            response.put("savedCount", count);
+        } catch (Exception e) {
+            response.put("status", "fail");
+            response.put("message", "수집 실패: " + e.getMessage());
+        }
+        
+        return response;
+    }
+
+    /**
+     * 이미지 목록 수집
+     * URL: GET /api/destination/sync-image?startIndex=1&endIndex=1000
+     * 예시: 1~1000번째: startIndex=1&endIndex=1000
+     *       1001~2000번째: startIndex=1001&endIndex=2000
+     */
+    @GetMapping("/sync-image")
+    public Map<String, Object> syncImage(
+            @RequestParam(value = "startIndex", defaultValue = "1") int startIndex,
+            @RequestParam(value = "endIndex", defaultValue = "1000") int endIndex) {
+        
+        Map<String, Object> response = new HashMap<>();
+        
+        try {
+            int count = destinationService.syncDestinationImages(startIndex, endIndex);
+            int totalImages = destinationService.getImageCount();
+            
+            response.put("status", "success");
+            response.put("message", "이미지 수집 완료");
+            response.put("startIndex", startIndex);
+            response.put("endIndex", endIndex);
+            response.put("processedCount", count);
+            response.put("totalImages", totalImages);
+        } catch (Exception e) {
+            response.put("status", "fail");
+            response.put("message", "수집 실패: " + e.getMessage());
+        }
+        
+        return response;
+    }
+
+    /**
+     * 상세정보/이미지 수집 현황
+     * URL: GET /api/destination/detail-status
+     */
+    @GetMapping("/detail-status")
+    public Map<String, Object> getDetailStatus() {
+        Map<String, Object> response = new HashMap<>();
+        
+        response.put("status", "success");
+        response.put("withoutDetail", destinationService.countDestinationsWithoutDetail());
+        response.put("totalImages", destinationService.getImageCount());
+        
+        return response;
+    }
+    
+    /**
+     * 썸네일 다운로드
+     * URL: GET /api/destination/download-thumbnail?startIndex=1&endIndex=1000
+     */
+    @GetMapping("/download-thumbnail")
+    public Map<String, Object> downloadThumbnail(
+            @RequestParam(value = "startIndex", defaultValue = "1") int startIndex,
+            @RequestParam(value = "endIndex", defaultValue = "1000") int endIndex) {
+        
+        Map<String, Object> response = new HashMap<>();
+        
+        try {
+            int count = destinationService.downloadThumbnails(startIndex, endIndex);
+            
+            response.put("status", "success");
+            response.put("message", "썸네일 다운로드 완료");
+            response.put("startIndex", startIndex);
+            response.put("endIndex", endIndex);
+            response.put("downloadedCount", count);
+        } catch (Exception e) {
+            response.put("status", "fail");
+            response.put("message", "다운로드 실패: " + e.getMessage());
+        }
+        
+        return response;
+    }
+
+    /**
+     * 썸네일 다운로드 현황
+     * URL: GET /api/destination/thumbnail-status
+     */
+    @GetMapping("/thumbnail-status")
+    public Map<String, Object> getThumbnailStatus() {
+        Map<String, Object> response = new HashMap<>();
+        
+        response.put("status", "success");
+        response.put("data", destinationService.getThumbnailStatus());
+        
+        return response;
+    }
 }

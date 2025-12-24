@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" 
+    "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.traveler.app.dao.DestinationImageDao">
+
+    <insert id="insertImage" parameterType="com.traveler.app.entity.DestinationImage">
+        INSERT INTO destination_image (img_id, contentid, originimgurl)
+        VALUES (seq_destination_image.NEXTVAL, #{contentid}, #{originimgurl})
+    </insert>
+
+    <select id="selectImagesByContentId" parameterType="String" resultType="com.traveler.app.entity.DestinationImage">
+        SELECT
+            img_id AS imgId,
+            contentid,
+            originimgurl
+        FROM destination_image
+        WHERE contentid = #{contentid}
+        ORDER BY img_id
+    </select>
+
+    <delete id="deleteImagesByContentId" parameterType="String">
+        DELETE FROM destination_image
+        WHERE contentid = #{contentid}
+    </delete>
+
+    <select id="countImages" resultType="int">
+        SELECT COUNT(*) FROM destination_image
+    </select>
+
+    <select id="countImagesByContentId" parameterType="String" resultType="int">
+        SELECT COUNT(*) FROM destination_image
+        WHERE contentid = #{contentid}
+    </select>
+
+</mapper>

@@ -14,6 +14,7 @@ import com.traveler.app.config.TourApiConfig;
 import com.traveler.app.dto.LdongCodeDto;
 import com.traveler.app.dto.TourApiResponse;
 import com.traveler.app.dto.DestinationDto;
+import com.traveler.app.dto.DestinationImageDto;
 import com.traveler.app.dto.DestinationDetailDto;
 
 import lombok.RequiredArgsConstructor;
@@ -241,12 +242,15 @@ public class TourApiService {
                     .queryParam("MobileApp", tourApiConfig.getMobileApp())
                     .queryParam("_type", "json")
                     .queryParam("contentId", contentid)
-                    .queryParam("overviewYN", "Y")
-                    .queryParam("defaultYN", "Y")
+                    .queryParam("numOfRows", 1)
+                    .queryParam("pageNo", 1)
                     .build(true)
                     .toUri();
 
             String response = restTemplate.getForObject(uri, String.class);
+            
+         // ★★★ 디버그 로그 추가 ★★★
+            log.info("상세정보 API 응답 (contentid: {}): {}", contentid, response);
 
             TourApiResponse<DestinationDetailDto> apiResponse = objectMapper.readValue(
                     response,
@@ -359,6 +363,47 @@ public class TourApiService {
         } catch (Exception e) {
             log.error("동기화 총 개수 조회 실패: {}", e.getMessage(), e);
             return 0;
+        }
+    }
+    
+    /**
+     * 여행지 이미지 목록 조회
+     * API: detailImage2
+     * @param contentid 콘텐츠ID
+     * @return 이미지 목록
+     */
+    public List<DestinationImageDto> fetchDestinationImages(String contentid) {
+        try {
+            URI uri = UriComponentsBuilder
+                    .fromUriString(tourApiConfig.getBaseUrl() + "/detailImage2")
+                    .queryParam("serviceKey", tourApiConfig.getServiceKey())
+                    .queryParam("MobileOS", tourApiConfig.getMobileOs())
+                    .queryParam("MobileApp", tourApiConfig.getMobileApp())
+                    .queryParam("_type", "json")
+                    .queryParam("contentId", contentid)
+                    .build(true)
+                    .toUri();
+
+            String response = restTemplate.getForObject(uri, String.class);
+
+            TourApiResponse<DestinationImageDto> apiResponse = objectMapper.readValue(
+                    response,
+                    new TypeReference<TourApiResponse<DestinationImageDto>>() {}
+            );
+
+            if (apiResponse.getResponse() != null
+                    && apiResponse.getResponse().getBody() != null
+                    && apiResponse.getResponse().getBody().getItems() != null) {
+
+                List<DestinationImageDto> items = apiResponse.getResponse().getBody().getItems().getItem();
+                return items != null ? items : Collections.emptyList();
+            }
+
+            return Collections.emptyList();
+
+        } catch (Exception e) {
+            log.error("이미지 API 호출 실패 (contentid: {}): {}", contentid, e.getMessage());
+            return Collections.emptyList();
         }
     }
 }

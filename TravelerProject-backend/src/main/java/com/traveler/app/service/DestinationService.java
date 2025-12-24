@@ -6,10 +6,15 @@ import java.util.Map;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestTemplate;
 
 import com.traveler.app.dao.DestinationDao;
+import com.traveler.app.dao.DestinationImageDao;
+import com.traveler.app.dto.DestinationDetailDto;
 import com.traveler.app.dto.DestinationDto;
+import com.traveler.app.dto.DestinationImageDto;
 import com.traveler.app.entity.Destination;
+import com.traveler.app.entity.DestinationImage;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -23,6 +28,8 @@ public class DestinationService {
 
     private final TourApiService tourApiService;
     private final DestinationDao destinationDao;
+    private final DestinationImageDao destinationImageDao;
+    private final RestTemplate restTemplate;
 
     /** 관광타입 목록 (반려동물 제외) */
     private static final Map<String, String> CONTENT_TYPES = new HashMap<>();
@@ -38,9 +45,12 @@ public class DestinationService {
         CONTENT_TYPES.put("39", "음식점");
     }
 
-    public DestinationService(TourApiService tourApiService, DestinationDao destinationDao) {
+    public DestinationService(TourApiService tourApiService, DestinationDao destinationDao, 
+            DestinationImageDao destinationImageDao, RestTemplate restTemplate) {
         this.tourApiService = tourApiService;
         this.destinationDao = destinationDao;
+        this.destinationImageDao = destinationImageDao;
+        this.restTemplate = restTemplate;
     }
     
     /**
@@ -281,5 +291,199 @@ public class DestinationService {
      */
     public Map<String, String> getContentTypes() {
         return CONTENT_TYPES;
+    }
+    
+    /**
+     * 상세정보 수집 (overview, homepage)
+     * @param startIndex 시작 인덱스 (1부터)
+     * @param endIndex 끝 인덱스
+     * @return 저장된 건수
+     */
+    @Transactional
+    public int syncDestinationDetails(int startIndex, int endIndex) {
+        log.info("========== 상세정보 수집 시작 ({}~{}번째) ==========", startIndex, endIndex);
+
+        int savedCount = 0;
+
+        List<Destination> destinations = destinationDao.selectDestinationsByRange(startIndex, endIndex);
+        log.info("조회된 여행지: {}건", destinations.size());
+
+        for (Destination dest : destinations) {
+            try {
+                DestinationDetailDto detail = tourApiService.fetchDestinationDetail(dest.getContentid());
+                
+                if (detail != null) {
+                    destinationDao.updateDestinationDetail(
+                            dest.getContentid(),
+                            detail.getOverview(),
+                            detail.getHomepage()
+                    );
+                    savedCount++;
+                    
+                    if (savedCount % 100 == 0) {
+                        log.info("상세정보 진행 중... {}건 완료", savedCount);
+                    }
+                }
+
+                // API 호출 간격
+                Thread.sleep(50);
+
+            } catch (Exception e) {
+                log.error("상세정보 저장 실패 (contentid: {}): {}", dest.getContentid(), e.getMessage());
+            }
+        }
+
+        log.info("========== 상세정보 수집 완료: {}건 ==========", savedCount);
+        return savedCount;
+    }
+
+    /**
+     * 이미지 목록 수집
+     * @param startIndex 시작 인덱스 (1부터)
+     * @param endIndex 끝 인덱스
+     * @return 처리된 여행지 수
+     */
+    @Transactional
+    public int syncDestinationImages(int startIndex, int endIndex) {
+        log.info("========== 이미지 수집 시작 ({}~{}번째) ==========", startIndex, endIndex);
+
+        int processedCount = 0;
+        int imageCount = 0;
+
+        List<Destination> destinations = destinationDao.selectDestinationsByRange(startIndex, endIndex);
+        log.info("조회된 여행지: {}건", destinations.size());
+
+        for (Destination dest : destinations) {
+            try {
+                List<DestinationImageDto> images = tourApiService.fetchDestinationImages(dest.getContentid());
+                
+                for (DestinationImageDto imgDto : images) {
+                    DestinationImage image = DestinationImage.builder()
+                            .contentid(imgDto.getContentid())
+                            .originimgurl(imgDto.getOriginimgurl())
+                            .build();
+                    
+                    destinationImageDao.insertImage(image);
+                    imageCount++;
+                }
+                
+                processedCount++;
+                
+                if (processedCount % 100 == 0) {
+                    log.info("이미지 진행 중... {}건 처리, 이미지 {}장 저장", processedCount, imageCount);
+                }
+
+                // API 호출 간격
+                Thread.sleep(50);
+
+            } catch (Exception e) {
+                log.error("이미지 저장 실패 (contentid: {}): {}", dest.getContentid(), e.getMessage());
+            }
+        }
+
+        log.info("========== 이미지 수집 완료: {}건 처리, 이미지 {}장 ==========", processedCount, imageCount);
+        return processedCount;
+    }
+
+    /**
+     * 상세정보 없는 여행지 개수
+     */
+    public int countDestinationsWithoutDetail() {
+        return destinationDao.countDestinationsWithoutDetail();
+    }
+
+    /**
+     * 이미지 총 개수
+     */
+    public int getImageCount() {
+        return destinationImageDao.countImages();
+    }
+    
+    /**
+     * 썸네일 이미지 다운로드
+     * @param startIndex 시작 인덱스
+     * @param endIndex 끝 인덱스
+     * @return 다운로드 건수
+     */
+    public int downloadThumbnails(int startIndex, int endIndex) {
+        log.info("========== 썸네일 다운로드 시작 ({}~{}번째) ==========", startIndex, endIndex);
+
+        int downloadCount = 0;
+        String uploadDir = "src/main/resources/static/thumbnails/";
+        
+        // 폴더 생성
+        java.io.File dir = new java.io.File(uploadDir);
+        if (!dir.exists()) {
+            dir.mkdirs();
+        }
+
+        List<Destination> destinations = destinationDao.selectDestinationsByRange(startIndex, endIndex);
+        log.info("조회된 여행지: {}건", destinations.size());
+
+        for (Destination dest : destinations) {
+            try {
+                String thumbnailUrl = dest.getFirstimage2();
+                
+                // 썸네일 URL이 없으면 스킵
+                if (thumbnailUrl == null || thumbnailUrl.isEmpty()) {
+                    continue;
+                }
+
+                // 파일 저장 경로
+                String fileName = dest.getContentid() + ".jpg";
+                String filePath = uploadDir + fileName;
+                
+                // 이미 다운로드된 파일이면 스킵
+                java.io.File file = new java.io.File(filePath);
+                if (file.exists()) {
+                    continue;
+                }
+
+                // 이미지 다운로드
+                byte[] imageBytes = restTemplate.getForObject(thumbnailUrl, byte[].class);
+                
+                if (imageBytes != null && imageBytes.length > 0) {
+                    java.nio.file.Files.write(file.toPath(), imageBytes);
+                    downloadCount++;
+                    
+                    if (downloadCount % 100 == 0) {
+                        log.info("썸네일 다운로드 진행 중... {}건 완료", downloadCount);
+                    }
+                }
+
+                // 다운로드 간격 (서버 부하 방지)
+                Thread.sleep(30);
+
+            } catch (Exception e) {
+                log.error("썸네일 다운로드 실패 (contentid: {}): {}", dest.getContentid(), e.getMessage());
+            }
+        }
+
+        log.info("========== 썸네일 다운로드 완료: {}건 ==========", downloadCount);
+        return downloadCount;
+    }
+
+    /**
+     * 썸네일 다운로드 현황
+     */
+    public Map<String, Object> getThumbnailStatus() {
+        Map<String, Object> status = new HashMap<>();
+        
+        String uploadDir = "src/main/resources/static/thumbnails/";
+        java.io.File dir = new java.io.File(uploadDir);
+        
+        int downloadedCount = 0;
+        if (dir.exists()) {
+            downloadedCount = dir.listFiles() != null ? dir.listFiles().length : 0;
+        }
+        
+        // firstimage2가 있는 여행지 수
+        int totalWithThumbnail = destinationDao.countDestinationsWithThumbnail();
+        
+        status.put("downloadedCount", downloadedCount);
+        status.put("totalWithThumbnail", totalWithThumbnail);
+        status.put("remainingCount", totalWithThumbnail - downloadedCount);
+        
+        return status;
     }
 }

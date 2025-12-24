@@ -39,4 +39,15 @@ public interface DestinationDao {
             @Param("contentid") String contentid,
             @Param("overview") String overview,
             @Param("homepage") String homepage);
+    
+    /** 여행지 목록 조회 (인덱스 범위) */
+    List<Destination> selectDestinationsByRange(
+            @Param("startIndex") int startIndex,
+            @Param("endIndex") int endIndex);
+
+    /** 상세정보 없는 여행지 개수 */
+    int countDestinationsWithoutDetail();
+    
+    /** 썸네일이 있는 여행지 수 */
+    int countDestinationsWithThumbnail();
 }
