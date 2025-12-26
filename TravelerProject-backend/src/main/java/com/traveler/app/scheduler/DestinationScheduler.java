@@ -39,12 +39,7 @@ public class DestinationScheduler {
         log.info("========== [스케줄러] 여행지 데이터 업데이트 시작: {} ==========", startTime);
 
         try {
-            // 1. 법정동 코드 업데이트 (거의 변경 없음)
-            log.info("[스케줄러] 법정동 코드 업데이트 시작");
-            int ldongCount = ldongCodeService.syncAllLdongCodes();
-            log.info("[스케줄러] 법정동 코드 업데이트 완료: {}건", ldongCount);
-
-            // 2. 변경된 여행지만 업데이트 (어제 이후 수정된 데이터)
+            // 변경된 여행지만 업데이트 (어제 이후 수정된 데이터)
             log.info("[스케줄러] 변경된 여행지 동기화 시작");
             int destCount = destinationService.syncModifiedDestinations();
             log.info("[스케줄러] 변경된 여행지 동기화 완료: {}건", destCount);
@@ -63,4 +58,6 @@ public class DestinationScheduler {
     public void manualUpdate() {
         updateDestinationData();
     }
+    
+    
 }

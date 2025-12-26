@@ -176,6 +176,31 @@ public class DestinationController {
         
         return response;
     }
+    
+    /**
+     * 특정 날짜 기준 변경 데이터 동기화 (테스트용)
+     * URL: GET /api/destination/sync-modified-test?date=20241224
+     */
+    @GetMapping("/sync-modified-test")
+    public Map<String, Object> syncModifiedTest(
+            @RequestParam(value = "date") String date) {
+        
+        Map<String, Object> response = new HashMap<>();
+        
+        try {
+            int count = destinationService.syncModifiedDestinationsByDate(date);
+            
+            response.put("status", "success");
+            response.put("message", "변경 데이터 동기화 완료");
+            response.put("date", date);
+            response.put("updatedCount", count);
+        } catch (Exception e) {
+            response.put("status", "fail");
+            response.put("message", "동기화 실패: " + e.getMessage());
+        }
+        
+        return response;
+    }
 
     /**
      * 여행지 목록 조회 (관광타입별)

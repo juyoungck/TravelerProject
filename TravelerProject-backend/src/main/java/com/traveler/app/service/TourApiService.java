@@ -277,7 +277,7 @@ public class TourApiService {
     
     /**
      * 여행지 동기화 목록 조회 (특정 날짜 이후 수정된 데이터)
-     * API: detailSync2
+     * API: areaBasedSyncList2
      * @param modifiedTime 수정일 기준 (yyyyMMdd 형식)
      * @param pageNo 페이지 번호
      * @param numOfRows 한 페이지 결과 수
@@ -286,14 +286,14 @@ public class TourApiService {
     public List<DestinationDto> fetchModifiedDestinations(String modifiedTime, int pageNo, int numOfRows) {
         try {
             URI uri = UriComponentsBuilder
-                    .fromUriString(tourApiConfig.getBaseUrl() + "/detailSync2")
+                    .fromUriString(tourApiConfig.getBaseUrl() + "/areaBasedSyncList2")
                     .queryParam("serviceKey", tourApiConfig.getServiceKey())
                     .queryParam("numOfRows", numOfRows)
                     .queryParam("pageNo", pageNo)
                     .queryParam("MobileOS", tourApiConfig.getMobileOs())
                     .queryParam("MobileApp", tourApiConfig.getMobileApp())
                     .queryParam("_type", "json")
-                    .queryParam("modifiedTime", modifiedTime)
+                    .queryParam("modifiedtime", modifiedTime)
                     .build(true)
                     .toUri();
 
@@ -333,14 +333,14 @@ public class TourApiService {
     public int fetchModifiedTotalCount(String modifiedTime) {
         try {
             URI uri = UriComponentsBuilder
-                    .fromUriString(tourApiConfig.getBaseUrl() + "/detailSync2")
+                    .fromUriString(tourApiConfig.getBaseUrl() + "/areaBasedSyncList2")
                     .queryParam("serviceKey", tourApiConfig.getServiceKey())
                     .queryParam("numOfRows", 1)
                     .queryParam("pageNo", 1)
                     .queryParam("MobileOS", tourApiConfig.getMobileOs())
                     .queryParam("MobileApp", tourApiConfig.getMobileApp())
                     .queryParam("_type", "json")
-                    .queryParam("modifiedTime", modifiedTime)
+                    .queryParam("modifiedtime", modifiedTime)
                     .build(true)
                     .toUri();
 

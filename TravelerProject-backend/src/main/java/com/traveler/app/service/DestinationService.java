@@ -204,6 +204,62 @@ public class DestinationService {
         log.info("========== 변경 데이터 동기화 완료: {}건 ==========", savedCount);
         return savedCount;
     }
+    
+    /**
+     * 특정 날짜 기준 변경된 여행지 동기화 (테스트용)
+     * @param date 날짜 (yyyyMMdd 형식)
+     * @return 업데이트된 건수
+     */
+    @Transactional
+    public int syncModifiedDestinationsByDate(String date) {
+        log.info("========== 변경 데이터 동기화 시작 (기준일: {}) ==========", date);
+
+        int savedCount = 0;
+        int pageNo = 1;
+        int numOfRows = 100;
+
+        // 먼저 총 개수 확인
+        int totalCount = tourApiService.fetchModifiedTotalCount(date);
+        log.info("변경된 데이터 총 개수: {}건", totalCount);
+
+        if (totalCount == 0) {
+            log.info("변경된 데이터가 없습니다.");
+            return 0;
+        }
+
+        // 모든 페이지 조회
+        while (true) {
+            List<DestinationDto> destinations = tourApiService.fetchModifiedDestinations(date, pageNo, numOfRows);
+
+            if (destinations.isEmpty()) {
+                break;
+            }
+
+            for (DestinationDto dto : destinations) {
+                try {
+                    Destination destination = convertToEntity(dto);
+                    destinationDao.mergeDestination(destination);
+                    savedCount++;
+                } catch (Exception e) {
+                    log.error("여행지 저장 실패 (contentid: {}): {}", dto.getContentid(), e.getMessage());
+                }
+            }
+
+            log.info("페이지 {} 완료 - 총 {}건 저장됨", pageNo, savedCount);
+            pageNo++;
+
+            // API 호출 간격
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+
+        log.info("========== 변경 데이터 동기화 완료: {}건 ==========", savedCount);
+        return savedCount;
+    }
 
     /**
      * DTO → Entity 변환
