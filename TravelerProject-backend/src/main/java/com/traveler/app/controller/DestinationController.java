@@ -203,23 +203,32 @@ public class DestinationController {
     }
 
     /**
-     * 여행지 목록 조회 (관광타입별)
-     * URL: GET /api/destination/list/{contenttypeid}
+     * 여행지 목록 조회 (관광타입별, 페이징)
+     * URL: GET /api/destination/list/{contenttypeid}?page=1&size=10
      */
     @GetMapping("/list/{contenttypeid}")
     public Map<String, Object> getDestinationsByType(
-            @PathVariable("contenttypeid") String contenttypeid) {
+            @PathVariable("contenttypeid") String contenttypeid,
+            @RequestParam(value = "page", defaultValue = "1") int page,
+            @RequestParam(value = "size", defaultValue = "10") int size) {
         
         Map<String, Object> response = new HashMap<>();
         
-        List<Destination> list = destinationService.getDestinationsByType(contenttypeid);
-        response.put("status", "success");
-        response.put("contenttypeid", contenttypeid);
-        response.put("count", list.size());
-        response.put("data", list);
+        try {
+            Map<String, Object> result = destinationService.getDestinationsWithPaging(contenttypeid, page, size);
+            
+            response.put("status", "success");
+            response.put("contenttypeid", contenttypeid);
+            response.putAll(result);
+        } catch (Exception e) {
+            response.put("status", "fail");
+            response.put("message", e.getMessage());
+        }
         
         return response;
     }
+    
+    
 
     /**
      * 여행지 상세 조회

@@ -334,6 +334,95 @@ public class DestinationService {
     public List<Destination> getDestinationsByType(String contenttypeid) {
         return destinationDao.selectDestinationsByType(contenttypeid);
     }
+    
+    /**
+     * 여행지 목록 조회 (페이징, 시군구 이름 포함)
+     */
+    public Map<String, Object> getDestinationsWithPaging(String contenttypeid, int page, int size) {
+        Map<String, Object> result = new HashMap<>();
+        
+        int offset = (page - 1) * size;
+        List<Destination> list = destinationDao.selectDestinationsByTypeWithPaging(contenttypeid, offset, size);
+        int totalCount = destinationDao.countDestinationByType(contenttypeid);
+        int totalPages = (int) Math.ceil((double) totalCount / size);
+        
+        // 시군구 이름 추가
+        List<Map<String, Object>> dataWithRegion = new java.util.ArrayList<>();
+        for (Destination dest : list) {
+            Map<String, Object> item = new HashMap<>();
+            item.put("contentid", dest.getContentid());
+            item.put("contenttypeid", dest.getContenttypeid());
+            item.put("title", dest.getTitle());
+            item.put("addr1", dest.getAddr1());
+            item.put("addr2", dest.getAddr2());
+            item.put("tel", dest.getTel());
+            item.put("firstimage", dest.getFirstimage());
+            item.put("firstimage2", dest.getFirstimage2());
+            item.put("mapx", dest.getMapx());
+            item.put("mapy", dest.getMapy());
+            item.put("overview", dest.getOverview());
+            item.put("homepage", dest.getHomepage());
+            item.put("viewCount", dest.getViewCount());
+            item.put("lDongRegnCd", dest.getLDongRegnCd());
+            item.put("lDongSignguCd", dest.getLDongSignguCd());
+            
+            // 시군구 이름 조회
+            String regionName = getRegionName(dest.getLDongRegnCd(), dest.getLDongSignguCd());
+            item.put("regionName", regionName);
+            
+            dataWithRegion.add(item);
+        }
+        
+        result.put("data", dataWithRegion);
+        result.put("currentPage", page);
+        result.put("totalPages", totalPages);
+        result.put("totalCount", totalCount);
+        result.put("pageSize", size);
+        
+        return result;
+    }
+
+    /**
+     * 지역명 조회 (시도 + 시군구)
+     */
+    private String getRegionName(String lDongRegnCd, String lDongSignguCd) {
+        if (lDongRegnCd == null) return "";
+        
+        // 시도 이름
+        Map<String, String> regionMap = new HashMap<>();
+        regionMap.put("11", "서울");
+        regionMap.put("26", "부산");
+        regionMap.put("27", "대구");
+        regionMap.put("28", "인천");
+        regionMap.put("29", "광주");
+        regionMap.put("30", "대전");
+        regionMap.put("31", "울산");
+        regionMap.put("36", "세종");
+        regionMap.put("41", "경기");
+        regionMap.put("42", "강원");
+        regionMap.put("43", "충북");
+        regionMap.put("44", "충남");
+        regionMap.put("45", "전북");
+        regionMap.put("46", "전남");
+        regionMap.put("47", "경북");
+        regionMap.put("48", "경남");
+        regionMap.put("50", "제주");
+        
+        String sidoName = regionMap.getOrDefault(lDongRegnCd, "");
+        
+        // 시군구 이름 조회
+        String signguName = "";
+        if (lDongSignguCd != null && !lDongSignguCd.isEmpty()) {
+            try {
+                signguName = destinationDao.selectSignguName(lDongRegnCd, lDongSignguCd);
+                if (signguName == null) signguName = "";
+            } catch (Exception e) {
+                log.error("시군구 이름 조회 실패: {}", e.getMessage());
+            }
+        }
+        
+        return sidoName + " " + signguName;
+    }
 
     /**
      * 여행지 상세 조회

@@ -28,6 +28,18 @@ public interface DestinationDao {
             @Param("lDongRegnCd") String lDongRegnCd,
             @Param("lDongSignguCd") String lDongSignguCd);
     
+    /** 여행지 목록 조회 (페이징) */
+    List<Destination> selectDestinationsByTypeWithPaging(
+            @Param("contenttypeid") String contenttypeid,
+            @Param("offset") int offset,
+            @Param("limit") int limit);
+
+    /** 관광타입별 총 개수 */
+    int countDestinationByType(@Param("contenttypeid") String contenttypeid);
+
+    /** 시군구 이름 조회 */
+    String selectSignguName(@Param("lDongRegnCd") String lDongRegnCd, @Param("lDongSignguCd") String lDongSignguCd);
+    
     /** 여행지 전체 개수 조회 */
     int countDestination();
     
