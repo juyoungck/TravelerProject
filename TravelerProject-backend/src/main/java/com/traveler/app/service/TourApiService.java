@@ -242,6 +242,8 @@ public class TourApiService {
                     .queryParam("MobileApp", tourApiConfig.getMobileApp())
                     .queryParam("_type", "json")
                     .queryParam("contentId", contentid)
+                    .queryParam("overviewYN", "Y")
+                    .queryParam("defaultYN", "Y")
                     .queryParam("numOfRows", 1)
                     .queryParam("pageNo", 1)
                     .build(true)
@@ -249,7 +251,7 @@ public class TourApiService {
 
             String response = restTemplate.getForObject(uri, String.class);
             
-         // ★★★ 디버그 로그 추가 ★★★
+            // ★★★ 디버그 로그 추가 ★★★
             log.info("상세정보 API 응답 (contentid: {}): {}", contentid, response);
 
             TourApiResponse<DestinationDetailDto> apiResponse = objectMapper.readValue(

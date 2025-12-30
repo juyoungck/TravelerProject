@@ -1,6 +1,7 @@
 /**
  * PlannerEditPage.tsx - 플래너 편집 페이지
  * 3단 레이아웃(왼쪽 편집 사이드바, 중앙 지도, 오른쪽 검색) + React DnD 드래그 앤 드롭 기능
+ * 백엔드 API 연동 완료 + 지역 선택 기능
  * 
  * 수정: 중앙 지도 영역에 카카오맵 컴포넌트 추가
  */
@@ -17,15 +18,27 @@ import {
   MapPin as MapPinIcon,
   ChevronLeft,
   ChevronRight,
-  Plus,
-  Sun,
+  ChevronUp,
+  ChevronDown,
   Globe,
   Lock,
+  Loader2,
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { PlannerDayList } from '../../components/planner/PlannerDayList';
 import { PlannerSearchResults } from '../../components/planner/PlannerSearchResults';
+import {
+  createPlanner,
+  updatePlanner,
+  deletePlanner,
+  createShareLink,
+  PlannerRequest,
+  DayPlanRequest,
+} from '../../api/plannerApi';
+import axios from 'axios';
+
+const API_BASE_URL = 'http://localhost:8080/api';
 import KakaoMap, { KakaoMapRef, PlannerPlace } from '../../components/map/KakaoMap';
 
 interface Place {
@@ -47,6 +60,17 @@ interface DayPlan {
   memo: string;
 }
 
+interface RegnCode {
+  lDongRegnCd: string;
+  regnName: string;
+}
+
+interface SignguCode {
+  lDongRegnCd: string;
+  lDongSignguCd: string;
+  signguName: string;
+}
+
 interface PlannerEditPageProps {
   onBack: () => void;
   initialData?: {
@@ -58,14 +82,32 @@ interface PlannerEditPageProps {
     endDate: string;
     isPublic: boolean;
     dayPlans: DayPlan[];
+    lDongRegnCd?: string;
+    lDongSignguCd?: string;
   } | null;
 }
 
+/** 시도 이름 간략화 */
+const shortenRegnName = (name: string): string => {
+  return name
+    .replace('특별시', '')
+    .replace('광역시', '')
+    .replace('특별자치시', '')
+    .replace('특별자치도', '')
+    .replace('충청남도', '충남')
+    .replace('충청북도', '충북')
+    .replace('경상북도', '경북')
+    .replace('경상남도', '경남')
+    .replace('전라남도', '전남')
+    .replace('경기도', '경기');
+};
+
 export function PlannerEditPage({ onBack, initialData }: PlannerEditPageProps) {
+  const [plannerId, setPlannerId] = useState<number | null>(initialData?.id || null);
   const mapRef = useRef<KakaoMapRef>(null);
   
   const [title, setTitle] = useState(initialData?.title || '나의 여행 플랜');
-  const [isPublic, setIsPublic] = useState(initialData?.isPublic ?? true);
+  const [isPublic, setIsPublic] = useState(initialData?.isPublic ?? false);
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(true);
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(true);
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -78,8 +120,105 @@ export function PlannerEditPage({ onBack, initialData }: PlannerEditPageProps) {
     initialData?.dayPlans || [{ id: 'day-1', day: 1, places: [], memo: '' }]
   );
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // 지역 관련 상태
+  const [regnCodes, setRegnCodes] = useState<RegnCode[]>([]);
+  const [signguCodes, setSignguCodes] = useState<SignguCode[]>([]);
+  const [selectedLDongRegnCd, setSelectedLDongRegnCd] = useState<string>('');
+  const [selectedLDongSignguCd, setSelectedLDongSignguCd] = useState<string>('');
+  const [isLoadingRegions, setIsLoadingRegions] = useState(false);
+  const [isRegionOpen, setIsRegionOpen] = useState(true);
+  
+  // 로딩 상태
+  const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
-  const regions = ['전체', '서울', '경기', '강원', '부산', '제주'];
+  const currentUserId = 1;
+
+  // 시도 목록 로드
+  useEffect(() => {
+    fetchRegnCodes();
+  }, []);
+
+  // 시도 선택 시 시군구 목록 로드
+  useEffect(() => {
+    if (selectedLDongRegnCd) {
+      fetchSignguCodes(selectedLDongRegnCd);
+    } else {
+      setSignguCodes([]);
+      setSelectedLDongSignguCd('');
+    }
+  }, [selectedLDongRegnCd]);
+
+  // 날짜 변경 시 DAY 자동 생성
+  useEffect(() => {
+    const days = getDaysDifference();
+    if (days > 0 && days !== dayPlans.length) {
+      const newDayPlans: DayPlan[] = [];
+      for (let i = 1; i <= days; i++) {
+        // 기존 DAY 데이터가 있으면 유지
+        const existingDay = dayPlans.find(d => d.day === i);
+        if (existingDay) {
+          newDayPlans.push(existingDay);
+        } else {
+          newDayPlans.push({
+            id: `day-${i}-${Date.now()}`,
+            day: i,
+            places: [],
+            memo: '',
+          });
+        }
+      }
+      setDayPlans(newDayPlans);
+    }
+  }, [startDate, endDate]);
+
+  const fetchRegnCodes = async () => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/ldong/regn`);
+      if (response.data.status === 'success') {
+        setRegnCodes(response.data.data || []);
+      }
+    } catch (error) {
+      console.error('시도 목록 로드 실패:', error);
+    }
+  };
+
+  const fetchSignguCodes = async (regnCd: string) => {
+    setIsLoadingRegions(true);
+    try {
+      const response = await axios.get(`${API_BASE_URL}/ldong/signgu/${regnCd}`);
+      if (response.data.status === 'success') {
+        setSignguCodes(response.data.data || []);
+      }
+    } catch (error) {
+      console.error('시군구 목록 로드 실패:', error);
+    } finally {
+      setIsLoadingRegions(false);
+    }
+  };
+
+  const handleRegnSelect = (regnCd: string, regnName: string) => {
+    if (selectedLDongRegnCd === regnCd) {
+      setSelectedLDongRegnCd('');
+      setSelectedLDongSignguCd('');
+      setSelectedRegion('전체');
+    } else {
+      setSelectedLDongRegnCd(regnCd);
+      setSelectedLDongSignguCd('');
+      setSelectedRegion(regnName);
+    }
+  };
+
+  const handleSignguSelect = (signguCd: string, signguName: string) => {
+    if (selectedLDongSignguCd === signguCd) {
+      setSelectedLDongSignguCd('');
+      setSelectedCity('');
+    } else {
+      setSelectedLDongSignguCd(signguCd);
+      setSelectedCity(signguName);
+    }
+  };
 
   /**
    * dayPlans를 KakaoMap용 PlannerPlace 배열로 변환
@@ -143,172 +282,293 @@ export function PlannerEditPage({ onBack, initialData }: PlannerEditPageProps) {
     }
   };
 
-  const handleSave = () => {
-    alert('플래너가 저장되었습니다.');
-    onBack();
+  const buildPlannerRequest = (): PlannerRequest => {
+    const dayPlanRequests: DayPlanRequest[] = dayPlans.map((dayPlan, index) => {
+      const tripDate = new Date(startDate);
+      tripDate.setDate(tripDate.getDate() + index);
+      const tripDateStr = tripDate.toISOString().split('T')[0];
+
+      return {
+        dayNumber: dayPlan.day,
+        tripDate: tripDateStr,
+        memo: dayPlan.memo || '',
+        places: dayPlan.places.map((place, placeIndex) => ({
+          contentid: place.contentid || place.id.split('-')[0],
+          sortOrder: placeIndex + 1,
+        })),
+      };
+    });
+
+    return {
+      mId: currentUserId,
+      plnTitle: title,
+      startDate: startDate,
+      endDate: endDate,
+      lDongRegnCd: selectedLDongRegnCd || null,
+      lDongSignguCd: selectedLDongSignguCd || null,
+      isPublic: isPublic ? 1 : 0,
+      dayPlans: dayPlanRequests,
+    };
   };
 
-  const handleDelete = () => {
-    if (confirm('정말로 삭제하시겠습니까? 삭제된 플래너는 복구할 수 없습니다.')) {
-      alert('플래너가 삭제되었습니다.');
+  const validatePlanner = (): string | null => {
+    if (!title.trim()) {
+      return '플래너 제목을 입력해주세요.';
+    }
+    if (title.trim().length > 100) {
+      return '플래너 제목은 100자 이내로 입력해주세요.';
+    }
+    if (!startDate || !endDate) {
+      return '여행 시작일과 종료일을 선택해주세요.';
+    }
+    if (new Date(startDate) > new Date(endDate)) {
+      return '종료일이 시작일보다 빠를 수 없습니다.';
+    }
+    const totalPlaces = dayPlans.reduce((sum, day) => sum + day.places.length, 0);
+    if (totalPlaces === 0) {
+      return '최소 1개 이상의 장소를 추가해주세요.\n오른쪽 검색 패널에서 장소를 드래그하여 일정에 추가할 수 있습니다.';
+    }
+    return null;
+  };
+
+  const handleSave = async () => {
+    const validationError = validatePlanner();
+    if (validationError) {
+      alert(validationError);
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const requestData = buildPlannerRequest();
+
+      if (plannerId) {
+        await updatePlanner(plannerId, requestData);
+        alert('플래너가 저장되었습니다.');
+      } else {
+        const result = await createPlanner(requestData);
+        setPlannerId(result.plnId);
+        alert('플래너가 생성되었습니다.');
+      }
       onBack();
+    } catch (error: any) {
+      console.error('플래너 저장 실패:', error);
+      alert(`저장 실패: ${error.response?.data?.message || error.message}`);
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  const handleShare = () => {
-    const shareLink = `https://example.com/planner/${Date.now()}`;
-    navigator.clipboard.writeText(shareLink);
-    alert(`공유 링크가 복사되었습니다!\n${shareLink}`);
-  };
-
-  const handleAddDay = () => {
-    const maxDay = dayPlans.length > 0 ? Math.max(...dayPlans.map(d => d.day)) : 0;
-    const nextDay = maxDay + 1;
+  const handleDelete = async () => {
+    if (!plannerId) return;
     
-    const newDay: DayPlan = {
-      id: `day-${nextDay}`,
-      day: nextDay,
-      places: [],
-      memo: '',
-    };
-    setDayPlans([...dayPlans, newDay]);
+    if (!window.confirm('정말 이 플래너를 삭제하시겠습니까?')) {
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      await deletePlanner(plannerId);
+      alert('플래너가 삭제되었습니다.');
+      onBack();
+    } catch (error: any) {
+      console.error('플래너 삭제 실패:', error);
+      alert(`삭제 실패: ${error.response?.data?.message || error.message}`);
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
-  const handleMovePlace = (placeId: string, fromDayId: string, toDayId: string, toIndex: number) => {
-    setDayPlans((prevPlans) => {
-      const newPlans = [...prevPlans];
+  const handleShare = async () => {
+    if (!plannerId) {
+      alert('먼저 플래너를 저장해주세요.');
+      return;
+    }
+
+    try {
+      const result = await createShareLink(plannerId);
+      const shareUrl = `${window.location.origin}/planner/share/${result.shareToken}`;
       
-      if (fromDayId === 'search') {
-        return prevPlans;
+      await navigator.clipboard.writeText(shareUrl);
+      alert(`공유 링크가 복사되었습니다!\n\n${shareUrl}`);
+    } catch (error: any) {
+      console.error('공유 링크 생성 실패:', error);
+      alert(`공유 실패: ${error.response?.data?.message || error.message}`);
+    }
+  };
+
+  const getDaysDifference = () => {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    const diffTime = Math.abs(end.getTime() - start.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+    return diffDays;
+  };
+
+  const handleMovePlace = (
+    sourceDayId: string,
+    sourceIndex: number,
+    targetDayId: string,
+    targetIndex: number
+  ) => {
+    if (sourceDayId === targetDayId && sourceIndex === targetIndex) return;
+
+    setDayPlans((prevDayPlans) => {
+      const newDayPlans = [...prevDayPlans];
+
+      const sourceDayIndex = newDayPlans.findIndex((d) => d.id === sourceDayId);
+      const targetDayIndex = newDayPlans.findIndex((d) => d.id === targetDayId);
+
+      if (sourceDayIndex === -1 || targetDayIndex === -1) return prevDayPlans;
+
+      const sourceDay = { ...newDayPlans[sourceDayIndex] };
+      const targetDay = { ...newDayPlans[targetDayIndex] };
+
+      sourceDay.places = [...sourceDay.places];
+      if (sourceDayId !== targetDayId) {
+        targetDay.places = [...targetDay.places];
       }
-      
-      const fromDay = newPlans.find((d) => d.id === fromDayId);
-      const toDay = newPlans.find((d) => d.id === toDayId);
-      
-      if (!fromDay || !toDay) return prevPlans;
 
-      const placeIndex = fromDay.places.findIndex((p) => p.id === placeId);
-      if (placeIndex === -1) return prevPlans;
+      const [movedPlace] = sourceDay.places.splice(sourceIndex, 1);
 
-      const [place] = fromDay.places.splice(placeIndex, 1);
-      
-      const insertIndex = Math.min(toIndex, toDay.places.length);
-      toDay.places.splice(insertIndex, 0, place);
+      if (sourceDayId === targetDayId) {
+        sourceDay.places.splice(targetIndex, 0, movedPlace);
+        newDayPlans[sourceDayIndex] = sourceDay;
+      } else {
+        targetDay.places.splice(targetIndex, 0, movedPlace);
+        newDayPlans[sourceDayIndex] = sourceDay;
+        newDayPlans[targetDayIndex] = targetDay;
+      }
 
-      return newPlans;
+      return newDayPlans;
     });
   };
 
-  const handleAddPlaceAtIndex = (place: Place, dayId: string, index: number) => {
-    setDayPlans((prevPlans) => {
-      const newPlans = [...prevPlans];
-      const day = newPlans.find((d) => d.id === dayId);
-      if (day) {
-        const newPlace = {
-          ...place,
-          id: `${place.id}-${Date.now()}`,
-        };
-        const insertIndex = Math.min(index, day.places.length);
-        day.places.splice(insertIndex, 0, newPlace);
+  const handleAddPlaceAtIndex = (place: Place, dayId: string, index?: number) => {
+    setDayPlans((prevDayPlans) => {
+      const newDayPlans = [...prevDayPlans];
+      const dayIndex = newDayPlans.findIndex((d) => d.id === dayId);
+      
+      if (dayIndex === -1) return prevDayPlans;
+
+      const day = { ...newDayPlans[dayIndex] };
+      day.places = [...day.places];
+      
+      const newPlace = {
+        ...place,
+        id: `${place.id}-${Date.now()}`,
+        contentid: place.contentid || place.id,
+      };
+
+      if (index !== undefined && index >= 0) {
+        day.places.splice(index, 0, newPlace);
+      } else {
+        day.places.push(newPlace);
       }
-      return newPlans;
+      
+      newDayPlans[dayIndex] = day;
+      return newDayPlans;
+    });
+  };
+
+  const handleRemovePlace = (dayId: string, placeIndex: number) => {
+    setDayPlans((prevDayPlans) => {
+      const newDayPlans = [...prevDayPlans];
+      const dayIndex = newDayPlans.findIndex((d) => d.id === dayId);
+      
+      if (dayIndex === -1) return prevDayPlans;
+
+      const day = { ...newDayPlans[dayIndex] };
+      day.places = [...day.places];
+      day.places.splice(placeIndex, 1);
+      
+      newDayPlans[dayIndex] = day;
+      return newDayPlans;
     });
   };
 
   const handleUpdateMemo = (dayId: string, memo: string) => {
-    setDayPlans((prevPlans) => {
-      const newPlans = [...prevPlans];
-      const day = newPlans.find((d) => d.id === dayId);
-      if (day) {
-        day.memo = memo;
-      }
-      return newPlans;
+    setDayPlans((prevDayPlans) => {
+      const newDayPlans = [...prevDayPlans];
+      const dayIndex = newDayPlans.findIndex((d) => d.id === dayId);
+      
+      if (dayIndex === -1) return prevDayPlans;
+
+      newDayPlans[dayIndex] = { ...newDayPlans[dayIndex], memo };
+      return newDayPlans;
     });
   };
 
   const handleDeleteDay = (dayId: string) => {
-    if (dayPlans.length === 1) {
-      alert('최소 1개의 일정이 필요합니다.');
+    if (dayPlans.length <= 1) {
+      alert('최소 1일 이상의 일정이 필요합니다.');
       return;
     }
-    if (confirm('이 일정을 삭제하시겠습니까?')) {
-      setDayPlans((prevPlans) => {
-        const deletedDay = prevPlans.find(d => d.id === dayId);
-        if (!deletedDay) return prevPlans;
-
-        const remainingPlans = prevPlans.filter((d) => d.id !== dayId);
-        
-        const reorderedPlans = remainingPlans.map(plan => {
-          if (plan.day > deletedDay.day) {
-            return {
-              ...plan,
-              day: plan.day - 1,
-              id: `day-${plan.day - 1}`
-            };
-          }
-          return plan;
-        });
-
-        return reorderedPlans;
-      });
-    }
-  };
-
-  const handleRemovePlace = (dayId: string, placeId: string) => {
-    setDayPlans((prevPlans) => {
-      const newPlans = [...prevPlans];
-      const day = newPlans.find((d) => d.id === dayId);
-      if (day) {
-        day.places = day.places.filter((p) => p.id !== placeId);
-      }
-      return newPlans;
+    
+    setDayPlans((prevDayPlans) => {
+      const filtered = prevDayPlans.filter((d) => d.id !== dayId);
+      return filtered.map((day, index) => ({
+        ...day,
+        day: index + 1,
+      }));
     });
-  };
-
-  /**
-   * 장소 클릭 시 지도 이동
-   */
-  const handlePlaceClickForMap = (place: Place) => {
-    if (place.mapx && place.mapy && mapRef.current) {
-      mapRef.current.setCenter(place.mapy, place.mapx, 5);
-    }
   };
 
   return (
     <DndProvider backend={HTML5Backend}>
-      <div className="min-h-screen flex flex-col bg-gray-50">
-        {/* 상단 헤더 */}
-        <div className="bg-white border-b px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="icon" onClick={onBack}>
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-            <h1 className="text-xl font-bold">플래너 편집</h1>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={handleShare}>
-              <Share2 className="h-4 w-4 mr-1" />
-              공유
-            </Button>
-            <Button variant="outline" size="sm" onClick={handleDelete} className="text-red-500 hover:text-red-600">
-              <Trash2 className="h-4 w-4 mr-1" />
-              삭제
-            </Button>
-            <Button size="sm" onClick={handleSave}>
-              <Save className="h-4 w-4 mr-1" />
-              저장
-            </Button>
-          </div>
-        </div>
+      <div className="h-screen flex flex-col bg-gray-100">
+        {/* 상단 헤더 - 뒤로가기와 제목만 */}
+        <header className="bg-white border-b px-4 py-2 flex items-center">
+          <Button variant="ghost" size="icon" onClick={onBack}>
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <h1 className="text-lg font-semibold ml-2">
+            {plannerId ? '플래너 수정' : '새 플래너 만들기'}
+          </h1>
+        </header>
 
         {/* 메인 콘텐츠 */}
         <div className="flex-1 flex overflow-hidden">
-          {/* 왼쪽 사이드바 - 플래너 편집 */}
+          {/* 왼쪽 사이드바 */}
           {isLeftSidebarOpen && (
             <div className="w-80 bg-white border-r overflow-y-auto">
               <div className="p-4">
-                {/* 제목 입력 & 공개/비공개 */}
-                <div className="mb-4">
+                {/* 삭제/공유/저장 버튼 - 플래너 제목 위 */}
+                <div className="flex justify-end gap-2 mb-3">
+                  {plannerId && (
+                    <>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={handleDelete}
+                        disabled={isDeleting}
+                        className="text-red-600 hover:bg-red-50"
+                      >
+                        {isDeleting ? (
+                          <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4 mr-1" />
+                        )}
+                        삭제
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={handleShare}>
+                        <Share2 className="h-4 w-4 mr-1" />
+                        공유
+                      </Button>
+                    </>
+                  )}
+                  <Button size="sm" onClick={handleSave} disabled={isSaving}>
+                    {isSaving ? (
+                      <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                    ) : (
+                      <Save className="h-4 w-4 mr-1" />
+                    )}
+                    저장
+                  </Button>
+                </div>
+
+                {/* 플래너 제목 */}
+                <div className="mb-3">
                   <div className="flex items-center gap-2">
                     <Input
                       type="text"
@@ -359,7 +619,6 @@ export function PlannerEditPage({ onBack, initialData }: PlannerEditPageProps) {
                     </Button>
                   </div>
 
-                  {/* 날짜 선택 팝업 */}
                   {showDatePicker && (
                     <div className="bg-gray-50 p-4 rounded-lg mt-2">
                       <div className="space-y-2">
@@ -389,64 +648,108 @@ export function PlannerEditPage({ onBack, initialData }: PlannerEditPageProps) {
                       </div>
                     </div>
                   )}
-
-                  {/* 지역 & 날씨 */}
-                  {selectedCity && (
-                    <div className="flex items-center justify-between bg-blue-50 p-2 rounded mt-2">
-                      <div className="flex items-center gap-1 text-sm">
-                        <MapPinIcon className="h-4 w-4 text-blue-600" />
-                        <span>{selectedRegion} {selectedCity}</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Sun className="h-4 w-4 text-yellow-500" />
-                        <span className="text-sm">15°C</span>
-                      </div>
-                    </div>
-                  )}
                 </div>
 
-                {/* 지역 선택 */}
+                {/* 지역 선택 (시도) */}
                 <div className="mb-4">
-                  <h4 className="mb-2 text-sm font-semibold">지역</h4>
-                  <div className="flex flex-wrap gap-2">
-                    {regions.map((region) => (
-                      <button
-                        key={region}
-                        onClick={() => {
-                          setSelectedRegion(region);
-                          setSelectedCity('');
-                        }}
-                        className={`px-3 py-1 text-sm rounded-full border transition-colors ${
-                          selectedRegion === region
-                            ? 'bg-blue-600 text-white border-blue-600'
-                            : 'bg-white text-gray-700 border-gray-300 hover:border-blue-600'
-                        }`}
-                      >
-                        {region}
-                      </button>
-                    ))}
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-sm font-semibold">지역 (시/도)</h4>
+                      {selectedLDongRegnCd && (
+                        <span className="text-sm text-blue-600">
+                          {selectedRegion} {selectedCity}
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => setIsRegionOpen(!isRegionOpen)}
+                      className="text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1"
+                    >
+                      {isRegionOpen ? (
+                        <>
+                          <ChevronUp className="h-4 w-4" />
+                          접기
+                        </>
+                      ) : (
+                        <>
+                          <ChevronDown className="h-4 w-4" />
+                          열기
+                        </>
+                      )}
+                    </button>
                   </div>
 
-                  {/* 시/구 선택 (서울 선택 시) */}
-                  {selectedRegion === '서울' && (
-                    <div className="mt-3">
-                      <h5 className="mb-2 text-xs text-gray-600">구</h5>
-                      <div className="flex flex-wrap gap-2">
-                        {['강남구', '송파구', '종로구', '용산구'].map((city) => (
+                  {isRegionOpen && (
+                    <>
+                      <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
+                        <button
+                          onClick={() => {
+                            setSelectedLDongRegnCd('');
+                            setSelectedLDongSignguCd('');
+                            setSelectedRegion('전체');
+                            setSelectedCity('');
+                          }}
+                          className={`px-3 py-1 text-sm rounded-full border transition-colors ${
+                            !selectedLDongRegnCd
+                              ? 'bg-blue-600 text-white border-blue-600'
+                              : 'bg-white text-gray-700 border-gray-300 hover:border-blue-600'
+                          }`}
+                        >
+                          전체
+                        </button>
+                        {regnCodes.map((regn) => (
                           <button
-                            key={city}
-                            onClick={() => setSelectedCity(city)}
-                            className={`px-2 py-1 text-xs rounded-full border transition-colors ${
-                              selectedCity === city
+                            key={regn.lDongRegnCd}
+                            onClick={() => handleRegnSelect(regn.lDongRegnCd, shortenRegnName(regn.regnName))}
+                            className={`px-3 py-1 text-sm rounded-full border transition-colors ${
+                              selectedLDongRegnCd === regn.lDongRegnCd
                                 ? 'bg-blue-600 text-white border-blue-600'
                                 : 'bg-white text-gray-700 border-gray-300 hover:border-blue-600'
                             }`}
                           >
-                            {city}
+                            {shortenRegnName(regn.regnName)}
                           </button>
                         ))}
                       </div>
-                    </div>
+
+                      {/* 시군구 선택 */}
+                      {selectedLDongRegnCd && (
+                        <div className="mt-3">
+                          <h5 className="mb-2 text-xs text-gray-600 flex items-center gap-1">
+                            시/군/구
+                            {isLoadingRegions && <Loader2 className="h-3 w-3 animate-spin" />}
+                          </h5>
+                          <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
+                            <button
+                              onClick={() => {
+                                setSelectedLDongSignguCd('');
+                                setSelectedCity('');
+                              }}
+                              className={`px-2 py-1 text-xs rounded-full border transition-colors ${
+                                !selectedLDongSignguCd
+                                  ? 'bg-blue-600 text-white border-blue-600'
+                                  : 'bg-white text-gray-700 border-gray-300 hover:border-blue-600'
+                              }`}
+                            >
+                              전체
+                            </button>
+                            {signguCodes.map((signgu) => (
+                              <button
+                                key={signgu.lDongSignguCd}
+                                onClick={() => handleSignguSelect(signgu.lDongSignguCd, signgu.signguName)}
+                                className={`px-2 py-1 text-xs rounded-full border transition-colors ${
+                                  selectedLDongSignguCd === signgu.lDongSignguCd
+                                    ? 'bg-blue-600 text-white border-blue-600'
+                                    : 'bg-white text-gray-700 border-gray-300 hover:border-blue-600'
+                                }`}
+                              >
+                                {signgu.signguName}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
 
@@ -539,6 +842,8 @@ export function PlannerEditPage({ onBack, initialData }: PlannerEditPageProps) {
                   searchQuery={searchQuery}
                   dayPlans={dayPlans}
                   onAddPlace={handleAddPlaceAtIndex}
+                  lDongRegnCd={selectedLDongRegnCd}
+                  lDongSignguCd={selectedLDongSignguCd}
                 />
               </div>
             </div>
