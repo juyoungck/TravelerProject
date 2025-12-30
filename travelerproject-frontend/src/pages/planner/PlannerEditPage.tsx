@@ -2,9 +2,11 @@
  * PlannerEditPage.tsx - 플래너 편집 페이지
  * 3단 레이아웃(왼쪽 편집 사이드바, 중앙 지도, 오른쪽 검색) + React DnD 드래그 앤 드롭 기능
  * 백엔드 API 연동 완료 + 지역 선택 기능
+ * 
+ * 수정: 중앙 지도 영역에 카카오맵 컴포넌트 추가
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import {
@@ -37,6 +39,7 @@ import {
 import axios from 'axios';
 
 const API_BASE_URL = 'http://localhost:8080/api';
+import KakaoMap, { KakaoMapRef, PlannerPlace } from '../../components/map/KakaoMap';
 
 interface Place {
   id: string;
@@ -44,6 +47,9 @@ interface Place {
   category: string;
   region: string;
   image: string;
+  // 지도 표시용 좌표 (옵션)
+  mapx?: number;
+  mapy?: number;
   contentid?: string;
 }
 
@@ -98,6 +104,7 @@ const shortenRegnName = (name: string): string => {
 
 export function PlannerEditPage({ onBack, initialData }: PlannerEditPageProps) {
   const [plannerId, setPlannerId] = useState<number | null>(initialData?.id || null);
+  const mapRef = useRef<KakaoMapRef>(null);
   
   const [title, setTitle] = useState(initialData?.title || '나의 여행 플랜');
   const [isPublic, setIsPublic] = useState(initialData?.isPublic ?? false);
@@ -211,6 +218,51 @@ export function PlannerEditPage({ onBack, initialData }: PlannerEditPageProps) {
       setSelectedLDongSignguCd(signguCd);
       setSelectedCity(signguName);
     }
+  };
+
+  /**
+   * dayPlans를 KakaoMap용 PlannerPlace 배열로 변환
+   */
+  const plannerPlacesForMap = useMemo((): PlannerPlace[] => {
+    const places: PlannerPlace[] = [];
+    
+    dayPlans.forEach((dayPlan) => {
+      dayPlan.places.forEach((place, index) => {
+        // 좌표가 있는 장소만 지도에 표시
+        if (place.mapx && place.mapy) {
+          places.push({
+            contentid: place.contentid || place.id,
+            title: place.name,
+            mapx: place.mapx,
+            mapy: place.mapy,
+            dayNumber: dayPlan.day,
+            orderNumber: index + 1,
+          });
+        }
+      });
+    });
+    
+    return places;
+  }, [dayPlans]);
+
+  /**
+   * 지도 중심 좌표 계산 (첫 번째 장소 또는 기본값)
+   */
+  const mapCenter = useMemo(() => {
+    if (plannerPlacesForMap.length > 0) {
+      return {
+        lat: plannerPlacesForMap[0].mapy,
+        lng: plannerPlacesForMap[0].mapx,
+      };
+    }
+    // 기본값: 서울
+    return { lat: 37.5665, lng: 126.9780 };
+  }, [plannerPlacesForMap]);
+
+  const getDaysDifference = () => {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    return Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
   };
 
   const toggleCategory = (category: string) => {
@@ -519,9 +571,10 @@ export function PlannerEditPage({ onBack, initialData }: PlannerEditPageProps) {
                 <div className="mb-3">
                   <div className="flex items-center gap-2">
                     <Input
+                      type="text"
                       value={title}
                       onChange={(e) => setTitle(e.target.value)}
-                      className="flex-1"
+                      className="font-semibold"
                       placeholder="플래너 제목"
                     />
                     <div className="flex gap-1">
@@ -702,6 +755,13 @@ export function PlannerEditPage({ onBack, initialData }: PlannerEditPageProps) {
 
                 {/* DAY 리스트 */}
                 <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-sm font-semibold">일정</h4>
+                    <Button variant="outline" size="sm" onClick={handleAddDay}>
+                      <Plus className="h-4 w-4 mr-1" />
+                      일차 추가
+                    </Button>
+                  </div>
                   <PlannerDayList
                     dayPlans={dayPlans}
                     onMovePlace={handleMovePlace}
@@ -723,20 +783,16 @@ export function PlannerEditPage({ onBack, initialData }: PlannerEditPageProps) {
             {isLeftSidebarOpen ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
           </button>
 
-          {/* 중앙 지도 */}
+          {/* ★ 중앙 지도 - 카카오맵 (항상 표시) */}
           <div className="flex-1 relative">
-            <div className="absolute inset-0 bg-gray-100 flex items-center justify-center">
-              <div className="text-center">
-                <MapPinIcon className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-                <h3 className="mb-2">지도 영역</h3>
-                <p className="text-gray-600">
-                  실제 서비스에서는 지도 API가 표시됩니다.
-                </p>
-                <p className="text-sm text-gray-500 mt-2">
-                  일정의 장소들이 선으로 연결되어 표시됩니다.
-                </p>
-              </div>
-            </div>
+            <KakaoMap
+              ref={mapRef}
+              centerLat={mapCenter.lat}
+              centerLng={mapCenter.lng}
+              level={7}
+              plannerPlaces={plannerPlacesForMap}
+              height="100%"
+            />
           </div>
 
           {/* 토글 버튼 (오른쪽) */}
@@ -751,7 +807,7 @@ export function PlannerEditPage({ onBack, initialData }: PlannerEditPageProps) {
           {isRightSidebarOpen && (
             <div className="w-80 bg-white border-l overflow-y-auto">
               <div className="p-4">
-                <h3 className="mb-4">플래너 검색</h3>
+                <h3 className="font-semibold mb-4">플래너 검색</h3>
                 <Input
                   type="search"
                   placeholder="장소를 검색하세요..."
