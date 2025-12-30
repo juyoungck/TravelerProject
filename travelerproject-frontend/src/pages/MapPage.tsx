@@ -5,8 +5,6 @@
  * 수정: 상세정보 보기 클릭 시 새 탭으로 열기
  */
 
-import { useState } from 'react';
-import { MapPin } from 'lucide-react';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   MapPin, Navigation, RefreshCw, Loader2, ChevronRight, ChevronLeft, 

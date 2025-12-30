@@ -2,11 +2,10 @@
  * PlannerPreviewPage.tsx - 플래너 미리보기 페이지
  * 플래너 내용을 읽기 전용으로 보여주고 찜 기능 제공
  * 백엔드 API 연동 완료
- */
-
- * 
+ *
  * 수정: 중앙 지도 영역에 카카오맵 컴포넌트 추가
  */
+
 import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   ArrowLeft,
@@ -26,7 +25,6 @@ interface Place {
   category: string;
   region: string;
   image: string;
-  // 지도 표시용 좌표
   mapx?: number;
   mapy?: number;
   contentid?: string;
@@ -68,10 +66,8 @@ interface PlannerPreviewPageProps {
   onToggleFavoritePlanner?: (planner: any) => void;
 }
 
-// 기본 이미지
 const DEFAULT_IMAGE = 'https://images.unsplash.com/photo-1583417319070-4a69db38a482?w=400';
 
-// 콘텐츠 타입 ID -> 카테고리명 변환
 const contentTypeToCategory: { [key: string]: string } = {
   '12': '관광지',
   '14': '문화시설',
@@ -83,9 +79,6 @@ const contentTypeToCategory: { [key: string]: string } = {
   '39': '음식점',
 };
 
-/**
- * API 응답의 DayPlanDetail을 프론트엔드 DayPlan 형식으로 변환
- */
 const convertToDayPlan = (dayPlanDetail: DayPlanDetail): DayPlan => ({
   id: `day-${dayPlanDetail.dayNumber}`,
   day: dayPlanDetail.dayNumber,
@@ -97,6 +90,8 @@ const convertToDayPlan = (dayPlanDetail: DayPlanDetail): DayPlan => ({
     region: place.addr1?.split(' ')[0] || '',
     image: place.firstimage || DEFAULT_IMAGE,
     contentid: place.contentid,
+    mapx: place.mapx,
+    mapy: place.mapy,
   })),
 });
 
@@ -113,12 +108,12 @@ export function PlannerPreviewPage({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
-  // API에서 가져온 상세 데이터
   const [plannerDetail, setPlannerDetail] = useState<PlannerDetail | null>(null);
   const [dayPlans, setDayPlans] = useState<DayPlan[]>([]);
 
-  // favoritePlanners 배열에서 현재 플래너가 찜되어 있는지 확인
-  const likes = (plannerDetail?.favoriteCount || planner.likes) + (isLiked ? 0 : 0);
+  // ★ isLiked 계산
+  const isLiked = favoritePlanners?.some((fav) => fav.id === planner.id) || false;
+  const likes = (plannerDetail?.favoriteCount || planner.likes);
 
   /**
    * dayPlans를 KakaoMap용 PlannerPlace 배열로 변환
@@ -126,7 +121,7 @@ export function PlannerPreviewPage({
   const plannerPlacesForMap = useMemo((): PlannerPlace[] => {
     const places: PlannerPlace[] = [];
     
-    mockDayPlans.forEach((dayPlan) => {
+    dayPlans.forEach((dayPlan) => {  // ★ mockDayPlans → dayPlans
       dayPlan.places.forEach((place, index) => {
         if (place.mapx && place.mapy) {
           places.push({
@@ -142,7 +137,7 @@ export function PlannerPreviewPage({
     });
     
     return places;
-  }, [mockDayPlans]);
+  }, [dayPlans]);  // ★ mockDayPlans → dayPlans
 
   /**
    * 지도 중심 좌표 계산
@@ -157,9 +152,7 @@ export function PlannerPreviewPage({
     return { lat: 37.5665, lng: 126.9780 };
   }, [plannerPlacesForMap]);
 
-  const isPublic = true;
-  const startDate = '2025-12-25';
-  const endDate = '2025-12-27';
+  // ★ 중복 선언 제거됨 (startDate, endDate, isPublic)
 
   /**
    * 플래너 상세 데이터 조회
@@ -171,12 +164,10 @@ export function PlannerPreviewPage({
       const detail = await getPlannerDetail(planner.id);
       setPlannerDetail(detail);
       
-      // 일차별 계획 변환
       if (detail.dayPlans && detail.dayPlans.length > 0) {
         const converted = detail.dayPlans.map(convertToDayPlan);
         setDayPlans(converted);
       } else {
-        // 일차 정보가 없으면 빈 일차 생성
         const emptyDays: DayPlan[] = Array.from({ length: detail.totalDays }, (_, i) => ({
           id: `day-${i + 1}`,
           day: i + 1,
@@ -193,7 +184,6 @@ export function PlannerPreviewPage({
     }
   };
 
-  // 컴포넌트 마운트 시 데이터 조회
   useEffect(() => {
     fetchPlannerDetail();
   }, [planner.id]);
@@ -229,6 +219,15 @@ export function PlannerPreviewPage({
     }
   };
 
+  /**
+   * 장소 클릭 시 지도 이동
+   */
+  const handlePlaceClick = (place: Place) => {
+    if (place.mapx && place.mapy && mapRef.current) {
+      mapRef.current.setCenter(place.mapy, place.mapx, 5);
+    }
+  };
+
   // 로딩 중 화면
   if (loading) {
     return (
@@ -260,16 +259,6 @@ export function PlannerPreviewPage({
   const startDate = plannerDetail?.startDate || '';
   const endDate = plannerDetail?.endDate || '';
   const totalDays = plannerDetail?.totalDays || planner.days;
-  const isPublic = plannerDetail?.isPublic === 1;
-
-  /**
-   * 장소 클릭 시 지도 이동
-   */
-  const handlePlaceClick = (place: Place) => {
-    if (place.mapx && place.mapy && mapRef.current) {
-      mapRef.current.setCenter(place.mapy, place.mapx, 5);
-    }
-  };
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
@@ -278,11 +267,10 @@ export function PlannerPreviewPage({
         <Button variant="ghost" size="icon" onClick={onBack}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
-
-        <h1 className="text-xl font-bold">{planner.title}</h1>
+        <h1 className="text-xl font-bold">{title}</h1>
         <div className="w-10" />
-        
       </div>
+
       {/* 메인 콘텐츠 */}
       <div className="flex-1 flex overflow-hidden">
         {/* 왼쪽 사이드바 - 플래너 미리보기 */}
@@ -329,8 +317,6 @@ export function PlannerPreviewPage({
                     {startDate} ~ {endDate} ({totalDays}일)
                   </div>
                 </div>
-
-               
               </div>
 
               {/* DAY 리스트 (읽기 전용) */}
@@ -356,7 +342,6 @@ export function PlannerPreviewPage({
 
                       {/* Day 내용 */}
                       <div className="p-3">
-                        {/* 장소 목록 */}
                         <div className="space-y-2">
                           {dayPlan.places.length > 0 ? (
                             dayPlan.places.map((place, index) => (

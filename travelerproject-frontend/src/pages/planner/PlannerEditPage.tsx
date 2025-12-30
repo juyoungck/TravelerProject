@@ -23,6 +23,7 @@ import {
   Globe,
   Lock,
   Loader2,
+  Plus,
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -258,12 +259,6 @@ export function PlannerEditPage({ onBack, initialData }: PlannerEditPageProps) {
     // 기본값: 서울
     return { lat: 37.5665, lng: 126.9780 };
   }, [plannerPlacesForMap]);
-
-  const getDaysDifference = () => {
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    return Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-  };
 
   const toggleCategory = (category: string) => {
     if (category === '전체') {
@@ -504,6 +499,7 @@ export function PlannerEditPage({ onBack, initialData }: PlannerEditPageProps) {
       alert('최소 1일 이상의 일정이 필요합니다.');
       return;
     }
+
     
     setDayPlans((prevDayPlans) => {
       const filtered = prevDayPlans.filter((d) => d.id !== dayId);
@@ -512,6 +508,19 @@ export function PlannerEditPage({ onBack, initialData }: PlannerEditPageProps) {
         day: index + 1,
       }));
     });
+  };
+
+  const handleAddDay = () => {
+    const maxDay = dayPlans.length > 0 ? Math.max(...dayPlans.map(d => d.day)) : 0;
+    const nextDay = maxDay + 1;
+    
+    const newDay: DayPlan = {
+      id: `day-${nextDay}-${Date.now()}`,
+      day: nextDay,
+      places: [],
+      memo: '',
+    };
+    setDayPlans([...dayPlans, newDay]);
   };
 
   return (
