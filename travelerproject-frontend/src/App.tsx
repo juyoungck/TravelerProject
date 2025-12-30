@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Header } from "./components/layout/Header";
 import { Footer } from "./components/layout/Footer";
 import { FeaturedCarousel } from "./components/home/FeaturedCarousel";
@@ -19,11 +19,45 @@ export default function App() {
   const [currentPage, setCurrentPage] = useState("home");
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [selectedDestinationId, setSelectedDestinationId] = useState<number | null>(null);
+  const [selectedDestinationId, setSelectedDestinationId] = useState<string | null>(null);
   const [selectedPlanner, setSelectedPlanner] = useState<any>(null);
   const [favoriteDestinations, setFavoriteDestinations] = useState<any[]>([]);
   const [favoritePlanners, setFavoritePlanners] = useState<any[]>([]);
   const [reviews, setReviews] = useState<any[]>([]);
+
+  /**
+   * ★ URL 파라미터 파싱 - 새 탭에서 열릴 때 처리
+   * 예: http://localhost:5173/?page=travel-detail&contentid=126508
+   */
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const page = urlParams.get('page');
+    const contentid = urlParams.get('contentid');
+
+    console.log('URL 파라미터:', { page, contentid }); // 디버깅용
+
+    // 여행지 상세 페이지로 이동
+    if (page === 'travel-detail' && contentid) {
+      setSelectedDestinationId(contentid);
+      setCurrentPage('travel');
+    }
+    // 다른 페이지들
+    else if (page === 'travel') {
+      setCurrentPage('travel');
+    }
+    else if (page === 'planner') {
+      setCurrentPage('planner');
+    }
+    else if (page === 'map') {
+      setCurrentPage('map');
+    }
+    else if (page === 'event') {
+      setCurrentPage('event');
+    }
+    else if (page === 'board') {
+      setCurrentPage('board');
+    }
+  }, []);
 
   const handleNavigate = (page: string) => {
     setCurrentPage(page);
@@ -117,7 +151,16 @@ export default function App() {
     }
 
     if (currentPage === "map") {
-      return <MapPage />;
+      return (
+        <MapPage 
+          onNavigate={(page, params) => {
+            if (page === 'travel-detail' && params?.contentid) {
+              setSelectedDestinationId(params.contentid);
+              setCurrentPage('travel');
+            }
+          }}
+        />
+      );
     }
 
     if (currentPage === "board") {
@@ -172,7 +215,7 @@ export default function App() {
     return (
       <>
         <FeaturedCarousel
-          onSelectDestination={(id: number) => {
+          onSelectDestination={(id: string) => {
             setSelectedDestinationId(id);
             setCurrentPage("travel");
           }}
@@ -204,7 +247,7 @@ export default function App() {
         <SearchModal
           isOpen={isSearchModalOpen}
           onClose={() => setIsSearchModalOpen(false)}
-          onSelectDestination={(id: number) => {
+          onSelectDestination={(id: string) => {
             setSelectedDestinationId(id);
             setCurrentPage("travel");
             setIsSearchModalOpen(false);
