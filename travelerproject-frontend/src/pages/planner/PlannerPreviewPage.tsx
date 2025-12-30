@@ -1,9 +1,11 @@
 /**
  * PlannerPreviewPage.tsx - 플래너 미리보기 페이지
  * 플래너 내용을 읽기 전용으로 보여주고 찜 기능 제공
+ * 
+ * 수정: 중앙 지도 영역에 카카오맵 컴포넌트 추가
  */
 
-import { useState } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import {
   ArrowLeft,
   MapPin as MapPinIcon,
@@ -16,6 +18,7 @@ import {
   Lock,
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
+import KakaoMap, { KakaoMapRef, PlannerPlace } from '../../components/map/KakaoMap';
 
 interface Place {
   id: string;
@@ -23,6 +26,10 @@ interface Place {
   category: string;
   region: string;
   image: string;
+  // 지도 표시용 좌표
+  mapx?: number;
+  mapy?: number;
+  contentid?: string;
 }
 
 interface DayPlan {
@@ -58,7 +65,7 @@ interface PlannerPreviewPageProps {
   onToggleFavoritePlanner?: (planner: any) => void;
 }
 
-// Mock 장소 데이터
+// Mock 장소 데이터 (좌표 포함)
 const mockPlaces: Place[] = [
   {
     id: '1',
@@ -66,6 +73,9 @@ const mockPlaces: Place[] = [
     category: '관광',
     region: '서울',
     image: 'https://images.unsplash.com/photo-1583417319070-4a69db38a482?w=400',
+    mapx: 126.9770,
+    mapy: 37.5796,
+    contentid: '126508',
   },
   {
     id: '2',
@@ -73,6 +83,9 @@ const mockPlaces: Place[] = [
     category: '문화',
     region: '서울',
     image: 'https://images.unsplash.com/photo-1583417319070-4a69db38a482?w=400',
+    mapx: 126.9850,
+    mapy: 37.5826,
+    contentid: '126509',
   },
   {
     id: '3',
@@ -80,6 +93,9 @@ const mockPlaces: Place[] = [
     category: '쇼핑',
     region: '서울',
     image: 'https://images.unsplash.com/photo-1583417319070-4a69db38a482?w=400',
+    mapx: 126.9856,
+    mapy: 37.5636,
+    contentid: '126510',
   },
   {
     id: '4',
@@ -87,6 +103,9 @@ const mockPlaces: Place[] = [
     category: '관광',
     region: '서울',
     image: 'https://images.unsplash.com/photo-1583417319070-4a69db38a482?w=400',
+    mapx: 126.9882,
+    mapy: 37.5512,
+    contentid: '126511',
   },
   {
     id: '5',
@@ -94,6 +113,9 @@ const mockPlaces: Place[] = [
     category: '레저',
     region: '부산',
     image: 'https://images.unsplash.com/photo-1590735213920-68192a487bc2?w=400',
+    mapx: 129.1185,
+    mapy: 35.1532,
+    contentid: '126512',
   },
   {
     id: '6',
@@ -101,6 +123,9 @@ const mockPlaces: Place[] = [
     category: '레저',
     region: '부산',
     image: 'https://images.unsplash.com/photo-1590735213920-68192a487bc2?w=400',
+    mapx: 129.1604,
+    mapy: 35.1587,
+    contentid: '126513',
   },
   {
     id: '7',
@@ -108,6 +133,9 @@ const mockPlaces: Place[] = [
     category: '문화',
     region: '부산',
     image: 'https://images.unsplash.com/photo-1590735213920-68192a487bc2?w=400',
+    mapx: 129.0105,
+    mapy: 35.0973,
+    contentid: '126514',
   },
   {
     id: '8',
@@ -115,15 +143,26 @@ const mockPlaces: Place[] = [
     category: '관광',
     region: '제주',
     image: 'https://images.unsplash.com/photo-1559827260-dc66d52bef19?w=400',
+    mapx: 126.9424,
+    mapy: 33.4588,
+    contentid: '126515',
   },
 ];
 
-export function PlannerPreviewPage({ planner, onBack, onEdit, isLoggedIn, favoritePlanners, onToggleFavoritePlanner }: PlannerPreviewPageProps) {
+export function PlannerPreviewPage({ 
+  planner, 
+  onBack, 
+  onEdit, 
+  isLoggedIn, 
+  favoritePlanners, 
+  onToggleFavoritePlanner 
+}: PlannerPreviewPageProps) {
+  const mapRef = useRef<KakaoMapRef>(null);
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(true);
 
   // favoritePlanners 배열에서 현재 플래너가 찜되어 있는지 확인
   const isLiked = favoritePlanners?.some((fav) => fav.id === planner.id) || false;
-  const likes = planner.likes + (isLiked ? 1 : 0); // 찜 상태면 +1
+  const likes = planner.likes + (isLiked ? 1 : 0);
 
   // Mock 일정 데이터 생성 (planner.days 만큼 생성)
   const mockDayPlans: DayPlan[] = Array.from({ length: planner.days }, (_, i) => ({
@@ -133,7 +172,44 @@ export function PlannerPreviewPage({ planner, onBack, onEdit, isLoggedIn, favori
     memo: i === 0 ? '첫날은 여유롭게 시작하기' : i === planner.days - 1 ? '마지막 날 기념품 구매' : '',
   }));
 
-  const isPublic = true; // Mock 데이터로 공개 플래너로 설정
+  /**
+   * dayPlans를 KakaoMap용 PlannerPlace 배열로 변환
+   */
+  const plannerPlacesForMap = useMemo((): PlannerPlace[] => {
+    const places: PlannerPlace[] = [];
+    
+    mockDayPlans.forEach((dayPlan) => {
+      dayPlan.places.forEach((place, index) => {
+        if (place.mapx && place.mapy) {
+          places.push({
+            contentid: place.contentid || place.id,
+            title: place.name,
+            mapx: place.mapx,
+            mapy: place.mapy,
+            dayNumber: dayPlan.day,
+            orderNumber: index + 1,
+          });
+        }
+      });
+    });
+    
+    return places;
+  }, [mockDayPlans]);
+
+  /**
+   * 지도 중심 좌표 계산
+   */
+  const mapCenter = useMemo(() => {
+    if (plannerPlacesForMap.length > 0) {
+      return {
+        lat: plannerPlacesForMap[0].mapy,
+        lng: plannerPlacesForMap[0].mapx,
+      };
+    }
+    return { lat: 37.5665, lng: 126.9780 };
+  }, [plannerPlacesForMap]);
+
+  const isPublic = true;
   const startDate = '2025-12-25';
   const endDate = '2025-12-27';
 
@@ -176,9 +252,12 @@ export function PlannerPreviewPage({ planner, onBack, onEdit, isLoggedIn, favori
     }
   };
 
-  const handleToggleFavorite = () => {
-    if (onToggleFavoritePlanner && isLoggedIn) {
-      onToggleFavoritePlanner(planner);
+  /**
+   * 장소 클릭 시 지도 이동
+   */
+  const handlePlaceClick = (place: Place) => {
+    if (place.mapx && place.mapy && mapRef.current) {
+      mapRef.current.setCenter(place.mapy, place.mapx, 5);
     }
   };
 
@@ -190,10 +269,10 @@ export function PlannerPreviewPage({ planner, onBack, onEdit, isLoggedIn, favori
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <h1 className="text-xl font-bold">{planner.title}</h1>
-        <div className="w-10" /> {/* 균형 맞추기 */}
+        <div className="w-10" />
       </div>
 
-      {/* 메인 컨텐츠 */}
+      {/* 메인 콘텐츠 */}
       <div className="flex-1 flex overflow-hidden">
         {/* 왼쪽 사이드바 - 플래너 미리보기 */}
         {isLeftSidebarOpen && (
@@ -201,7 +280,7 @@ export function PlannerPreviewPage({ planner, onBack, onEdit, isLoggedIn, favori
             <div className="p-4">
               {/* 플래너 미리보기 제목 & 편집하기, 좋아요 버튼 */}
               <div className="flex items-center gap-2 mb-4">
-                <h3 className="whitespace-nowrap text-sm">플래너 미리보기</h3>
+                <h3 className="whitespace-nowrap text-sm font-semibold">플래너 미리보기</h3>
                 <div className="flex gap-1 flex-1">
                   <Button
                     variant="outline"
@@ -280,9 +359,10 @@ export function PlannerPreviewPage({ planner, onBack, onEdit, isLoggedIn, favori
                         <div className="space-y-2">
                           {dayPlan.places.length > 0 ? (
                             dayPlan.places.map((place, index) => (
-                              <div
+                              <button
                                 key={place.id}
-                                className="flex items-center gap-2 p-2 bg-gray-50 rounded border"
+                                onClick={() => handlePlaceClick(place)}
+                                className="w-full flex items-center gap-2 p-2 bg-gray-50 rounded border hover:bg-blue-50 hover:border-blue-300 transition-colors text-left"
                               >
                                 <div className="flex-shrink-0 w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs font-bold">
                                   {index + 1}
@@ -304,7 +384,7 @@ export function PlannerPreviewPage({ planner, onBack, onEdit, isLoggedIn, favori
                                     <span>{place.region}</span>
                                   </div>
                                 </div>
-                              </div>
+                              </button>
                             ))
                           ) : (
                             <p className="text-center text-gray-500 text-sm py-4">
@@ -333,20 +413,16 @@ export function PlannerPreviewPage({ planner, onBack, onEdit, isLoggedIn, favori
           )}
         </button>
 
-        {/* 중앙 지도 */}
+        {/* ★ 중앙 지도 - 카카오맵 (항상 표시) */}
         <div className="flex-1 relative">
-          <div className="absolute inset-0 bg-gray-100 flex items-center justify-center">
-            <div className="text-center">
-              <MapPinIcon className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-              <h3 className="mb-2">지도 영역</h3>
-              <p className="text-gray-600">
-                실제 서비스에서는 지도 API가 표시됩니다.
-              </p>
-              <p className="text-sm text-gray-500 mt-2">
-                일정의 장소들이 선으로 연결되어 표시됩니다.
-              </p>
-            </div>
-          </div>
+          <KakaoMap
+            ref={mapRef}
+            centerLat={mapCenter.lat}
+            centerLng={mapCenter.lng}
+            level={7}
+            plannerPlaces={plannerPlacesForMap}
+            height="100%"
+          />
         </div>
       </div>
     </div>
