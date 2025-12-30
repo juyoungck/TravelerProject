@@ -4,7 +4,7 @@
  */
 
 import { useState } from 'react';
-import { MapPin, Sun, Cloud, CloudRain, Wind } from 'lucide-react';
+import { MapPin } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 
@@ -58,24 +58,10 @@ export function MapPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [currentLocation] = useState({
     name: '서울시청',
-    temperature: 15,
-    weather: 'sunny',
     lat: 37.5665,
     lng: 126.9780,
   });
 
-  const getWeatherIcon = (weather: string) => {
-    switch (weather) {
-      case 'sunny':
-        return <Sun className="h-6 w-6 text-yellow-500" />;
-      case 'cloudy':
-        return <Cloud className="h-6 w-6 text-gray-400" />;
-      case 'rainy':
-        return <CloudRain className="h-6 w-6 text-blue-400" />;
-      default:
-        return <Wind className="h-6 w-6 text-gray-400" />;
-    }
-  };
 
   const handleResearch = () => {
     alert('현재 위치에서 재검색합니다.');
@@ -95,10 +81,7 @@ export function MapPage() {
                 <h3 className="text-lg">{currentLocation.name}</h3>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              {getWeatherIcon(currentLocation.weather)}
-              <span className="text-xl">{currentLocation.temperature}°C</span>
-            </div>
+            
           </div>
         </div>
 

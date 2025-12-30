@@ -1,7 +1,6 @@
 /**
- * PlannerPreviewPage.tsx - 플래너 미리보기 페이지
- * 플래너 내용을 읽기 전용으로 보여주고 찜 기능 제공
- * 백엔드 API 연동 완료
+ * SharedPlannerPage.tsx - 공유 링크로 접근하는 플래너 페이지
+ * URL에서 shareLink를 읽어서 해당 플래너를 표시
  */
 
 import { useState, useEffect } from 'react';
@@ -11,10 +10,12 @@ import {
   ChevronLeft,
   ChevronRight,
   Heart,
-  Edit,
+  Sun,
+  Share2,
+  Copy,
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
-import { getPlannerDetail, PlannerDetail, DayPlanDetail } from '../../api/plannerApi';
+import { getPlannerByShareLink, PlannerDetail, DayPlanDetail } from '../../api/plannerApi';
 
 interface Place {
   id: string;
@@ -22,7 +23,6 @@ interface Place {
   category: string;
   region: string;
   image: string;
-  contentid?: string;
 }
 
 interface DayPlan {
@@ -32,33 +32,9 @@ interface DayPlan {
   memo: string;
 }
 
-interface PlannerPreviewPageProps {
-  planner: {
-    id: number;
-    title: string;
-    author: string;
-    region: string;
-    days: number;
-    image: string;
-    likes: number;
-    isOwn?: boolean;
-  };
+interface SharedPlannerPageProps {
+  shareLink: string;
   onBack: () => void;
-  onEdit?: (plannerData: {
-    id: number;
-    title: string;
-    author: string;
-    region: string;
-    startDate: string;
-    endDate: string;
-    isPublic: boolean;
-    dayPlans: DayPlan[];
-    lDongRegnCd?: string;
-    lDongSignguCd?: string;
-  }) => void;
-  isLoggedIn?: boolean;
-  favoritePlanners?: any[];
-  onToggleFavoritePlanner?: (planner: any) => void;
 }
 
 // 기본 이미지
@@ -89,18 +65,10 @@ const convertToDayPlan = (dayPlanDetail: DayPlanDetail): DayPlan => ({
     category: contentTypeToCategory[place.contenttypeid] || '기타',
     region: place.addr1?.split(' ')[0] || '',
     image: place.firstimage || DEFAULT_IMAGE,
-    contentid: place.contentid,
   })),
 });
 
-export function PlannerPreviewPage({ 
-  planner, 
-  onBack, 
-  onEdit, 
-  isLoggedIn, 
-  favoritePlanners, 
-  onToggleFavoritePlanner 
-}: PlannerPreviewPageProps) {
+export function SharedPlannerPage({ shareLink, onBack }: SharedPlannerPageProps) {
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -109,18 +77,14 @@ export function PlannerPreviewPage({
   const [plannerDetail, setPlannerDetail] = useState<PlannerDetail | null>(null);
   const [dayPlans, setDayPlans] = useState<DayPlan[]>([]);
 
-  // favoritePlanners 배열에서 현재 플래너가 찜되어 있는지 확인
-  const isLiked = favoritePlanners?.some((fav) => fav.id === planner.id) || false;
-  const likes = (plannerDetail?.favoriteCount || planner.likes) + (isLiked ? 0 : 0);
-
   /**
-   * 플래너 상세 데이터 조회
+   * 공유 링크로 플래너 조회
    */
-  const fetchPlannerDetail = async () => {
+  const fetchSharedPlanner = async () => {
     setLoading(true);
     setError(null);
     try {
-      const detail = await getPlannerDetail(planner.id);
+      const detail = await getPlannerByShareLink(shareLink);
       setPlannerDetail(detail);
       
       // 일차별 계획 변환
@@ -138,8 +102,12 @@ export function PlannerPreviewPage({
         setDayPlans(emptyDays);
       }
     } catch (err: any) {
-      console.error('플래너 상세 조회 실패:', err);
-      setError('플래너 정보를 불러오는데 실패했습니다.');
+      console.error('공유 플래너 조회 실패:', err);
+      if (err.response?.status === 404) {
+        setError('존재하지 않거나 만료된 공유 링크입니다.');
+      } else {
+        setError('플래너 정보를 불러오는데 실패했습니다.');
+      }
     } finally {
       setLoading(false);
     }
@@ -147,37 +115,30 @@ export function PlannerPreviewPage({
 
   // 컴포넌트 마운트 시 데이터 조회
   useEffect(() => {
-    fetchPlannerDetail();
-  }, [planner.id]);
+    if (shareLink) {
+      fetchSharedPlanner();
+    }
+  }, [shareLink]);
 
-  const handleLike = () => {
-    if (!isLoggedIn) {
-      alert('로그인이 필요한 기능입니다.');
-      return;
-    }
-    if (onToggleFavoritePlanner) {
-      onToggleFavoritePlanner(planner);
-    }
-  };
-
-  const handleEdit = () => {
-    if (!isLoggedIn) {
-      alert('로그인이 필요한 서비스입니다.');
-      return;
-    }
-    if (onEdit && plannerDetail) {
-      onEdit({
-        id: plannerDetail.plnId,
-        title: plannerDetail.plnTitle,
-        author: plannerDetail.authorNickname || '',
-        region: plannerDetail.regionName || '',
-        startDate: plannerDetail.startDate,
-        endDate: plannerDetail.endDate,
-        isPublic: plannerDetail.isPublic === 1,
-        dayPlans: dayPlans,
-        lDongRegnCd: plannerDetail.lDongRegnCd,
-        lDongSignguCd: plannerDetail.lDongSignguCd,
-      });
+  /**
+   * 현재 페이지 링크 복사
+   */
+  const handleCopyLink = async () => {
+    const currentUrl = window.location.href;
+    try {
+      await navigator.clipboard.writeText(currentUrl);
+      alert('링크가 복사되었습니다!');
+    } catch (err) {
+      // Fallback
+      const textArea = document.createElement('textarea');
+      textArea.value = currentUrl;
+      textArea.style.position = 'fixed';
+      textArea.style.left = '-9999px';
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+      alert('링크가 복사되었습니다!');
     }
   };
 
@@ -187,32 +148,34 @@ export function PlannerPreviewPage({
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">플래너 정보를 불러오는 중...</p>
+          <p className="text-gray-600">공유된 플래너를 불러오는 중...</p>
         </div>
       </div>
     );
   }
 
   // 에러 화면
-  if (error) {
+  if (error || !plannerDetail) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
-          <p className="text-red-500 mb-4">{error}</p>
-          <Button onClick={onBack}>돌아가기</Button>
+          <div className="text-6xl mb-4">😢</div>
+          <h2 className="text-xl font-bold text-gray-800 mb-2">플래너를 찾을 수 없습니다</h2>
+          <p className="text-gray-500 mb-6">{error || '잘못된 공유 링크입니다.'}</p>
+          <Button onClick={onBack}>홈으로 돌아가기</Button>
         </div>
       </div>
     );
   }
 
   // 데이터 표시용 변수
-  const title = plannerDetail?.plnTitle || planner.title;
-  const author = plannerDetail?.authorNickname || planner.author;
-  const region = plannerDetail?.regionName || planner.region;
-  const startDate = plannerDetail?.startDate || '';
-  const endDate = plannerDetail?.endDate || '';
-  const totalDays = plannerDetail?.totalDays || planner.days;
-  const isPublic = plannerDetail?.isPublic === 1;
+  const title = plannerDetail.plnTitle;
+  const author = plannerDetail.authorNickname || '익명';
+  const region = plannerDetail.regionName || '미정';
+  const startDate = plannerDetail.startDate;
+  const endDate = plannerDetail.endDate;
+  const totalDays = plannerDetail.totalDays;
+  const favoriteCount = plannerDetail.favoriteCount || 0;
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
@@ -221,50 +184,36 @@ export function PlannerPreviewPage({
         <Button variant="ghost" size="icon" onClick={onBack}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
-        <h1 className="text-xl font-bold">{title}</h1>
-        <div className="w-10" /> {/* 균형 맞추기 */}
+        <h1 className="text-xl font-bold">공유된 플래너</h1>
+        <Button variant="ghost" size="icon" onClick={handleCopyLink} title="링크 복사">
+          <Copy className="h-5 w-5" />
+        </Button>
       </div>
 
       {/* 메인 컨텐츠 */}
       <div className="flex-1 flex overflow-hidden">
-        {/* 왼쪽 사이드바 - 플래너 미리보기 */}
+        {/* 왼쪽 사이드바 - 플래너 내용 */}
         {isLeftSidebarOpen && (
           <div className="w-80 bg-white border-r overflow-y-auto">
             <div className="p-4">
-              {/* 플래너 미리보기 제목 & 편집하기, 좋아요 버튼 */}
+              {/* 플래너 정보 헤더 */}
               <div className="flex items-center gap-2 mb-4">
-                <h3 className="whitespace-nowrap text-sm">플래너 미리보기</h3>
-                <div className="flex gap-1 flex-1">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleLike}
-                    className={`flex-1 text-xs px-2 py-1 h-7 ${
-                      isLiked ? 'text-red-500 border-red-500' : ''
-                    }`}
-                  >
-                    <Heart className={`h-3 w-3 mr-1 ${isLiked ? 'fill-current' : ''}`} />
-                    {likes}
-                  </Button>
-                  <Button
-                    size="sm"
-                    onClick={handleEdit}
-                    className="flex-1 text-xs px-2 py-1 h-7"
-                  >
-                    <Edit className="h-3 w-3 mr-1" />
-                    편집
-                  </Button>
+                <Share2 className="h-5 w-5 text-blue-600" />
+                <h3 className="text-sm font-semibold">공유된 플래너</h3>
+                <div className="flex items-center gap-1 ml-auto text-red-500">
+                  <Heart className="h-4 w-4" />
+                  <span className="text-sm">{favoriteCount}</span>
                 </div>
               </div>
 
-              {/* 제목 & 작성자 통합 */}
+              {/* 제목 & 작성자 */}
               <div className="mb-3">
                 <div className="px-3 py-2 border rounded bg-gray-50 text-gray-700">
                   <span className="font-semibold text-blue-600">{author}</span>의 {title}
                 </div>
               </div>
 
-              {/* 날짜 (읽기 전용) */}
+              {/* 날짜 */}
               <div className="mb-4">
                 <div className="flex items-center gap-2">
                   <div className="flex-1 text-sm text-gray-600 px-3 py-2 border rounded bg-gray-50">
@@ -272,10 +221,20 @@ export function PlannerPreviewPage({
                   </div>
                 </div>
 
-               
+                {/* 지역 & 날씨 */}
+                <div className="flex items-center justify-between bg-blue-50 p-2 rounded mt-2">
+                  <div className="flex items-center gap-1 text-sm">
+                    <MapPinIcon className="h-4 w-4 text-blue-600" />
+                    <span>{region}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Sun className="h-4 w-4 text-yellow-500" />
+                    <span className="text-sm">15°C</span>
+                  </div>
+                </div>
               </div>
 
-              {/* DAY 리스트 (읽기 전용) */}
+              {/* DAY 리스트 */}
               <div>
                 <h4 className="mb-3 text-sm font-semibold">일정</h4>
                 <div className="space-y-3">
@@ -298,7 +257,6 @@ export function PlannerPreviewPage({
 
                       {/* Day 내용 */}
                       <div className="p-3">
-                        {/* 장소 목록 */}
                         <div className="space-y-2">
                           {dayPlan.places.length > 0 ? (
                             dayPlan.places.map((place, index) => (
@@ -346,7 +304,7 @@ export function PlannerPreviewPage({
           </div>
         )}
 
-        {/* 토글 버튼 (왼쪽) */}
+        {/* 토글 버튼 */}
         <button
           onClick={() => setIsLeftSidebarOpen(!isLeftSidebarOpen)}
           className="w-6 bg-gray-200 hover:bg-gray-300 flex items-center justify-center"
