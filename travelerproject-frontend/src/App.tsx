@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Header } from "./components/layout/Header";
 import { Footer } from "./components/layout/Footer";
 import { FeaturedCarousel } from "./components/home/FeaturedCarousel";
@@ -15,32 +15,62 @@ import { MyPage } from "./pages/auth/MyPage";
 import { FindIdPage } from "./pages/auth/FindIdPage";
 import { FindPasswordPage } from "./pages/auth/FindPasswordPage";
 
+/**
+ * App.tsx - 메인 애플리케이션
+ * ★ 테스트용: 자동 admin 로그인 활성화
+ */
 export default function App() {
   const [currentPage, setCurrentPage] = useState("home");
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [currentUser, setCurrentUser] = useState<{ mId: number; nickname: string } | null>(null);
+  
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [selectedDestinationId, setSelectedDestinationId] = useState<number | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [selectedPlanner, setSelectedPlanner] = useState<any>(null);
   const [favoriteDestinations, setFavoriteDestinations] = useState<any[]>([]);
   const [favoritePlanners, setFavoritePlanners] = useState<any[]>([]);
   const [reviews, setReviews] = useState<any[]>([]);
+
+  /** 
+   * ★★★ 테스트용: 자동 admin 로그인 ★★★
+   * DB: m_id=1, m_username='admin', m_nickname='관리자'
+   * TODO: 로그인 기능 완성 후 삭제
+   */
+  useEffect(() => {
+    const adminUser = { mId: 1, nickname: '관리자' };
+    setCurrentUser(adminUser);
+    setIsLoggedIn(true);
+    localStorage.setItem('user', JSON.stringify(adminUser));
+    console.log('★ 테스트용 자동 로그인: admin (mId: 1)');
+  }, []);
 
   const handleNavigate = (page: string) => {
     setCurrentPage(page);
     window.scrollTo(0, 0);
   };
 
-  const handleLogin = () => {
+  const handleLogin = (userData?: { mId: number; nickname: string }) => {
     setIsLoggedIn(true);
+    if (userData) {
+      setCurrentUser(userData);
+      localStorage.setItem('user', JSON.stringify(userData));
+    }
+    setCurrentPage("home");
   };
 
   const handleLogout = () => {
     setIsLoggedIn(false);
+    setCurrentUser(null);
+    localStorage.removeItem('user');
     setCurrentPage("home");
   };
 
   const handleWithdraw = () => {
     setIsLoggedIn(false);
+    setCurrentUser(null);
+    localStorage.removeItem('user');
     setCurrentPage("home");
     alert("회원탈퇴가 완료되었습니다.");
   };
@@ -85,7 +115,6 @@ export default function App() {
         <TravelPage
           onNavigate={handleNavigate}
           isLoggedIn={isLoggedIn}
-          initialDestinationId={selectedDestinationId}
           onOpenSearch={() => setIsSearchModalOpen(true)}
           favoriteDestinations={favoriteDestinations}
           onToggleFavorite={handleToggleFavorite}
@@ -125,6 +154,7 @@ export default function App() {
         <BoardPage
           onNavigate={handleNavigate}
           isLoggedIn={isLoggedIn}
+          currentUserId={currentUser?.mId}
           onOpenSearch={() => setIsSearchModalOpen(true)}
         />
       );
