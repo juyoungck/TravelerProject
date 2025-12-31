@@ -6,12 +6,18 @@
  */
 package com.traveler.app.config;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
+import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 @Configuration
 public class WebConfig implements WebMvcConfigurer {
+    
+    // 업로드 경로 (application.properties에서 설정)
+    @Value("${file.upload.path:./uploads/}")
+    private String uploadPath;
     
     /**
      * CORS 설정
@@ -21,7 +27,7 @@ public class WebConfig implements WebMvcConfigurer {
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/**")
                 // 허용할 프론트엔드 주소
-                .allowedOrigins(
+                .allowedOriginPatterns(
                         "http://localhost:3000",    // React 개발 서버
                         "http://localhost:5173",    // Vite 개발 서버
                         "http://localhost:5174"     // Vite 추가 포트
@@ -36,5 +42,16 @@ public class WebConfig implements WebMvcConfigurer {
                 .allowCredentials(true)
                 // preflight 요청 캐시 시간 (1시간)
                 .maxAge(3600);
+    }
+    
+    /**
+     * 정적 리소스 핸들러 등록
+     * /uploads/** URL로 접근하면 실제 파일 시스템의 uploads 폴더에서 파일을 찾음
+     * 예: http://localhost:8080/uploads/board/image.jpg
+     */
+    @Override
+    public void addResourceHandlers(ResourceHandlerRegistry registry) {
+        registry.addResourceHandler("/uploads/**")
+                .addResourceLocations("file:" + uploadPath);
     }
 }

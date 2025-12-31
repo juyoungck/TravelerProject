@@ -1,17 +1,24 @@
 /**
  * BoardDetailPage.tsx - 게시판 상세 페이지
- * 게시글 내용 표시 및 댓글/답글 기능
+ * 게시글 내용 표시 및 댓글/답글 기능 (API 연동)
  */
 
-import { useState } from 'react';
-import { Eye, X, Trash2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Eye, Trash2, ArrowLeft } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Header } from '../../components/layout/Header';
-import type { BoardPost } from './BoardListPage';
+import { 
+  getBoardDetail, 
+  deleteBoard, 
+  closeRecruit,
+  createComment, 
+  deleteComment 
+} from '../../api/boardApi';
 
 interface Reply {
   id: number;
+  mId: number;
   author: string;
   content: string;
   date: string;
@@ -19,169 +26,249 @@ interface Reply {
 
 interface Comment {
   id: number;
+  mId: number;
   author: string;
   content: string;
   date: string;
   replies: Reply[];
 }
 
+interface BoardData {
+  bdId: number;
+  mId: number;
+  authorNickname: string;
+  bdCategory: string;
+  bdTitle: string;
+  bdContent: string;
+  bdViewCount: number;
+  recruitStatus: string | null;
+  plnId: number | null;
+  plannerTitle: string | null;
+  bdRating: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 interface BoardDetailPageProps {
-  post: BoardPost;
+  bdId: number;
   onClose: () => void;
+  onDelete?: () => void;
   onNavigate?: (page: string) => void;
   isLoggedIn?: boolean;
+  currentUserId?: number;
   onOpenSearch?: () => void;
 }
 
-export function BoardDetailPage({ post, onClose, onNavigate, isLoggedIn, onOpenSearch }: BoardDetailPageProps) {
-  const [comments, setComments] = useState<Comment[]>([
-    {
-      id: 1,
-      author: '김철수',
-      content: '저도 함께하고 싶어요!',
-      date: '2025/12/18 14:30',
-      replies: [
-        {
-          id: 1,
-          author: post.author,
-          content: '감사합니다! 연락 주세요.',
-          date: '2025/12/18 14:45',
-        },
-      ],
-    },
-    {
-      id: 2,
-      author: '이영희',
-      content: '일정 조율 가능한가요?',
-      date: '2025/12/18 15:20',
-      replies: [],
-    },
-    {
-      id: 3,
-      author: post.author,
-      content: '많은 관심 감사드립니다!',
-      date: '2025/12/18 16:10',
-      replies: [],
-    },
-  ]);
+export function BoardDetailPage({ 
+  bdId, 
+  onClose, 
+  onDelete,
+  onNavigate, 
+  isLoggedIn, 
+  currentUserId,
+  onOpenSearch 
+}: BoardDetailPageProps) {
+  const [board, setBoard] = useState<BoardData | null>(null);
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [commentCount, setCommentCount] = useState(0);
+  const [loading, setLoading] = useState(true);
+  
   const [newComment, setNewComment] = useState('');
   const [replyingTo, setReplyingTo] = useState<number | null>(null);
   const [replyContent, setReplyContent] = useState('');
-  const [expandedComments, setExpandedComments] = useState<number[]>([1]);
 
-  const handleAddComment = () => {
-    if (!isLoggedIn) {
+  /** 날짜 포맷 */
+  const formatDate = (dateStr: string): string => {
+    if (!dateStr) return '';
+    const date = new Date(dateStr);
+    return date.toLocaleString('ko-KR');
+  };
+
+  /** 카테고리 영문 → 한글 */
+  const getCategoryLabel = (cat: string): string => {
+    return cat === 'COMPANION' ? '동행' : '후기';
+  };
+
+  /** 모집상태 영문 → 한글 */
+  const getRecruitLabel = (status: string | null): string => {
+    switch (status) {
+      case 'RECRUITING': return '모집중';
+      case 'CLOSED': return '모집완료';
+      default: return '';
+    }
+  };
+
+  /** 별점 렌더링 */
+  const renderStars = (rating: number | null) => {
+    if (!rating) return null;
+    return '⭐'.repeat(rating);
+  };
+
+  /** 게시글 상세 조회 */
+  const fetchDetail = async () => {
+    setLoading(true);
+    try {
+      const response = await getBoardDetail(bdId);
+      if (response.status === 'success') {
+        setBoard(response.data.board);
+        
+        const convertedComments: Comment[] = (response.data.comments || []).map((c: any) => ({
+          id: c.cmtId,
+          mId: c.mId,
+          author: c.authorNickname || '알 수 없음',
+          content: c.cmtContent,
+          date: formatDate(c.createdAt),
+          replies: (c.replies || []).map((r: any) => ({
+            id: r.cmtId,
+            mId: r.mId,
+            author: r.authorNickname || '알 수 없음',
+            content: r.cmtContent,
+            date: formatDate(r.createdAt)
+          }))
+        }));
+        
+        setComments(convertedComments);
+        setCommentCount(response.data.commentCount || 0);
+      }
+    } catch (error) {
+      console.error('게시글 조회 실패:', error);
+      alert('게시글을 불러오는데 실패했습니다.');
+      onClose();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDetail();
+  }, [bdId]);
+
+  /** 게시글 삭제 */
+  const handleDeletePost = async () => {
+    if (!currentUserId || !board) return;
+    
+    if (!confirm('정말로 이 게시글을 삭제하시겠습니까?')) return;
+    
+    try {
+      const response = await deleteBoard(bdId, currentUserId);
+      if (response.status === 'success') {
+        alert('게시글이 삭제되었습니다.');
+        onDelete?.();
+      }
+    } catch (error) {
+      console.error('게시글 삭제 실패:', error);
+      alert('게시글 삭제에 실패했습니다.');
+    }
+  };
+
+  /** 모집 마감 */
+  const handleCloseRecruit = async () => {
+    if (!currentUserId || !board) return;
+    
+    if (!confirm('모집을 마감하시겠습니까?')) return;
+    
+    try {
+      const response = await closeRecruit(bdId, currentUserId);
+      if (response.status === 'success') {
+        alert('모집이 마감되었습니다.');
+        fetchDetail();
+      }
+    } catch (error) {
+      console.error('모집 마감 실패:', error);
+      alert('모집 마감에 실패했습니다.');
+    }
+  };
+
+  /** 댓글 작성 */
+  const handleAddComment = async () => {
+    if (!isLoggedIn || !currentUserId) {
       alert('로그인이 필요한 서비스입니다.');
       return;
     }
     if (!newComment.trim()) return;
     
-    const comment: Comment = {
-      id: comments.length + 1,
-      author: '사용자',
-      content: newComment,
-      date: new Date().toLocaleString('ko-KR'),
-      replies: [],
-    };
-    
-    setComments([...comments, comment]);
-    setNewComment('');
+    try {
+      const response = await createComment({
+        bdId: bdId,
+        mId: currentUserId,
+        cmtContent: newComment.trim()
+      });
+      
+      if (response.status === 'success') {
+        setNewComment('');
+        fetchDetail();
+      }
+    } catch (error) {
+      console.error('댓글 작성 실패:', error);
+      alert('댓글 작성에 실패했습니다.');
+    }
   };
 
-  const handleAddReply = (commentId: number) => {
-    if (!isLoggedIn) {
+  /** 답글 작성 */
+  const handleAddReply = async (commentId: number) => {
+    if (!isLoggedIn || !currentUserId) {
       alert('로그인이 필요한 서비스입니다.');
       return;
     }
     if (!replyContent.trim()) return;
     
-    setComments(comments.map((comment) => {
-      if (comment.id === commentId) {
-        const newReply: Reply = {
-          id: comment.replies.length + 1,
-          author: '사용자',
-          content: replyContent,
-          date: new Date().toLocaleString('ko-KR'),
-        };
-        return {
-          ...comment,
-          replies: [...comment.replies, newReply],
-        };
+    try {
+      const response = await createComment({
+        bdId: bdId,
+        mId: currentUserId,
+        parentId: commentId,
+        cmtContent: replyContent.trim()
+      });
+      
+      if (response.status === 'success') {
+        setReplyContent('');
+        setReplyingTo(null);
+        fetchDetail();
       }
-      return comment;
-    }));
+    } catch (error) {
+      console.error('답글 작성 실패:', error);
+      alert('답글 작성에 실패했습니다.');
+    }
+  };
+
+  /** 댓글/답글 삭제 */
+  const handleDeleteComment = async (cmtId: number) => {
+    if (!currentUserId) return;
     
-    setReplyContent('');
-    setReplyingTo(null);
+    if (!confirm('정말로 이 댓글을 삭제하시겠습니까?')) return;
     
-    // 답글을 추가하면 자동으로 펼치기
-    if (!expandedComments.includes(commentId)) {
-      setExpandedComments([...expandedComments, commentId]);
+    try {
+      const response = await deleteComment(cmtId, currentUserId);
+      if (response.status === 'success') {
+        fetchDetail();
+      }
+    } catch (error) {
+      console.error('댓글 삭제 실패:', error);
+      alert('댓글 삭제에 실패했습니다.');
     }
   };
 
-  const toggleExpanded = (commentId: number) => {
-    if (expandedComments.includes(commentId)) {
-      setExpandedComments(expandedComments.filter((id) => id !== commentId));
-    } else {
-      setExpandedComments([...expandedComments, commentId]);
-    }
-  };
+  if (loading) {
+    return (
+      <div className="fixed inset-0 z-50 bg-white flex items-center justify-center">
+        <p>로딩 중...</p>
+      </div>
+    );
+  }
 
-  // 댓글 삭제
-  const handleDeleteComment = (commentId: number) => {
-    if (confirm('정말로 이 댓글을 삭제하시겠습니까?')) {
-      setComments(comments.filter((comment) => comment.id !== commentId));
-    }
-  };
+  if (!board) {
+    return (
+      <div className="fixed inset-0 z-50 bg-white flex items-center justify-center">
+        <p>게시글을 찾을 수 없습니다.</p>
+      </div>
+    );
+  }
 
-  // 답글 삭제
-  const handleDeleteReply = (commentId: number, replyId: number) => {
-    if (confirm('정말로 이 답글을 삭제하시겠습니까?')) {
-      setComments(comments.map((comment) => {
-        if (comment.id === commentId) {
-          return {
-            ...comment,
-            replies: comment.replies.filter((reply) => reply.id !== replyId),
-          };
-        }
-        return comment;
-      }));
-    }
-  };
-
-  // 현재 로그인한 사용자 (임시로 '사용자'로 설정)
-  const currentUser = '사용자';
-
-  // Mock 게시글 내용
-  const mockContent = post.category === '동행'
-    ? `안녕하세요! 12월 25일에 독도를 방문하려고 하는데, 함께 가실 분 계신가요?\n\n일정:\n- 날짜: 2025년 12월 25일\n- 출발: 강릉항 또는 묵호항\n- 인원: 2~4명\n\n관심 있으신 분은 댓글 남겨주세요!`
-    : `제주도 3박 4일 여행 다녀왔습니다!\n\n너무 좋은 경험이었어요. 날씨도 좋고 경치도 아름다웠습니다.\n특히 성산일출봉에서 본 일출은 정말 잊을 수 없을 것 같아요.\n\n다음에 또 가고 싶네요!`;
-
-  const mockImages = post.category === '후기' ? [
-    'https://images.unsplash.com/photo-1559827260-dc66d52bef19?w=400',
-    'https://images.unsplash.com/photo-1559827260-dc66d52bef19?w=400',
-  ] : [];
-
-  // 별점 렌더링 (예시로 4.5점)
-  const rating = post.rating || 4.5;
-  const fullStars = Math.floor(rating);
-  const hasHalfStar = rating % 1 !== 0;
-
-  const renderStars = () => {
-    const stars = [];
-    for (let i = 0; i < fullStars; i++) {
-      stars.push('⭐');
-    }
-    if (hasHalfStar) {
-      stars.push('⭐');
-    }
-    return stars.join('');
-  };
+  const isAuthor = currentUserId !== undefined && currentUserId === board.mId;
+  const categoryLabel = getCategoryLabel(board.bdCategory);
 
   return (
     <div className="fixed inset-0 z-50 bg-white overflow-y-auto">
-      {/* 헤더 - 네비게이션 포함 */}
       {onNavigate && (
         <Header
           onSearch={() => {}}
@@ -191,67 +278,118 @@ export function BoardDetailPage({ post, onClose, onNavigate, isLoggedIn, onOpenS
         />
       )}
 
-      <div className="container mx-auto px-4 py-8">
+      <div className="container mx-auto px-4 py-8 max-w-4xl">
+        {/* ★ 목록으로 버튼 */}
+        <Button
+          onClick={onClose}
+          variant="ghost"
+          className="mb-6 text-gray-600 hover:text-gray-900 hover:bg-gray-100 -ml-2"
+        >
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          목록으로
+        </Button>
+
         {/* 게시글 헤더 */}
         <div className="mb-6 pb-6 border-b">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <span
-                className={`inline-block px-3 py-1 text-sm rounded ${
-                  post.category === '동행'
-                    ? 'bg-green-100 text-green-600'
-                    : 'bg-purple-100 text-purple-600'
-                }`}
-              >
-                [{post.category}]
-              </span>
-              <h1>{post.title}</h1>
-              {post.category === '후기' && (
+          <div className="flex items-start justify-between mb-4">
+            <div className="flex-1">
+              <div className="flex items-center gap-2 flex-wrap mb-2">
+                <span
+                  className={`inline-block px-3 py-1 text-sm font-medium rounded ${
+                    board.bdCategory === 'COMPANION'
+                      ? 'bg-green-100 text-green-700'
+                      : 'bg-purple-100 text-purple-700'
+                  }`}
+                >
+                  [{categoryLabel}]
+                </span>
+                
+                {board.bdCategory === 'COMPANION' && board.recruitStatus && (
+                  <span
+                    className={`inline-block px-3 py-1 text-sm font-medium rounded ${
+                      board.recruitStatus === 'RECRUITING'
+                        ? 'bg-blue-100 text-blue-700'
+                        : 'bg-gray-200 text-gray-600'
+                    }`}
+                  >
+                    {getRecruitLabel(board.recruitStatus)}
+                  </span>
+                )}
+              </div>
+              
+              <h1 className="text-2xl font-bold mb-2">{board.bdTitle}</h1>
+              
+              {board.bdCategory === 'REVIEW' && board.bdRating && (
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-xl">{renderStars(board.bdRating)}</span>
+                  <span className="text-sm text-gray-600">{board.bdRating}/5</span>
+                </div>
+              )}
+              
+              <div className="flex items-center gap-4 text-sm text-gray-500">
+                <span>작성자: {board.authorNickname}</span>
+                <span>작성일: {formatDate(board.createdAt)}</span>
+              </div>
+            </div>
+            
+            {/* ★ 조회수 + 버튼들 (오른쪽 상단) */}
+            <div className="flex flex-col items-end gap-3">
+              {/* 조회수 */}
+              <div className="flex items-center gap-1 text-gray-500">
+                <Eye className="h-4 w-4" />
+                <span>{board.bdViewCount}</span>
+              </div>
+              
+              {/* ★ 작성자 버튼들 - 조회수 아래 */}
+              {isAuthor && (
                 <div className="flex items-center gap-2">
-                  <span className="text-xl">{renderStars()}</span>
-                  <span className="text-sm text-gray-600">{rating}/5</span>
+                  {/* 동행 + 모집중일 때만 모집 마감 버튼 */}
+                  {board.bdCategory === 'COMPANION' && board.recruitStatus === 'RECRUITING' && (
+                    <Button 
+                      onClick={handleCloseRecruit} 
+                      variant="outline"
+                      size="sm"
+                      className="text-blue-600 border-blue-300 hover:bg-blue-50"
+                    >
+                      모집 마감
+                    </Button>
+                  )}
+                  {/* 삭제 버튼 */}
+                  <Button 
+                    onClick={handleDeletePost} 
+                    variant="outline"
+                    size="sm"
+                    className="text-red-600 border-red-300 hover:bg-red-50"
+                  >
+                    <Trash2 className="h-4 w-4 mr-1" />
+                    삭제
+                  </Button>
                 </div>
               )}
             </div>
-            <div className="flex items-center gap-2 text-gray-600">
-              <Eye className="h-4 w-4" />
-              <span>{post.views}</span>
-            </div>
-          </div>
-          <div className="flex items-center gap-4 text-sm text-gray-600">
-            <span>작성자: {post.author}</span>
-            <span>작성일: {post.date}</span>
           </div>
         </div>
 
         {/* 게시글 내용 */}
         <div className="mb-8">
           <div className="bg-gray-50 p-6 rounded-lg mb-6">
-            <p className="text-gray-700 whitespace-pre-wrap leading-relaxed">
-              {mockContent}
-            </p>
+            <div 
+              className="text-gray-700 leading-relaxed prose max-w-none"
+              dangerouslySetInnerHTML={{ __html: board.bdContent }}
+            />
           </div>
 
-          {/* 사진 (후기인 경우) */}
-          {mockImages.length > 0 && (
-            <div className="grid grid-cols-2 gap-4 mb-6">
-              {mockImages.map((image, index) => (
-                <img
-                  key={index}
-                  src={image}
-                  alt={`첨부 이미지 ${index + 1}`}
-                  className="w-full h-64 object-cover rounded-lg"
-                />
-              ))}
+          {board.plannerTitle && (
+            <div className="mb-6 p-4 bg-blue-50 rounded-lg">
+              📋 연결된 플래너: <span className="font-semibold">{board.plannerTitle}</span>
             </div>
           )}
         </div>
 
         {/* 댓글 */}
         <div className="mb-8">
-          <h3 className="mb-4">댓글 ({comments.length})</h3>
+          <h3 className="text-lg font-semibold mb-4">댓글 ({commentCount})</h3>
           
-          {/* 댓글 목록 */}
           <div className="space-y-4 mb-6">
             {comments.map((comment) => (
               <div key={comment.id}>
@@ -259,14 +397,13 @@ export function BoardDetailPage({ post, onClose, onNavigate, isLoggedIn, onOpenS
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
                       <span className="font-semibold">{comment.author}</span>
-                      {comment.author === post.author && (
+                      {comment.mId === board.mId && (
                         <span className="text-xl" title="작성자">👑</span>
                       )}
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-gray-500">{comment.date}</span>
-                      {/* 작성자 본인만 삭제 버튼 표시 */}
-                      {comment.author === currentUser && (
+                      {currentUserId === comment.mId && (
                         <button
                           onClick={() => handleDeleteComment(comment.id)}
                           className="text-red-500 hover:text-red-700 transition-colors"
@@ -279,17 +416,19 @@ export function BoardDetailPage({ post, onClose, onNavigate, isLoggedIn, onOpenS
                   </div>
                   <p className="text-gray-700 mb-2">{comment.content}</p>
                   
-                  {/* 답글 버튼 */}
-                  <div className="flex items-center gap-2 mt-2">
-                    <button
-                      onClick={() => setReplyingTo(replyingTo === comment.id ? null : comment.id)}
-                      className="text-sm text-blue-600 hover:underline"
-                    >
-                      답글 달기
-                    </button>
-                  </div>
+                  <button
+                    onClick={() => {
+                      if (!isLoggedIn) {
+                        alert('로그인이 필요한 서비스입니다.');
+                        return;
+                      }
+                      setReplyingTo(replyingTo === comment.id ? null : comment.id);
+                    }}
+                    className="text-sm text-blue-600 hover:underline"
+                  >
+                    답글 달기
+                  </button>
 
-                  {/* 답글 입력 */}
                   {replyingTo === comment.id && (
                     <div className="mt-3 ml-4 pl-4 border-l-2 border-blue-300">
                       <div className="flex gap-2">
@@ -313,7 +452,6 @@ export function BoardDetailPage({ post, onClose, onNavigate, isLoggedIn, onOpenS
                   )}
                 </div>
 
-                {/* 답글 목록 - 항상 표시 */}
                 {comment.replies.length > 0 && (
                   <div className="ml-8 mt-2 space-y-2">
                     {comment.replies.map((reply) => (
@@ -321,16 +459,15 @@ export function BoardDetailPage({ post, onClose, onNavigate, isLoggedIn, onOpenS
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex items-center gap-2">
                             <span className="font-semibold text-sm">{reply.author}</span>
-                            {reply.author === post.author && (
+                            {reply.mId === board.mId && (
                               <span className="text-lg" title="작성자">👑</span>
                             )}
                           </div>
                           <div className="flex items-center gap-2">
                             <span className="text-xs text-gray-500">{reply.date}</span>
-                            {/* 답글 작성자 본인만 삭제 버튼 표시 */}
-                            {reply.author === currentUser && (
+                            {currentUserId === reply.mId && (
                               <button
-                                onClick={() => handleDeleteReply(comment.id, reply.id)}
+                                onClick={() => handleDeleteComment(reply.id)}
                                 className="text-red-500 hover:text-red-700 transition-colors"
                                 title="삭제"
                               >
@@ -348,12 +485,11 @@ export function BoardDetailPage({ post, onClose, onNavigate, isLoggedIn, onOpenS
             ))}
           </div>
 
-          {/* 댓글 작성 */}
           <div className="bg-gray-50 p-4 rounded-lg">
             <div className="flex gap-2">
               <Input
                 type="text"
-                placeholder="댓글을 입력하세요..."
+                placeholder={isLoggedIn ? "댓글을 입력하세요..." : "로그인이 필요합니다"}
                 value={newComment}
                 onChange={(e) => setNewComment(e.target.value)}
                 onKeyPress={(e) => {
@@ -361,9 +497,12 @@ export function BoardDetailPage({ post, onClose, onNavigate, isLoggedIn, onOpenS
                     handleAddComment();
                   }
                 }}
+                disabled={!isLoggedIn}
                 className="flex-1"
               />
-              <Button onClick={handleAddComment}>작성</Button>
+              <Button onClick={handleAddComment} disabled={!isLoggedIn}>
+                작성
+              </Button>
             </div>
           </div>
         </div>

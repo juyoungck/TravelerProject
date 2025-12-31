@@ -1,6 +1,7 @@
 /**
- * api.ts
+ * api.ts - Axios 인스턴스 설정
  * Axios 인스턴스 설정 및 인터셉터
+ * 백엔드 API 호출을 위한 기본 설정
  * 
  * - baseURL 설정
  * - 요청 시 JWT 토큰 자동 첨부

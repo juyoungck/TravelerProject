@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" 
+    "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.traveler.app.dao.BoardCommentDao">
+
+    <!-- 댓글 목록 조회 -->
+    <select id="selectCommentList" parameterType="int" resultType="com.traveler.app.dto.BoardCommentDto">
+        SELECT 
+            c.cmt_id,
+            c.bd_id,
+            c.m_id,
+            m.m_nickname AS author_nickname,
+            c.parent_id,
+            c.cmt_content,
+            c.is_deleted,
+            c.created_at,
+            c.updated_at
+        FROM board_comment c
+        LEFT JOIN member m ON c.m_id = m.m_id
+        WHERE c.bd_id = #{bdId}
+        AND c.is_deleted = 0
+        ORDER BY c.created_at ASC
+    </select>
+
+    <!-- 댓글 총 개수 조회 -->
+    <select id="selectCommentCount" parameterType="int" resultType="int">
+        SELECT COUNT(*)
+        FROM board_comment
+        WHERE bd_id = #{bdId}
+        AND is_deleted = 0
+    </select>
+
+    <!-- ★ 댓글 등록 (트리거 사용 - cmt_id 제외) -->
+	<insert id="insertComment" parameterType="com.traveler.app.dto.BoardCommentDto">
+	    <selectKey keyProperty="cmtId" resultType="int" order="AFTER">
+	        SELECT seq_board_comment.CURRVAL FROM DUAL
+	    </selectKey>
+	    INSERT INTO board_comment (
+	        bd_id,
+	        m_id,
+	        parent_id,
+	        cmt_content,
+	        is_deleted,
+	        created_at,
+	        updated_at
+	    ) VALUES (
+	        #{bdId},
+	        #{mId},
+	        #{parentId, jdbcType=INTEGER},
+	        #{cmtContent},
+	        0,
+	        SYSDATE,
+	        SYSDATE
+	    )
+	</insert>
+
+    <!-- 댓글 삭제 (soft delete) -->
+    <update id="deleteComment" parameterType="int">
+        UPDATE board_comment
+        SET 
+            is_deleted = 1,
+            updated_at = SYSDATE
+        WHERE cmt_id = #{cmtId}
+    </update>
+
+    <!-- 댓글 작성자 확인 -->
+    <select id="selectCommentAuthor" parameterType="int" resultType="int">
+        SELECT m_id
+        FROM board_comment
+        WHERE cmt_id = #{cmtId}
+    </select>
+
+</mapper>
