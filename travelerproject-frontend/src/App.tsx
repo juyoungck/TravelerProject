@@ -26,8 +26,64 @@ export default function App() {
   const [favoritePlanners, setFavoritePlanners] = useState<any[]>([]);
   const [reviews, setReviews] = useState<any[]>([]);
   
+  // 소셜 로그인 콜백 상태
+  const [oauthStatus, setOauthStatus] = useState<'loading' | 'success' | 'error' | null>(null);
+  const [oauthError, setOauthError] = useState<string>('');
+  
   // 공유 링크 상태
   const [shareLink, setShareLink] = useState<string | null>(null);
+
+  /**
+   * 소셜 로그인 콜백 처리
+   * URL에서 토큰을 추출하여 로그인 처리
+   */
+  useEffect(() => {
+    // URL 파라미터 확인
+    const urlParams = new URLSearchParams(window.location.search);
+    const accessToken = urlParams.get('accessToken');
+    const refreshToken = urlParams.get('refreshToken');
+    const error = urlParams.get('error');
+    
+    // 소셜 로그인 콜백인 경우
+    if (window.location.pathname === '/oauth2/callback' || accessToken || error) {
+      if (error) {
+        // 에러 처리
+        setOauthStatus('error');
+        setOauthError(decodeURIComponent(error));
+        
+        // 3초 후 로그인 페이지로 이동
+        setTimeout(() => {
+          setOauthStatus(null);
+          setCurrentPage('login');
+          // URL 정리
+          window.history.replaceState({}, '', '/');
+        }, 3000);
+      } else if (accessToken && refreshToken) {
+        // 성공 처리
+        setOauthStatus('success');
+        
+        // 토큰 저장
+        localStorage.setItem('accessToken', accessToken);
+        localStorage.setItem('refreshToken', refreshToken);
+        
+        // 로그인 상태 변경
+        setIsLoggedIn(true);
+        
+        // 2초 후 홈으로 이동
+        setTimeout(() => {
+          setOauthStatus(null);
+          setCurrentPage('home');
+          // URL 정리
+          window.history.replaceState({}, '', '/');
+        }, 2000);
+      }
+    }
+    
+    // 페이지 로드 시 로그인 상태 확인
+    const savedToken = localStorage.getItem('accessToken');
+    if (savedToken) {
+      setIsLoggedIn(true);
+      
 
   /**
    * URL 경로 파싱 - 공유 링크 감지
@@ -103,11 +159,21 @@ export default function App() {
   };
 
   const handleLogout = () => {
+    // 토큰 삭제
+    localStorage.removeItem('accessToken');
+    localStorage.removeItem('refreshToken');
+    localStorage.removeItem('memberInfo');
+    
     setIsLoggedIn(false);
     setCurrentPage("home");
   };
 
   const handleWithdraw = () => {
+    // 토큰 삭제
+    localStorage.removeItem('accessToken');
+    localStorage.removeItem('refreshToken');
+    localStorage.removeItem('memberInfo');
+    
     setIsLoggedIn(false);
     setCurrentPage("home");
     alert("회원탈퇴가 완료되었습니다.");
@@ -147,7 +213,63 @@ export default function App() {
     setReviews(reviews.filter((review) => review.id !== reviewId));
   };
 
+  /**
+   * 소셜 로그인 콜백 화면 렌더링
+   */
+  const renderOAuthCallback = () => {
+    if (oauthStatus === 'loading') {
+      return (
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-lg">로그인 처리 중...</p>
+          </div>
+        </div>
+      );
+    }
+    
+    if (oauthStatus === 'success') {
+      return (
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <div className="text-center">
+            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
+              </svg>
+            </div>
+            <p className="text-lg text-green-600 font-semibold">로그인 성공!</p>
+            <p className="text-gray-500 mt-2">메인 페이지로 이동합니다...</p>
+          </div>
+        </div>
+      );
+    }
+    
+    if (oauthStatus === 'error') {
+      return (
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <div className="text-center">
+            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+              </svg>
+            </div>
+            <p className="text-lg text-red-600 font-semibold">로그인 실패</p>
+            <p className="text-gray-500 mt-2">{oauthError}</p>
+            <p className="text-gray-400 mt-2">로그인 페이지로 이동합니다...</p>
+          </div>
+        </div>
+      );
+    }
+    
+    return null;
+  };
+
   const renderPage = () => {
+    // 소셜 로그인 콜백 처리 중이면 콜백 화면 표시
+    if (oauthStatus) {
+      return renderOAuthCallback();
+    }
+    
     // 공유 링크 페이지
     if (currentPage === "shared-planner" && shareLink) {
       return (
@@ -222,8 +344,8 @@ export default function App() {
     }
 
     if (currentPage === "login") {
-      return <LoginPage onNavigate={handleNavigate} onLogin={handleLogin} />;
-    }
+  return <LoginPage onNavigate={handleNavigate} onLoginSuccess={handleLogin} />;
+  }
 
     if (currentPage === "signup") {
       return <SignupPage onNavigate={handleNavigate} />;
@@ -251,8 +373,8 @@ export default function App() {
             setCurrentPage("planner");
           }}
           onNavigateToDestination={(destinationId) => {
-            setSelectedDestinationId(destinationId);
-            setCurrentPage("travel");
+          setSelectedDestinationId(destinationId?.toString() ?? null);
+          setCurrentPage("travel");
           }}
           reviews={reviews}
           onDeleteReview={handleDeleteReview}

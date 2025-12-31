@@ -16,7 +16,7 @@ public interface DestinationDao {
     
     /** 여행지 단건 조회 */
     Destination selectDestinationById(String contentid);
-    
+	
     /** 여행지 목록 조회 (관광타입별) */
     List<Destination> selectDestinationsByType(@Param("contenttypeid") String contenttypeid);
     

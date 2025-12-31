@@ -30,7 +30,7 @@ public class DestinationController {
 
     public DestinationController(DestinationService destinationService) {
         this.destinationService = destinationService;
-    }
+    }   
 
     /**
      * 여행지 목록 조회 (관광타입별, 페이징, 지역 필터)
