@@ -3,40 +3,57 @@
  * 게시판 목록/상세/작성 페이지 간 라우팅 관리
  */
 
-import { useState, useEffect } from 'react';
-import { BoardListPage, type BoardPost } from './BoardListPage';
+import { useState } from 'react';
+import { BoardListPage } from './BoardListPage';
 import { BoardDetailPage } from './BoardDetailPage';
 import { BoardCreatePage } from './BoardCreatePage';
 
 interface BoardPageProps {
   onNavigate?: (page: string) => void;
   isLoggedIn?: boolean;
+  currentUserId?: number;
   onOpenSearch?: () => void;
 }
 
-export function BoardPage({ onNavigate, isLoggedIn, onOpenSearch }: BoardPageProps) {
-  const [selectedPost, setSelectedPost] = useState<BoardPost | null>(null);
+export function BoardPage({ onNavigate, isLoggedIn, currentUserId, onOpenSearch }: BoardPageProps) {
+  const [selectedBdId, setSelectedBdId] = useState<number | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  /** 글 작성 완료 후 */
+  const handleCreateComplete = () => {
+    setIsCreating(false);
+    setRefreshKey(prev => prev + 1);
+  };
+
+  /** 글 삭제 후 */
+  const handleDeleteComplete = () => {
+    setSelectedBdId(null);
+    setRefreshKey(prev => prev + 1);
+  };
 
   if (isCreating) {
     return (
       <BoardCreatePage
         onClose={() => setIsCreating(false)}
-        onSubmit={() => setIsCreating(false)}
+        onSubmit={handleCreateComplete}
         onNavigate={onNavigate}
         isLoggedIn={isLoggedIn}
+        currentUserId={currentUserId}
         onOpenSearch={onOpenSearch}
       />
     );
   }
 
-  if (selectedPost) {
+  if (selectedBdId) {
     return (
       <BoardDetailPage
-        post={selectedPost}
-        onClose={() => setSelectedPost(null)}
+        bdId={selectedBdId}
+        onClose={() => setSelectedBdId(null)}
+        onDelete={handleDeleteComplete}
         onNavigate={onNavigate}
         isLoggedIn={isLoggedIn}
+        currentUserId={currentUserId}
         onOpenSearch={onOpenSearch}
       />
     );
@@ -44,7 +61,8 @@ export function BoardPage({ onNavigate, isLoggedIn, onOpenSearch }: BoardPagePro
 
   return (
     <BoardListPage
-      onSelectPost={(post) => setSelectedPost(post)}
+      key={refreshKey}
+      onSelectPost={(bdId) => setSelectedBdId(bdId)}
       onCreatePost={() => setIsCreating(true)}
       isLoggedIn={isLoggedIn}
     />

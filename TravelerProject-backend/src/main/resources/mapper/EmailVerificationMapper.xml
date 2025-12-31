@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" 
+    "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+    EmailVerificationMapper.xml
+    이메일 인증 관련 SQL 매퍼
+-->
+<mapper namespace="com.traveler.app.dao.EmailVerificationDao">
+
+    <!-- 결과 매핑 -->
+    <resultMap id="EmailVerificationResultMap" type="com.traveler.app.entity.EmailVerification">
+        <id property="evId" column="ev_id"/>
+        <result property="evEmail" column="ev_email"/>
+        <result property="evCode" column="ev_code"/>
+        <result property="evExpiresAt" column="ev_expires_at"/>
+        <result property="evVerified" column="ev_verified"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <!-- 이메일로 조회 (유효한 것만) -->
+	<select id="selectByEmail" parameterType="string" resultMap="EmailVerificationResultMap">
+    SELECT * FROM (
+        SELECT * FROM email_verification
+        WHERE ev_email = #{email}
+        AND ev_expires_at > SYSDATE
+        AND ev_verified = 0
+        ORDER BY created_at DESC
+    ) WHERE ROWNUM = 1
+	</select>
+
+    <!-- 이메일 + 코드로 조회 -->
+    <select id="selectByEmailAndCode" resultMap="EmailVerificationResultMap">
+        SELECT * FROM email_verification 
+        WHERE ev_email = #{email} 
+        AND ev_code = #{code}
+        AND ev_expires_at > SYSDATE
+        AND ev_verified = 0
+    </select>
+
+    <!-- 인증 정보 저장 -->
+    <insert id="insertEmailVerification" parameterType="com.traveler.app.entity.EmailVerification">
+        <selectKey keyProperty="evId" resultType="long" order="BEFORE">
+           SELECT seq_email_verification.NEXTVAL FROM DUAL
+        </selectKey>
+        INSERT INTO email_verification (ev_id, ev_email, ev_code, ev_expires_at, ev_verified, created_at)
+        VALUES (#{evId}, #{evEmail}, #{evCode}, #{evExpiresAt}, 0, SYSDATE)
+    </insert>
+
+    <!-- 인증 완료 처리 -->
+    <update id="updateVerified" parameterType="long">
+    UPDATE email_verification SET ev_verified = 1
+    WHERE ev_id = #{evId}
+	</update>
+	
+    <!-- 이메일의 기존 인증 삭제 -->
+    <delete id="deleteByEmail" parameterType="string">
+        DELETE FROM email_verification WHERE ev_email = #{email}
+    </delete>
+
+    <!-- 만료된 인증 삭제 -->
+    <delete id="deleteExpired">
+        DELETE FROM email_verification WHERE ev_expires_at &lt; SYSDATE
+    </delete>
+
+	<select id="selectLatestByEmail" parameterType="string" resultMap="EmailVerificationResultMap">
+    SELECT * FROM (
+        SELECT * FROM email_verification
+        WHERE ev_email = #{email}
+        ORDER BY created_at DESC
+    ) WHERE ROWNUM = 1
+    
+</select>
+
+</mapper>

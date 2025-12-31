@@ -1,5 +1,7 @@
 /**
  * TravelPage.tsx - 여행지 메인 페이지 (리스트 ↔ 상세 라우팅)
+ * 
+ * 수정: initialDestinationId 변경 시 useEffect로 감지하여 업데이트
  */
 import { useState, useEffect } from 'react';
 import TravelListPage from './TravelListPage';
@@ -30,6 +32,7 @@ export function TravelPage({
     initialDestinationId || null
   );
 
+  // ★ 핵심: initialDestinationId가 변경되면 selectedDestinationId도 업데이트
   useEffect(() => {
     if (initialDestinationId) {
       setSelectedDestinationId(initialDestinationId);

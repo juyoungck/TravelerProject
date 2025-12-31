@@ -68,202 +68,122 @@ public class DestinationService {
      * @return 저장된 건수
      */
     @Transactional
-    public int syncDestinationsByType(String contenttypeid, int startPage, int endPage) {
-        String typeName = CONTENT_TYPES.getOrDefault(contenttypeid, "알수없음");
-        log.info("========== [{}] 여행지 동기화 시작 (페이지 {}-{}) ==========", typeName, startPage, endPage);
-
-        int savedCount = 0;
-        int numOfRows = 100;  // 한 페이지당 100건
-
-        for (int pageNo = startPage; pageNo <= endPage; pageNo++) {
-            // API 호출
-            List<DestinationDto> destinations = tourApiService.fetchDestinations(contenttypeid, pageNo, numOfRows);
-
-            // 더 이상 데이터가 없으면 종료
-            if (destinations.isEmpty()) {
-                log.info("더 이상 데이터가 없습니다. (페이지: {})", pageNo);
-                break;
-            }
-
-            // DB 저장
-            for (DestinationDto dto : destinations) {
-                try {
-                    Destination destination = convertToEntity(dto);
-                    destinationDao.mergeDestination(destination);
-                    savedCount++;
-                } catch (Exception e) {
-                    log.error("여행지 저장 실패 (contentid: {}): {}", dto.getContentid(), e.getMessage());
-                }
-            }
-
-            log.info("[{}] 페이지 {} 완료 - 총 {}건 저장됨", typeName, pageNo, savedCount);
-
-            // API 호출 간격 조절 (과부하 방지)
-            try {
-                Thread.sleep(100);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
-            }
-        }
-
-        log.info("========== [{}] 여행지 동기화 완료: {}건 ==========", typeName, savedCount);
-        return savedCount;
-    }
-
-    /**
-     * 전체 관광타입 여행지 동기화 (페이지 기반)
-     * @param maxPagesPerType 타입당 최대 페이지 수
-     * @return 타입별 저장 건수
-     */
-    @Transactional
-    public Map<String, Integer> syncAllDestinations(int maxPagesPerType) {
-        log.info("========== 전체 여행지 동기화 시작 (타입당 최대 {}페이지) ==========", maxPagesPerType);
-
-        Map<String, Integer> result = new HashMap<>();
-        int totalCount = 0;
-
-        for (Map.Entry<String, String> entry : CONTENT_TYPES.entrySet()) {
-            String typeId = entry.getKey();
-            String typeName = entry.getValue();
-
-            int count = syncDestinationsByType(typeId, 1, maxPagesPerType);
-            result.put(typeName, count);
-            totalCount += count;
-
-            // 타입 간 API 호출 간격
-            try {
-                Thread.sleep(500);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
-            }
-        }
-
-        result.put("총합계", totalCount);
-        log.info("========== 전체 여행지 동기화 완료: 총 {}건 ==========", totalCount);
-        return result;
-    }
-    
-    /**
-     * 변경된 여행지만 동기화 (어제 이후 수정된 데이터)
-     * @return 업데이트된 건수
-     */
-    @Transactional
-    public int syncModifiedDestinations() {
-        // 어제 날짜 계산 (yyyyMMdd 형식)
-        String yesterday = java.time.LocalDate.now()
-                .minusDays(1)
-                .format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd"));
-        
-        log.info("========== 변경 데이터 동기화 시작 (기준일: {}) ==========", yesterday);
-
-        int savedCount = 0;
-        int pageNo = 1;
+    public int syncDestinations(String contenttypeid, int maxPages) {
+        int totalSaved = 0;
         int numOfRows = 100;
 
-        // 먼저 총 개수 확인
-        int totalCount = tourApiService.fetchModifiedTotalCount(yesterday);
-        log.info("변경된 데이터 총 개수: {}건", totalCount);
+        log.info("=== 여행지 동기화 시작: 타입={}, 최대페이지={} ===", contenttypeid, maxPages);
 
-        if (totalCount == 0) {
-            log.info("변경된 데이터가 없습니다.");
-            return 0;
-        }
+        for (int page = 1; page <= maxPages; page++) {
+            log.info("페이지 {} 처리 중...", page);
 
-        // 모든 페이지 조회
-        while (true) {
-            List<DestinationDto> destinations = tourApiService.fetchModifiedDestinations(yesterday, pageNo, numOfRows);
+            List<DestinationDto> destinations = tourApiService.fetchDestinations(contenttypeid, page, numOfRows);
 
-            if (destinations.isEmpty()) {
+            if (destinations == null || destinations.isEmpty()) {
+                log.info("더 이상 데이터 없음. 동기화 종료.");
                 break;
             }
 
             for (DestinationDto dto : destinations) {
                 try {
-                    Destination destination = convertToEntity(dto);
-                    destinationDao.mergeDestination(destination);
-                    savedCount++;
+                    Destination entity = convertToEntity(dto);
+                    destinationDao.mergeDestination(entity);
+                    totalSaved++;
                 } catch (Exception e) {
-                    log.error("여행지 저장 실패 (contentid: {}): {}", dto.getContentid(), e.getMessage());
+                    log.warn("저장 실패 (contentid={}): {}", dto.getContentid(), e.getMessage());
                 }
             }
 
-            log.info("페이지 {} 완료 - 총 {}건 저장됨", pageNo, savedCount);
-            pageNo++;
+            log.info("페이지 {} 완료: {}건 처리", page, destinations.size());
 
-            // API 호출 간격
             try {
-                Thread.sleep(100);
+                Thread.sleep(200);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                break;
             }
         }
 
-        log.info("========== 변경 데이터 동기화 완료: {}건 ==========", savedCount);
-        return savedCount;
+        log.info("=== 여행지 동기화 완료: 총 {}건 저장 ===", totalSaved);
+        return totalSaved;
     }
-    
-    /**
-     * 특정 날짜 기준 변경된 여행지 동기화 (테스트용)
-     * @param date 날짜 (yyyyMMdd 형식)
-     * @return 업데이트된 건수
-     */
+
     @Transactional
-    public int syncModifiedDestinationsByDate(String date) {
-        log.info("========== 변경 데이터 동기화 시작 (기준일: {}) ==========", date);
+    public int syncAllDestinations(int pagesPerType) {
+        int total = 0;
 
-        int savedCount = 0;
-        int pageNo = 1;
-        int numOfRows = 100;
+        log.info("=== 전체 여행지 동기화 시작 ===");
 
-        // 먼저 총 개수 확인
-        int totalCount = tourApiService.fetchModifiedTotalCount(date);
-        log.info("변경된 데이터 총 개수: {}건", totalCount);
-
-        if (totalCount == 0) {
-            log.info("변경된 데이터가 없습니다.");
-            return 0;
-        }
-
-        // 모든 페이지 조회
-        while (true) {
-            List<DestinationDto> destinations = tourApiService.fetchModifiedDestinations(date, pageNo, numOfRows);
-
-            if (destinations.isEmpty()) {
-                break;
-            }
-
-            for (DestinationDto dto : destinations) {
-                try {
-                    Destination destination = convertToEntity(dto);
-                    destinationDao.mergeDestination(destination);
-                    savedCount++;
-                } catch (Exception e) {
-                    log.error("여행지 저장 실패 (contentid: {}): {}", dto.getContentid(), e.getMessage());
-                }
-            }
-
-            log.info("페이지 {} 완료 - 총 {}건 저장됨", pageNo, savedCount);
-            pageNo++;
-
-            // API 호출 간격
+        for (String contenttypeid : CONTENT_TYPES.keySet()) {
             try {
-                Thread.sleep(100);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
+                log.info("관광타입 {} ({}) 동기화 시작", contenttypeid, CONTENT_TYPES.get(contenttypeid));
+                int saved = syncDestinations(contenttypeid, pagesPerType);
+                total += saved;
+                log.info("관광타입 {} 동기화 완료: {}건", contenttypeid, saved);
+            } catch (Exception e) {
+                log.error("관광타입 {} 동기화 실패: {}", contenttypeid, e.getMessage());
             }
         }
 
-        log.info("========== 변경 데이터 동기화 완료: {}건 ==========", savedCount);
-        return savedCount;
+        log.info("=== 전체 여행지 동기화 완료: 총 {}건 저장 ===", total);
+        return total;
     }
 
-    /**
-     * DTO → Entity 변환
-     */
+    @Transactional
+    public boolean updateDestinationDetail(String contentid) {
+        try {
+            DestinationDetailDto detail = tourApiService.fetchDestinationDetail(contentid);
+            
+            if (detail != null) {
+                Destination dest = destinationDao.selectDestinationById(contentid);
+                if (dest != null) {
+                    dest.setOverview(detail.getOverview());
+                    dest.setHomepage(detail.getHomepage());
+                    destinationDao.updateDestinationDetail(dest);
+                    log.info("상세정보 업데이트 완료: contentid={}", contentid);
+                    return true;
+                }
+            }
+            return false;
+        } catch (Exception e) {
+            log.error("상세정보 업데이트 실패 (contentid={}): {}", contentid, e.getMessage());
+            return false;
+        }
+    }
+
+    @Transactional
+    public int syncDestinationImages(String contentid) {
+        try {
+            List<DestinationImageDto> images = tourApiService.fetchDestinationImages(contentid);
+            int saved = 0;
+            
+            destinationImageDao.deleteImagesByContentId(contentid);
+            
+            for (DestinationImageDto dto : images) {
+                try {
+                    DestinationImage img = DestinationImage.builder()
+                            .contentid(contentid)
+                            .originimgurl(dto.getOriginimgurl())
+                            .build();
+                    
+                    destinationImageDao.insertImage(img);
+                    saved++;
+                } catch (Exception e) {
+                    log.warn("이미지 저장 실패: {}", e.getMessage());
+                }
+            }
+            
+            log.info("이미지 동기화 완료 (contentid={}): {}건", contentid, saved);
+            return saved;
+        } catch (Exception e) {
+            log.error("이미지 동기화 실패 (contentid={}): {}", contentid, e.getMessage());
+            return 0;
+        }
+    }
+
+    // ============================================
+    // 조회 메서드 (기존)
+    // ============================================
+
     private Destination convertToEntity(DestinationDto dto) {
         return Destination.builder()
                 .contentid(dto.getContentid())
@@ -284,9 +204,6 @@ public class DestinationService {
                 .build();
     }
 
-    /**
-     * 문자열 → Double 변환 (null 처리)
-     */
     private Double parseDouble(String value) {
         if (value == null || value.isEmpty()) {
             return null;
@@ -298,9 +215,6 @@ public class DestinationService {
         }
     }
 
-    /**
-     * 문자열 → Integer 변환 (null 처리)
-     */
     private Integer parseInteger(String value) {
         if (value == null || value.isEmpty()) {
             return null;
@@ -312,9 +226,6 @@ public class DestinationService {
         }
     }
 
-    /**
-     * 여행지 현황 조회
-     */
     public Map<String, Object> getDestinationStatus() {
         Map<String, Object> status = new HashMap<>();
         
@@ -328,22 +239,41 @@ public class DestinationService {
         return status;
     }
 
-    /**
-     * 여행지 목록 조회 (관광타입별)
-     */
     public List<Destination> getDestinationsByType(String contenttypeid) {
         return destinationDao.selectDestinationsByType(contenttypeid);
     }
     
     /**
-     * 여행지 목록 조회 (페이징, 시군구 이름 포함)
+     * 여행지 목록 조회 (페이징, 시군구 이름 포함) - 기존 메서드
      */
     public Map<String, Object> getDestinationsWithPaging(String contenttypeid, int page, int size) {
+        return getDestinationsWithPagingAndRegion(contenttypeid, page, size, null, null);
+    }
+
+    /**
+     * 여행지 목록 조회 (페이징 + 지역 필터)
+     */
+    public Map<String, Object> getDestinationsWithPagingAndRegion(
+            String contenttypeid, int page, int size, 
+            String lDongRegnCd, String lDongSignguCd) {
+        
         Map<String, Object> result = new HashMap<>();
         
         int offset = (page - 1) * size;
-        List<Destination> list = destinationDao.selectDestinationsByTypeWithPaging(contenttypeid, offset, size);
-        int totalCount = destinationDao.countDestinationByType(contenttypeid);
+        List<Destination> list;
+        int totalCount;
+
+        // 지역 필터 적용
+        if (lDongRegnCd != null && !lDongRegnCd.isEmpty()) {
+            list = destinationDao.selectDestinationsByTypeAndRegion(
+                    contenttypeid, lDongRegnCd, lDongSignguCd, offset, size);
+            totalCount = destinationDao.countDestinationByTypeAndRegion(
+                    contenttypeid, lDongRegnCd, lDongSignguCd);
+        } else {
+            list = destinationDao.selectDestinationsByTypeWithPaging(contenttypeid, offset, size);
+            totalCount = destinationDao.countDestinationByType(contenttypeid);
+        }
+
         int totalPages = (int) Math.ceil((double) totalCount / size);
         
         // 시군구 이름 추가
@@ -366,7 +296,6 @@ public class DestinationService {
             item.put("lDongRegnCd", dest.getLDongRegnCd());
             item.put("lDongSignguCd", dest.getLDongSignguCd());
             
-            // 시군구 이름 조회
             String regionName = getRegionName(dest.getLDongRegnCd(), dest.getLDongSignguCd());
             item.put("regionName", regionName);
             
@@ -382,13 +311,9 @@ public class DestinationService {
         return result;
     }
 
-    /**
-     * 지역명 조회 (시도 + 시군구)
-     */
     private String getRegionName(String lDongRegnCd, String lDongSignguCd) {
         if (lDongRegnCd == null) return "";
         
-        // 시도 이름
         Map<String, String> regionMap = new HashMap<>();
         regionMap.put("11", "서울");
         regionMap.put("26", "부산");
@@ -407,10 +332,11 @@ public class DestinationService {
         regionMap.put("47", "경북");
         regionMap.put("48", "경남");
         regionMap.put("50", "제주");
+        regionMap.put("51", "강원");
+        regionMap.put("52", "전북");
         
         String sidoName = regionMap.getOrDefault(lDongRegnCd, "");
         
-        // 시군구 이름 조회
         String signguName = "";
         if (lDongSignguCd != null && !lDongSignguCd.isEmpty()) {
             try {
@@ -424,16 +350,10 @@ public class DestinationService {
         return sidoName + " " + signguName;
     }
 
-    /**
-     * 여행지 상세 조회
-     */
     public Destination getDestinationById(String contentid) {
         return destinationDao.selectDestinationById(contentid);
     }
 
-    /**
-     * 관광타입 목록 반환
-     */
     public Map<String, String> getContentTypes() {
         return CONTENT_TYPES;
     }
@@ -531,104 +451,64 @@ public class DestinationService {
     }
 
     /**
-     * 상세정보 없는 여행지 개수
+     * 키워드 검색 (기존)
      */
-    public int countDestinationsWithoutDetail() {
-        return destinationDao.countDestinationsWithoutDetail();
+    public Map<String, Object> searchDestinations(String keyword, int page, int size) {
+        return searchDestinationsWithRegion(keyword, page, size, null, null);
     }
 
     /**
-     * 이미지 총 개수
+     * 키워드 검색 + 지역 필터
      */
-    public int getImageCount() {
-        return destinationImageDao.countImages();
-    }
-    
-    /**
-     * 썸네일 이미지 다운로드
-     * @param startIndex 시작 인덱스
-     * @param endIndex 끝 인덱스
-     * @return 다운로드 건수
-     */
-    public int downloadThumbnails(int startIndex, int endIndex) {
-        log.info("========== 썸네일 다운로드 시작 ({}~{}번째) ==========", startIndex, endIndex);
-
-        int downloadCount = 0;
-        String uploadDir = "src/main/resources/static/thumbnails/";
+    public Map<String, Object> searchDestinationsWithRegion(
+            String keyword, int page, int size,
+            String lDongRegnCd, String lDongSignguCd) {
         
-        // 폴더 생성
-        java.io.File dir = new java.io.File(uploadDir);
-        if (!dir.exists()) {
-            dir.mkdirs();
+        Map<String, Object> result = new HashMap<>();
+        
+        int offset = (page - 1) * size;
+        List<Destination> list;
+        int totalCount;
+
+        if (lDongRegnCd != null && !lDongRegnCd.isEmpty()) {
+            list = destinationDao.searchByKeywordAndRegion(keyword, lDongRegnCd, lDongSignguCd, offset, size);
+            totalCount = destinationDao.countByKeywordAndRegion(keyword, lDongRegnCd, lDongSignguCd);
+        } else {
+            list = destinationDao.searchByKeyword(keyword, offset, size);
+            totalCount = destinationDao.countByKeyword(keyword);
         }
 
-        List<Destination> destinations = destinationDao.selectDestinationsByRange(startIndex, endIndex);
-        log.info("조회된 여행지: {}건", destinations.size());
-
-        for (Destination dest : destinations) {
-            try {
-                String thumbnailUrl = dest.getFirstimage2();
-                
-                // 썸네일 URL이 없으면 스킵
-                if (thumbnailUrl == null || thumbnailUrl.isEmpty()) {
-                    continue;
-                }
-
-                // 파일 저장 경로
-                String fileName = dest.getContentid() + ".jpg";
-                String filePath = uploadDir + fileName;
-                
-                // 이미 다운로드된 파일이면 스킵
-                java.io.File file = new java.io.File(filePath);
-                if (file.exists()) {
-                    continue;
-                }
-
-                // 이미지 다운로드
-                byte[] imageBytes = restTemplate.getForObject(thumbnailUrl, byte[].class);
-                
-                if (imageBytes != null && imageBytes.length > 0) {
-                    java.nio.file.Files.write(file.toPath(), imageBytes);
-                    downloadCount++;
-                    
-                    if (downloadCount % 100 == 0) {
-                        log.info("썸네일 다운로드 진행 중... {}건 완료", downloadCount);
-                    }
-                }
-
-                // 다운로드 간격 (서버 부하 방지)
-                Thread.sleep(30);
-
-            } catch (Exception e) {
-                log.error("썸네일 다운로드 실패 (contentid: {}): {}", dest.getContentid(), e.getMessage());
-            }
-        }
-
-        log.info("========== 썸네일 다운로드 완료: {}건 ==========", downloadCount);
-        return downloadCount;
-    }
-
-    /**
-     * 썸네일 다운로드 현황
-     */
-    public Map<String, Object> getThumbnailStatus() {
-        Map<String, Object> status = new HashMap<>();
+        int totalPages = (int) Math.ceil((double) totalCount / size);
         
-        String uploadDir = "src/main/resources/static/thumbnails/";
-        java.io.File dir = new java.io.File(uploadDir);
-        
-        int downloadedCount = 0;
-        if (dir.exists()) {
-            downloadedCount = dir.listFiles() != null ? dir.listFiles().length : 0;
+        // 데이터 변환
+        List<Map<String, Object>> dataWithRegion = new java.util.ArrayList<>();
+        for (Destination dest : list) {
+            Map<String, Object> item = new HashMap<>();
+            item.put("contentid", dest.getContentid());
+            item.put("contenttypeid", dest.getContenttypeid());
+            item.put("title", dest.getTitle());
+            item.put("addr1", dest.getAddr1());
+            item.put("addr2", dest.getAddr2());
+            item.put("tel", dest.getTel());
+            item.put("firstimage", dest.getFirstimage());
+            item.put("firstimage2", dest.getFirstimage2());
+            item.put("mapx", dest.getMapx());
+            item.put("mapy", dest.getMapy());
+            item.put("lDongRegnCd", dest.getLDongRegnCd());
+            item.put("lDongSignguCd", dest.getLDongSignguCd());
+            
+            String regionName = getRegionName(dest.getLDongRegnCd(), dest.getLDongSignguCd());
+            item.put("regionName", regionName);
+            
+            dataWithRegion.add(item);
         }
         
-        // firstimage2가 있는 여행지 수
-        int totalWithThumbnail = destinationDao.countDestinationsWithThumbnail();
+        result.put("data", dataWithRegion);
+        result.put("currentPage", page);
+        result.put("totalPages", totalPages);
+        result.put("totalCount", totalCount);
+        result.put("pageSize", size);
         
-        status.put("downloadedCount", downloadedCount);
-        status.put("totalWithThumbnail", totalWithThumbnail);
-        status.put("remainingCount", totalWithThumbnail - downloadedCount);
-        
-        return status;
+        return result;
     }
 }

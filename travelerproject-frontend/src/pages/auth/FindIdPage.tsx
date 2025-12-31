@@ -1,6 +1,7 @@
 /**
  * FindIdPage.tsx - 아이디 찾기 페이지
- * 이메일 인증을 통한 아이디 찾기
+ * 이메일로 아이디 찾기 (이메일로 아이디 전송)
+ * API 연동 완료
  */
 
 import { useState } from 'react';
@@ -8,40 +9,75 @@ import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import { ArrowLeft } from 'lucide-react';
+import { authApi } from '../../api/authApi';
 
 interface FindIdPageProps {
   onNavigate: (page: string) => void;
 }
 
 export function FindIdPage({ onNavigate }: FindIdPageProps) {
-  const [name, setName] = useState('');
+  // 상태 관리
   const [email, setEmail] = useState('');
-  const [foundId, setFoundId] = useState('');
   const [isSearching, setIsSearching] = useState(false);
+  const [isSent, setIsSent] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
-  const handleFindId = () => {
-    if (!name) {
-      alert('이름을 입력해주세요.');
-      return;
-    }
-
+  /**
+   * 아이디 찾기 요청
+   * 이메일로 아이디를 발송합니다
+   */
+  const handleFindId = async () => {
+    // 유효성 검사
     if (!email) {
-      alert('이메일을 입력해주세요.');
+      setErrorMessage('이메일을 입력해주세요.');
       return;
     }
 
-    // 목 데이터로 아이디 찾기 시뮬레이션
+    // 이메일 형식 검사
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setErrorMessage('올바른 이메일 형식을 입력해주세요.');
+      return;
+    }
+
     setIsSearching(true);
-    setTimeout(() => {
-      setFoundId('user****');
+    setErrorMessage('');
+
+    try {
+      const response = await authApi.findUsername(email);
+
+      if (response.status === 'success') {
+        setIsSent(true);
+      } else {
+        setErrorMessage(response.message || '아이디 찾기에 실패했습니다.');
+      }
+    } catch (error: any) {
+      console.error('아이디 찾기 오류:', error);
+      setErrorMessage(
+        error.response?.data?.message || 
+        '해당 이메일로 가입된 계정이 없습니다.'
+      );
+    } finally {
       setIsSearching(false);
-    }, 1000);
+    }
   };
 
+  /**
+   * 다시 찾기
+   */
   const handleReset = () => {
-    setName('');
     setEmail('');
-    setFoundId('');
+    setIsSent(false);
+    setErrorMessage('');
+  };
+
+  /**
+   * 엔터키로 아이디 찾기
+   */
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !isSearching) {
+      handleFindId();
+    }
   };
 
   return (
@@ -55,22 +91,18 @@ export function FindIdPage({ onNavigate }: FindIdPageProps) {
             <ArrowLeft className="w-4 h-4" />
             <span>로그인으로 돌아가기</span>
           </button>
-          <h1 className="text-center">아이디 찾기</h1>
+          <h1 className="text-2xl font-bold text-center">아이디 찾기</h1>
         </div>
 
         <div className="space-y-6 bg-white p-8 rounded-lg shadow-lg">
-          {!foundId ? (
+          {!isSent ? (
             <>
-              {/* 이름 입력 */}
-              <div>
-                <Label htmlFor="name">이름</Label>
-                <Input
-                  id="name"
-                  type="text"
-                  placeholder="이름을 입력하세요"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                />
+              {/* 안내 문구 */}
+              <div className="text-center mb-4">
+                <p className="text-sm text-gray-600">
+                  가입 시 등록한 이메일을 입력하시면<br />
+                  해당 이메일로 아이디를 보내드립니다.
+                </p>
               </div>
 
               {/* 이메일 입력 */}
@@ -81,30 +113,52 @@ export function FindIdPage({ onNavigate }: FindIdPageProps) {
                   type="email"
                   placeholder="example@email.com"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    setErrorMessage('');
+                  }}
+                  onKeyPress={handleKeyPress}
                 />
               </div>
+
+              {/* 에러 메시지 */}
+              {errorMessage && (
+                <p className="text-sm text-red-500">{errorMessage}</p>
+              )}
 
               <Button
                 onClick={handleFindId}
                 className="w-full"
                 disabled={isSearching}
               >
-                {isSearching ? '검색 중...' : '아이디 찾기'}
+                {isSearching ? '전송 중...' : '아이디 찾기'}
               </Button>
+
+              {/* 비밀번호 찾기 링크 */}
+              <div className="text-center">
+                <button
+                  onClick={() => onNavigate('find-password')}
+                  className="text-sm text-blue-600 hover:underline"
+                >
+                  비밀번호가 기억나지 않으세요?
+                </button>
+              </div>
             </>
           ) : (
             <>
-              {/* 결과 화면 */}
+              {/* 발송 완료 화면 */}
               <div className="text-center py-6">
                 <div className="mb-4">
                   <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <span className="text-3xl">✓</span>
+                    <span className="text-3xl">✉️</span>
                   </div>
-                  <p className="text-gray-600 mb-2">회원님의 아이디는</p>
-                  <p className="text-2xl font-bold text-blue-600 mb-4">{foundId}</p>
+                  <p className="text-lg font-medium mb-2">이메일을 확인해주세요!</p>
+                  <p className="text-gray-600 mb-2">
+                    <span className="font-medium text-blue-600">{email}</span>
+                  </p>
                   <p className="text-sm text-gray-500">
-                    {email}로 가입된 아이디입니다.
+                    위 이메일로 아이디를 발송했습니다.<br />
+                    메일함을 확인해주세요.
                   </p>
                 </div>
               </div>

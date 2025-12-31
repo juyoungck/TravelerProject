@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" 
+    "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+    플래너 장소 Mapper XML
+    - planner_place 테이블 CRUD 쿼리
+    - destination 테이블 조인 쿼리
+-->
+<mapper namespace="com.traveler.app.dao.PlannerPlaceDao">
+
+    <!-- 플래너 장소 기본 ResultMap -->
+    <resultMap id="plannerPlaceResultMap" type="com.traveler.app.entity.PlannerPlace">
+        <id property="placeId" column="place_id"/>
+        <result property="dayId" column="day_id"/>
+        <result property="contentid" column="contentid"/>
+        <result property="sortOrder" column="sort_order"/>
+    </resultMap>
+
+    <!-- 장소 상세 DTO ResultMap (destination 정보 포함) -->
+    <resultMap id="placeDetailResultMap" type="com.traveler.app.dto.PlannerDetailDto$PlaceDetailDto">
+        <id property="placeId" column="place_id"/>
+        <result property="contentid" column="contentid"/>
+        <result property="sortOrder" column="sort_order"/>
+        <result property="title" column="title"/>
+        <result property="addr1" column="addr1"/>
+        <result property="firstimage" column="firstimage"/>
+        <result property="contenttypeid" column="contenttypeid"/>
+        <result property="mapx" column="mapx"/>
+        <result property="mapy" column="mapy"/>
+    </resultMap>
+
+    <!-- 플래너 장소 생성 -->
+    <insert id="insertPlannerPlace" parameterType="com.traveler.app.entity.PlannerPlace">
+        <selectKey keyProperty="placeId" resultType="long" order="AFTER">
+            SELECT seq_planner_place.CURRVAL FROM DUAL
+        </selectKey>
+        INSERT INTO planner_place (
+            day_id, contentid, sort_order
+        ) VALUES (
+            #{dayId}, #{contentid}, #{sortOrder}
+        )
+    </insert>
+
+    <!-- 플래너 장소 일괄 생성 -->
+    <insert id="insertPlannerPlaces" parameterType="list">
+        INSERT ALL
+        <foreach collection="places" item="place">
+            INTO planner_place (day_id, contentid, sort_order)
+            VALUES (#{place.dayId}, #{place.contentid}, #{place.sortOrder})
+        </foreach>
+        SELECT * FROM DUAL
+    </insert>
+
+    <!-- 플래너 장소 삭제 -->
+    <delete id="deletePlannerPlace">
+        DELETE FROM planner_place WHERE place_id = #{placeId}
+    </delete>
+
+    <!-- 일차의 모든 장소 삭제 -->
+    <delete id="deletePlannerPlacesByDayId">
+        DELETE FROM planner_place WHERE day_id = #{dayId}
+    </delete>
+
+    <!-- 일차의 모든 장소 조회 (상세 정보 포함) -->
+    <select id="selectPlacesByDayId" resultMap="placeDetailResultMap">
+        SELECT 
+            pp.place_id,
+            pp.contentid,
+            pp.sort_order,
+            d.title,
+            d.addr1,
+            d.firstimage,
+            d.contenttypeid,
+            d.mapx,
+            d.mapy
+        FROM planner_place pp
+        JOIN destination d ON pp.contentid = d.contentid
+        WHERE pp.day_id = #{dayId}
+        ORDER BY pp.sort_order ASC
+    </select>
+
+    <!-- 일차의 모든 장소 조회 (Entity만) -->
+    <select id="selectPlannerPlacesByDayId" resultMap="plannerPlaceResultMap">
+        SELECT * FROM planner_place 
+        WHERE day_id = #{dayId}
+        ORDER BY sort_order ASC
+    </select>
+
+    <!-- 플래너의 첫 번째 장소 이미지 조회 (목록용 썸네일) -->
+    <select id="selectFirstPlaceImage" resultType="string">
+        SELECT d.firstimage 
+        FROM planner_day pd 
+        JOIN planner_place pp ON pd.day_id = pp.day_id
+        JOIN destination d ON pp.contentid = d.contentid
+        WHERE pd.pln_id = #{plnId} 
+        AND pd.day_number = 1
+        AND pp.sort_order = 1
+        AND ROWNUM = 1
+    </select>
+
+</mapper>

@@ -7,12 +7,14 @@ TravelerProject-backend/bin/
 TravelerProject-backend/.settings/
 TravelerProject-backend/.classpath
 TravelerProject-backend/.project
+TravelerProject-backend/target/
 
 # ============================
 # Frontend (React)
 # ============================
 traveler-frontend/node_modules/
 traveler-frontend/build/
+traveler-frontend/dist/
 
 # ============================
 # IDE
@@ -20,17 +22,40 @@ traveler-frontend/build/
 .idea/
 *.iml
 .vscode/
+*.swp
+*.swo
 
 # ============================
 # OS
 # ============================
 .DS_Store
 Thumbs.db
+desktop.ini
 
 # ============================
-# 환경 설정 (보안)
+# 환경 설정 (보안) ⚠️ 중요
 # ============================
 *.env
+.env.local
+.env.production
 application-prod.properties
 **/application-secret.properties
+
+# ============================
+# 업로드/생성 파일
+# ============================
 **/static/thumbnails/
+**/uploads/
+**/logs/
+*.log
+
+# ============================
+# 패키지 잠금 (선택)
+# ============================
+# package-lock.json
+# yarn.lock
+
+# ============================
+# 기타
+# ============================
+**/netstat
