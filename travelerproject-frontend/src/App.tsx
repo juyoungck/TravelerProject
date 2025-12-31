@@ -18,7 +18,7 @@ import { SharedPlannerPage } from "./pages/planner/SharedPlannerPage";
 
 /**
  * App.tsx - 메인 애플리케이션
- * ★ 테스트용: 자동 admin 로그인 활성화
+ * 라우팅 및 전역 상태 관리
  */
 export default function App() {
   const [currentPage, setCurrentPage] = useState("home");
@@ -28,7 +28,6 @@ export default function App() {
   
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [selectedDestinationId, setSelectedDestinationId] = useState<number | null>(null);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
 
   const [selectedPlanner, setSelectedPlanner] = useState<any>(null);
   const [favoriteDestinations, setFavoriteDestinations] = useState<any[]>([]);
@@ -41,6 +40,41 @@ export default function App() {
   
   // 공유 링크 상태
   const [shareLink, setShareLink] = useState<string | null>(null);
+
+  /**
+   * 페이지 로드 시 로그인 상태 확인
+   * localStorage에 토큰과 회원정보가 있으면 로그인 상태로 설정
+   */
+  useEffect(() => {
+    const checkLoginStatus = () => {
+      const accessToken = localStorage.getItem('accessToken');
+      const memberInfo = localStorage.getItem('memberInfo');
+      
+      if (accessToken && memberInfo) {
+        // 토큰 + 회원정보 둘 다 있으면 로그인 상태
+        setIsLoggedIn(true);
+        try {
+          const member = JSON.parse(memberInfo);
+          setCurrentUser({ mId: member.mId, nickname: member.nickname });
+          console.log('로그인 상태 복원:', member.nickname);
+        } catch (e) {
+          console.error('회원정보 파싱 오류:', e);
+          // 파싱 오류 시 로그아웃 처리
+          localStorage.removeItem('accessToken');
+          localStorage.removeItem('refreshToken');
+          localStorage.removeItem('memberInfo');
+          setIsLoggedIn(false);
+          setCurrentUser(null);
+        }
+      } else {
+        // 하나라도 없으면 로그아웃 상태
+        setIsLoggedIn(false);
+        setCurrentUser(null);
+      }
+    };
+    
+    checkLoginStatus();
+  }, []);
 
   /**
    * 소셜 로그인 콜백 처리
@@ -87,12 +121,7 @@ export default function App() {
         }, 2000);
       }
     }
-    
-    // 페이지 로드 시 로그인 상태 확인
-    const savedToken = localStorage.getItem('accessToken');
-    if (savedToken) {
-      setIsLoggedIn(true);
-      
+  }, []); 
 
   /**
    * URL 경로 파싱 - 공유 링크 감지
@@ -120,7 +149,7 @@ export default function App() {
   }, []);
 
   /**
-   * ★ URL 파라미터 파싱 - 새 탭에서 열릴 때 처리
+   * URL 파라미터 파싱 - 새 탭에서 열릴 때 처리
    * 예: http://localhost:5173/?page=travel-detail&contentid=126508
    */
   useEffect(() => {
@@ -128,7 +157,7 @@ export default function App() {
     const page = urlParams.get('page');
     const contentid = urlParams.get('contentid');
 
-    console.log('URL 파라미터:', { page, contentid }); // 디버깅용
+    console.log('URL 파라미터:', { page, contentid });
 
     // 여행지 상세 페이지로 이동
     if (page === 'travel-detail' && contentid) {
@@ -153,19 +182,9 @@ export default function App() {
     }
   }, []);
 
-  /** 
-   * ★★★ 테스트용: 자동 admin 로그인 ★★★
-   * DB: m_id=1, m_username='admin', m_nickname='관리자'
-   * TODO: 로그인 기능 완성 후 삭제
+  /**
+   * 페이지 이동 핸들러
    */
-  useEffect(() => {
-    const adminUser = { mId: 1, nickname: '관리자' };
-    setCurrentUser(adminUser);
-    setIsLoggedIn(true);
-    localStorage.setItem('user', JSON.stringify(adminUser));
-    console.log('★ 테스트용 자동 로그인: admin (mId: 1)');
-  }, []);
-
   const handleNavigate = (page: string) => {
     setCurrentPage(page);
     setShareLink(null);
@@ -176,40 +195,67 @@ export default function App() {
     window.scrollTo(0, 0);
   };
 
+  /**
+   * 로그인 성공 핸들러
+   */
   const handleLogin = (userData?: { mId: number; nickname: string }) => {
     setIsLoggedIn(true);
     if (userData) {
       setCurrentUser(userData);
-      localStorage.setItem('user', JSON.stringify(userData));
+    } else {
+      // userData가 없으면 localStorage에서 가져오기
+      const memberInfo = localStorage.getItem('memberInfo');
+      if (memberInfo) {
+        try {
+          const member = JSON.parse(memberInfo);
+          setCurrentUser({ mId: member.mId, nickname: member.nickname });
+        } catch (e) {
+          console.error('회원정보 파싱 오류:', e);
+        }
+      }
     }
     setCurrentPage("home");
   };
 
+  /**
+   * 로그아웃 핸들러
+   */
   const handleLogout = () => {
     // 토큰 삭제
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
     localStorage.removeItem('memberInfo');
+    localStorage.removeItem('user');
     
+    // 상태 초기화
     setIsLoggedIn(false);
     setCurrentUser(null);
-    localStorage.removeItem('user');
     setCurrentPage("home");
+    
+    console.log('로그아웃 완료');
   };
 
+  /**
+   * 회원탈퇴 핸들러
+   */
   const handleWithdraw = () => {
     // 토큰 삭제
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
     localStorage.removeItem('memberInfo');
+    localStorage.removeItem('user');
     
+    // 상태 초기화
     setIsLoggedIn(false);
     setCurrentUser(null);
-    localStorage.removeItem('user');
     setCurrentPage("home");
+    
     alert("회원탈퇴가 완료되었습니다.");
   };
 
+  /**
+   * 여행지 찜 토글
+   */
   const handleToggleFavorite = (destination: any) => {
     const isAlreadyFavorite = favoriteDestinations.some((fav) => fav.id === destination.id);
     if (isAlreadyFavorite) {
@@ -219,10 +265,16 @@ export default function App() {
     }
   };
 
+  /**
+   * 여행지 찜 삭제
+   */
   const handleRemoveFavorite = (id: number) => {
     setFavoriteDestinations(favoriteDestinations.filter((fav) => fav.id !== id));
   };
 
+  /**
+   * 플래너 찜 토글
+   */
   const handleToggleFavoritePlanner = (planner: any) => {
     const isAlreadyFavorite = favoritePlanners.some((fav) => fav.id === planner.id);
     if (isAlreadyFavorite) {
@@ -232,14 +284,23 @@ export default function App() {
     }
   };
 
+  /**
+   * 플래너 찜 삭제
+   */
   const handleRemoveFavoritePlanner = (id: number) => {
     setFavoritePlanners(favoritePlanners.filter((fav) => fav.id !== id));
   };
 
+  /**
+   * 리뷰 추가
+   */
   const handleAddReview = (review: any) => {
     setReviews([review, ...reviews]);
   };
 
+  /**
+   * 리뷰 삭제
+   */
   const handleDeleteReview = (reviewId: number) => {
     setReviews(reviews.filter((review) => review.id !== reviewId));
   };
@@ -295,6 +356,9 @@ export default function App() {
     return null;
   };
 
+  /**
+   * 페이지 렌더링
+   */
   const renderPage = () => {
     // 소셜 로그인 콜백 처리 중이면 콜백 화면 표시
     if (oauthStatus) {
@@ -375,8 +439,8 @@ export default function App() {
     }
 
     if (currentPage === "login") {
-  return <LoginPage onNavigate={handleNavigate} onLoginSuccess={handleLogin} />;
-  }
+      return <LoginPage onNavigate={handleNavigate} onLoginSuccess={handleLogin} />;
+    }
 
     if (currentPage === "signup") {
       return <SignupPage onNavigate={handleNavigate} />;
@@ -404,8 +468,8 @@ export default function App() {
             setCurrentPage("planner");
           }}
           onNavigateToDestination={(destinationId) => {
-          setSelectedDestinationId(destinationId?.toString() ?? null);
-          setCurrentPage("travel");
+            setSelectedDestinationId(destinationId?.toString() ?? null);
+            setCurrentPage("travel");
           }}
           reviews={reviews}
           onDeleteReview={handleDeleteReview}
@@ -413,6 +477,7 @@ export default function App() {
       );
     }
 
+    // 홈 페이지
     return (
       <>
         <FeaturedCarousel
