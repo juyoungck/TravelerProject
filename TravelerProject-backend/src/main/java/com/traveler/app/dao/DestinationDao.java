@@ -14,12 +14,9 @@ import com.traveler.app.entity.Destination;
 @Mapper
 public interface DestinationDao {
     
-    /** 여행지 저장 (없으면 INSERT, 있으면 UPDATE) */
-    void mergeDestination(Destination destination);
-    
-    /** 여행지 단건 조회 */
+	/** 여행지 단건 조회 */
     Destination selectDestinationById(String contentid);
-    
+	
     /** 여행지 목록 조회 (관광타입별) */
     List<Destination> selectDestinationsByType(@Param("contenttypeid") String contenttypeid);
     
@@ -34,9 +31,7 @@ public interface DestinationDao {
             @Param("offset") int offset,
             @Param("limit") int limit);
 
-    /** 관광타입별 총 개수 */
-    int countDestinationByType(@Param("contenttypeid") String contenttypeid);
-
+  
     /** 시군구 이름 조회 */
     String selectSignguName(@Param("lDongRegnCd") String lDongRegnCd, @Param("lDongSignguCd") String lDongSignguCd);
     
