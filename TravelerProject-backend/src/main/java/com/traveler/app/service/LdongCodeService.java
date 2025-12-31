@@ -33,13 +33,30 @@ public class LdongCodeService {
     }
 
     /**
-     * 저장된 코드 개수 조회
+     * 저장된 시도 코드 개수 조회
      */
     public int getRegnCodeCount() {
         return ldongCodeDao.countRegnCode();
     }
 
+    /**
+     * 저장된 시군구 코드 개수 조회
+     */
     public int getSignguCodeCount() {
         return ldongCodeDao.countSignguCode();
+    }
+
+    /**
+     * 모든 시도 코드 조회
+     */
+    public List<LdongRegnCode> getAllRegnCodes() {
+        return ldongCodeDao.selectAllRegnCode();
+    }
+
+    /**
+     * 특정 시도의 시군구 코드 조회
+     */
+    public List<LdongSignguCode> getSignguCodesByRegnCd(String lDongRegnCd) {
+        return ldongCodeDao.selectSignguCodeByRegnCd(lDongRegnCd);
     }
 }
