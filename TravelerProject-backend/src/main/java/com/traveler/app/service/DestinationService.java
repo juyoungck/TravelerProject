@@ -22,7 +22,7 @@ import lombok.extern.slf4j.Slf4j;
  * 여행지 관리 서비스
  * API에서 가져온 여행지 데이터를 DB에 저장/조회
  */
-@Service
+@Service  
 @Slf4j
 public class DestinationService {
 
@@ -59,11 +59,14 @@ public class DestinationService {
     public int getApiTotalCount(String contenttypeid) {
         return tourApiService.fetchDestinationTotalCount(contenttypeid);
     }
-
-    // ============================================
-    // 동기화 메서드
-    // ============================================
-
+    
+    /**
+     * 특정 관광타입 여행지 동기화
+     * @param contenttypeid 관광타입ID
+     * @param startPage 시작 페이지 (1부터 시작)
+     * @param endPage 끝 페이지
+     * @return 저장된 건수
+     */
     @Transactional
     public int syncDestinations(String contenttypeid, int maxPages) {
         int totalSaved = 0;
@@ -353,6 +356,98 @@ public class DestinationService {
 
     public Map<String, String> getContentTypes() {
         return CONTENT_TYPES;
+    }
+
+    /**
+     * 상세정보 수집 (overview, homepage)
+     * @param startIndex 시작 인덱스 (1부터)
+     * @param endIndex 끝 인덱스
+     * @return 저장된 건수
+     */
+    @Transactional
+    public int syncDestinationDetails(int startIndex, int endIndex) {
+        log.info("========== 상세정보 수집 시작 ({}~{}번째) ==========", startIndex, endIndex);
+
+        int savedCount = 0;
+
+        List<Destination> destinations = destinationDao.selectDestinationsByRange(startIndex, endIndex);
+        log.info("조회된 여행지: {}건", destinations.size());
+
+        for (Destination dest : destinations) {
+            try {
+                DestinationDetailDto detail = tourApiService.fetchDestinationDetail(dest.getContentid());
+                
+                if (detail != null) {
+                    destinationDao.updateDestinationDetail(
+                            dest.getContentid(),
+                            detail.getOverview(),
+                            detail.getHomepage()
+                    );
+                    savedCount++;
+                    
+                    if (savedCount % 100 == 0) {
+                        log.info("상세정보 진행 중... {}건 완료", savedCount);
+                    }
+                }
+
+                // API 호출 간격
+                Thread.sleep(50);
+
+            } catch (Exception e) {
+                log.error("상세정보 저장 실패 (contentid: {}): {}", dest.getContentid(), e.getMessage());
+            }
+        }
+
+        log.info("========== 상세정보 수집 완료: {}건 ==========", savedCount);
+        return savedCount;
+    }
+
+    /**
+     * 이미지 목록 수집
+     * @param startIndex 시작 인덱스 (1부터)
+     * @param endIndex 끝 인덱스
+     * @return 처리된 여행지 수
+     */
+    @Transactional
+    public int syncDestinationImages(int startIndex, int endIndex) {
+        log.info("========== 이미지 수집 시작 ({}~{}번째) ==========", startIndex, endIndex);
+
+        int processedCount = 0;
+        int imageCount = 0;
+
+        List<Destination> destinations = destinationDao.selectDestinationsByRange(startIndex, endIndex);
+        log.info("조회된 여행지: {}건", destinations.size());
+
+        for (Destination dest : destinations) {
+            try {
+                List<DestinationImageDto> images = tourApiService.fetchDestinationImages(dest.getContentid());
+                
+                for (DestinationImageDto imgDto : images) {
+                    DestinationImage image = DestinationImage.builder()
+                            .contentid(imgDto.getContentid())
+                            .originimgurl(imgDto.getOriginimgurl())
+                            .build();
+                    
+                    destinationImageDao.insertImage(image);
+                    imageCount++;
+                }
+                
+                processedCount++;
+                
+                if (processedCount % 100 == 0) {
+                    log.info("이미지 진행 중... {}건 처리, 이미지 {}장 저장", processedCount, imageCount);
+                }
+
+                // API 호출 간격
+                Thread.sleep(50);
+
+            } catch (Exception e) {
+                log.error("이미지 저장 실패 (contentid: {}): {}", dest.getContentid(), e.getMessage());
+            }
+        }
+
+        log.info("========== 이미지 수집 완료: {}건 처리, 이미지 {}장 ==========", processedCount, imageCount);
+        return processedCount;
     }
 
     /**

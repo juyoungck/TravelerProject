@@ -13,9 +13,12 @@ import com.traveler.app.entity.Destination;
  */
 @Mapper
 public interface DestinationDao {
+	
+	/** 여행지 저장 (없으면 INSERT, 있으면 UPDATE) */
+    void mergeDestination(Destination destination);
     
     /** 여행지 단건 조회 */
-    Destination selectDestinationById(String contentid);
+	Destination selectDestinationById(String contentid);
 	
     /** 여행지 목록 조회 (관광타입별) */
     List<Destination> selectDestinationsByType(@Param("contenttypeid") String contenttypeid);
@@ -48,6 +51,13 @@ public interface DestinationDao {
     /** 여행지 개수 조회 (관광타입별) */
     int countDestinationByType(@Param("contenttypeid") String contenttypeid);
 
+    /** 상세정보 없는 여행지 개수 */
+    int countDestinationsWithoutDetail();
+    
+    /** 썸네일이 있는 여행지 수 */
+    int countDestinationsWithThumbnail();
+
+}
     /** 여행지 개수 조회 (관광타입 + 지역) */
     int countDestinationByTypeAndRegion(
             @Param("contenttypeid") String contenttypeid,

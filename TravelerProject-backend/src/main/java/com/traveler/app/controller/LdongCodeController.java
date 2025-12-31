@@ -72,16 +72,43 @@ public class LdongCodeController {
     public Map<String, Object> getSignguCodes(@PathVariable("lDongRegnCd") String lDongRegnCd) {
         Map<String, Object> response = new HashMap<>();
         
-        try {
-            List<LdongSignguCode> list = ldongCodeService.getSignguCodesByRegnCd(lDongRegnCd);
-            response.put("status", "success");
-            response.put("data", list);
-            response.put("count", list.size());
-            response.put("lDongRegnCd", lDongRegnCd);
-        } catch (Exception e) {
-            response.put("status", "fail");
-            response.put("message", e.getMessage());
-        }
+        List<LdongRegnCode> list = ldongCodeService.getAllRegnCodes();
+        response.put("status", "success");
+        response.put("count", list.size());
+        response.put("data", list);
+        
+        return response;
+    }
+
+    /**
+     * 시군구 코드 목록 조회 (시도별)
+     * 호출 URL: GET /api/ldong/signgu?regnCd=11
+     */
+    @GetMapping("/signgu")
+    public Map<String, Object> getSignguCodes(@RequestParam("regnCd") String regnCd) {
+        Map<String, Object> response = new HashMap<>();
+        
+        List<LdongSignguCode> list = ldongCodeService.getSignguCodesByRegnCd(regnCd);
+        response.put("status", "success");
+        response.put("regnCd", regnCd);
+        response.put("count", list.size());
+        response.put("data", list);
+        
+        return response;
+    }
+ 
+
+    /**
+     * 저장된 코드 현황 조회
+     * 호출 URL: GET /api/ldong/status
+     */
+    @GetMapping("/status")
+    public Map<String, Object> getStatus() {
+        Map<String, Object> response = new HashMap<>();
+        
+        response.put("status", "success");
+        response.put("regnCodeCount", ldongCodeService.getRegnCodeCount());
+        response.put("signguCodeCount", ldongCodeService.getSignguCodeCount());
         
         return response;
     }
