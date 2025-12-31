@@ -5,7 +5,6 @@ import java.util.List;
 import java.util.Map;
 
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -29,33 +28,20 @@ public class LdongCodeController {
     }
     
     /**
-     * 저장된 코드 현황 조회
-     * 호출 URL: GET /api/ldong/status
+     * API 응답 원본 확인 (디버그용)
+     * 호출 URL: GET /api/ldong/test-api
      */
-    @GetMapping("/status")
-    public Map<String, Object> getStatus() {
-        Map<String, Object> response = new HashMap<>();
-        
-        response.put("status", "success");
-        response.put("regnCodeCount", ldongCodeService.getRegnCodeCount());
-        response.put("signguCodeCount", ldongCodeService.getSignguCodeCount());
-        
-        return response;
-    }
-
-    /**
-     * 시도 목록 조회
-     * 호출 URL: GET /api/ldong/regn
-     */
-    @GetMapping("/regn")
-    public Map<String, Object> getRegnCodes() {
+    
+    
+    @GetMapping("/test-api")
+    public Map<String, Object> testApi() {
         Map<String, Object> response = new HashMap<>();
         
         try {
-            List<LdongRegnCode> list = ldongCodeService.getAllRegnCodes();
+            // TourApiService를 통해 원본 데이터 확인
+            var regnCodes = ldongCodeService.fetchRegnCodesForTest();
             response.put("status", "success");
-            response.put("data", list);
-            response.put("count", list.size());
+            response.put("data", regnCodes);
         } catch (Exception e) {
             response.put("status", "fail");
             response.put("message", e.getMessage());
@@ -65,11 +51,32 @@ public class LdongCodeController {
     }
 
     /**
-     * 특정 시도의 시군구 목록 조회
-     * 호출 URL: GET /api/ldong/signgu/{lDongRegnCd}
+     * 법정동 코드 동기화 (API → DB 저장)
+     * 호출 URL: GET /api/ldong/sync
      */
-    @GetMapping("/signgu/{lDongRegnCd}")
-    public Map<String, Object> getSignguCodes(@PathVariable("lDongRegnCd") String lDongRegnCd) {
+    @GetMapping("/sync")
+    public Map<String, Object> syncLdongCodes() {
+        Map<String, Object> response = new HashMap<>();
+        
+        try {
+            int count = ldongCodeService.syncAllLdongCodes();
+            response.put("status", "success");
+            response.put("message", "법정동 코드 동기화 완료");
+            response.put("totalCount", count);
+        } catch (Exception e) {
+            response.put("status", "fail");
+            response.put("message", "동기화 실패: " + e.getMessage());
+        }
+        
+        return response;
+    }
+
+    /**
+     * 시도 코드 목록 조회
+     * 호출 URL: GET /api/ldong/regn
+     */
+    @GetMapping("/regn")
+    public Map<String, Object> getRegnCodes() {
         Map<String, Object> response = new HashMap<>();
         
         List<LdongRegnCode> list = ldongCodeService.getAllRegnCodes();
@@ -96,7 +103,6 @@ public class LdongCodeController {
         
         return response;
     }
- 
 
     /**
      * 저장된 코드 현황 조회
