@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" 
+    "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.traveler.app.dao.SearchDao">
+
+    <!-- 여행지 검색 (이름, 주소) -->
+    <select id="searchDestinations" resultType="map">
+        SELECT * FROM (
+            SELECT 
+                d.contentid,
+                d.title,
+                d.addr1,
+                d.firstimage2,
+                s.SIGNGU_NAME AS regionName,
+                ROWNUM AS rn
+            FROM (
+                SELECT * FROM destination
+                WHERE LOWER(title) LIKE '%' || LOWER(#{keyword}) || '%'
+                   OR LOWER(addr1) LIKE '%' || LOWER(#{keyword}) || '%'
+                ORDER BY contentid asc
+            ) d
+            LEFT JOIN ldong_signgu_code s 
+                ON d.lDongRegnCd = s.LDONGREGNCD 
+               AND d.lDongSignguCd = s.LDONGSIGNGUCD
+            WHERE ROWNUM &lt;= #{offset} + #{limit}
+        )
+        WHERE rn > #{offset}
+    </select>
+
+    <!-- 여행지 검색 개수 -->
+    <select id="countSearchDestinations" resultType="int">
+        SELECT COUNT(*) FROM destination
+        WHERE LOWER(title) LIKE '%' || LOWER(#{keyword}) || '%'
+           OR LOWER(addr1) LIKE '%' || LOWER(#{keyword}) || '%'
+    </select>
+
+    <!-- 플래너 검색 (이름) -->
+    <select id="searchPlanners" resultType="map">
+        SELECT * FROM (
+            SELECT 
+                p.pln_id AS plnId,
+                p.pln_title AS plnTitle,
+                p.start_date AS startDate,
+                p.end_date AS endDate,
+                p.total_days AS totalDays,
+                s.SIGNGU_NAME AS regionName,
+                ROWNUM AS rn
+            FROM (
+                SELECT * FROM planner
+                WHERE LOWER(pln_title) LIKE '%' || LOWER(#{keyword}) || '%'
+                  AND is_public = 1
+                ORDER BY created_at DESC
+            ) p
+            LEFT JOIN ldong_signgu_code s 
+                ON p.lDongRegnCd = s.LDONGREGNCD 
+               AND p.lDongSignguCd = s.LDONGSIGNGUCD
+            WHERE ROWNUM &lt;= #{offset} + #{limit}
+        )
+        WHERE rn > #{offset}
+    </select>
+
+    <!-- 플래너 검색 개수 -->
+    <select id="countSearchPlanners" resultType="int">
+        SELECT COUNT(*) FROM planner
+        WHERE LOWER(pln_title) LIKE '%' || LOWER(#{keyword}) || '%'
+          AND is_public = 1
+    </select>
+
+</mapper>

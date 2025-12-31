@@ -1,204 +1,24 @@
 /**
  * SearchModal.tsx - 통합 검색 모달
- * 여행지, 플래너, 게시판 등 전체 검색 기능
+ * 탭: 전체 / 여행지 / 플래너
+ * 페이징: 이전/다음 버튼
  */
 
-import { useState } from 'react';
-import { X, Search, MapPin, Calendar, Users } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { X, Search, MapPin, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Input } from '../ui/input';
 import { Button } from '../ui/button';
+import { searchDestinations, searchPlanners } from '../../api/searchApi';
 
 interface SearchResult {
-  id: number;
+  id: string;
   type: '여행지' | '플래너';
   title: string;
   subtitle: string;
   image?: string;
 }
 
-// 플래너 전체 데이터 (미리보기에 필요)
-const plannerFullData: Record<number, any> = {
-  2: {
-    id: 2,
-    title: '경복궁 근처 맛집 투어',
-    author: 'traveler1',
-    region: '서울',
-    days: 3,
-    image: 'https://images.unsplash.com/photo-1583417319070-4a69db38a482?w=800',
-    likes: 324,
-  },
-  4: {
-    id: 4,
-    title: 'N서울타워 야경 데이트 코스',
-    author: 'traveler2',
-    region: '서울',
-    days: 2,
-    image: 'https://images.unsplash.com/photo-1583417319070-4a69db38a482?w=800',
-    likes: 256,
-  },
-  6: {
-    id: 6,
-    title: '부산 해운대 바다 여행',
-    author: 'traveler3',
-    region: '부산',
-    days: 3,
-    image: 'https://images.unsplash.com/photo-1590735213920-68192a487bc2?w=800',
-    likes: 412,
-  },
-  8: {
-    id: 8,
-    title: '제주도 일주 코스',
-    author: 'traveler4',
-    region: '제주',
-    days: 5,
-    image: 'https://images.unsplash.com/photo-1559827260-dc66d52bef19?w=800',
-    likes: 589,
-  },
-  10: {
-    id: 10,
-    title: '경주 역사 탐방',
-    author: 'traveler5',
-    region: '경주',
-    days: 3,
-    image: 'https://images.unsplash.com/photo-1583417319070-4a69db38a482?w=800',
-    likes: 187,
-  },
-  12: {
-    id: 12,
-    title: '강릉 바다 여행',
-    author: 'traveler6',
-    region: '강릉',
-    days: 3,
-    image: 'https://images.unsplash.com/photo-1590735213920-68192a487bc2?w=800',
-    likes: 298,
-  },
-  14: {
-    id: 14,
-    title: '전주 한옥마을 투어',
-    author: 'traveler7',
-    region: '전주',
-    days: 2,
-    image: 'https://images.unsplash.com/photo-1583417319070-4a69db38a482?w=800',
-    likes: 345,
-  },
-  16: {
-    id: 16,
-    title: '여수 낭만 포차 투어',
-    author: 'traveler8',
-    region: '여수',
-    days: 3,
-    image: 'https://images.unsplash.com/photo-1590735213920-68192a487bc2?w=800',
-    likes: 423,
-  },
-};
-
-// Mock 검색 데이터
-const mockSearchData: SearchResult[] = [
-  {
-    id: 1,
-    type: '여행지',
-    title: '경복궁',
-    subtitle: '서울 종로구',
-    image: 'https://images.unsplash.com/photo-1583417319070-4a69db38a482?w=100',
-  },
-  {
-    id: 2,
-    type: '플래너',
-    title: '경복궁 근처 맛집 투어',
-    subtitle: '2박 3일 서울 여행',
-  },
-  {
-    id: 3,
-    type: '여행지',
-    title: 'N서울타워',
-    subtitle: '서울 용산구',
-    image: 'https://images.unsplash.com/photo-1583417319070-4a69db38a482?w=100',
-  },
-  {
-    id: 4,
-    type: '플래너',
-    title: 'N서울타워 야경 데이트 코스',
-    subtitle: '1박 2일 서울 여행',
-  },
-  {
-    id: 5,
-    type: '여행지',
-    title: '해운대 해수욕장',
-    subtitle: '부산 해운대구',
-    image: 'https://images.unsplash.com/photo-1590735213920-68192a487bc2?w=100',
-  },
-  {
-    id: 6,
-    type: '플래너',
-    title: '부산 해운대 바다 여행',
-    subtitle: '2박 3일 부산 여행',
-  },
-  {
-    id: 7,
-    type: '여행지',
-    title: '성산일출봉',
-    subtitle: '제주 서귀포시',
-    image: 'https://images.unsplash.com/photo-1559827260-dc66d52bef19?w=100',
-  },
-  {
-    id: 8,
-    type: '플래너',
-    title: '제주도 일주 코스',
-    subtitle: '4박 5일 제주 여행',
-  },
-  {
-    id: 9,
-    type: '여행지',
-    title: '불국사',
-    subtitle: '경주 경상북도',
-    image: 'https://images.unsplash.com/photo-1583417319070-4a69db38a482?w=100',
-  },
-  {
-    id: 10,
-    type: '플래너',
-    title: '경주 역사 탐방',
-    subtitle: '2박 3일 경주 여행',
-  },
-  {
-    id: 11,
-    type: '여행지',
-    title: '정동진 해변',
-    subtitle: '강원 강릉시',
-    image: 'https://images.unsplash.com/photo-1590735213920-68192a487bc2?w=100',
-  },
-  {
-    id: 12,
-    type: '플래너',
-    title: '강릉 바다 여행',
-    subtitle: '2박 3일 강릉 여행',
-  },
-  {
-    id: 13,
-    type: '여행지',
-    title: '전주 한옥마을',
-    subtitle: '전북 전주시',
-    image: 'https://images.unsplash.com/photo-1583417319070-4a69db38a482?w=100',
-  },
-  {
-    id: 14,
-    type: '플래너',
-    title: '전주 한옥마을 투어',
-    subtitle: '1박 2일 전주 여행',
-  },
-  {
-    id: 15,
-    type: '여행지',
-    title: '여수 오동도',
-    subtitle: '전남 여수시',
-    image: 'https://images.unsplash.com/photo-1590735213920-68192a487bc2?w=100',
-  },
-  {
-    id: 16,
-    type: '플래너',
-    title: '여수 낭만 포차 투어',
-    subtitle: '2박 3일 여수 여행',
-  },
-];
+type SearchTab = '전체' | '여행지' | '플래너';
 
 interface SearchModalProps {
   isOpen: boolean;
@@ -210,25 +30,112 @@ interface SearchModalProps {
 export function SearchModal({ isOpen, onClose, onSelectDestination, onSelectPlanner }: SearchModalProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [activeTab, setActiveTab] = useState<SearchTab>('전체');
+  const pageSize = 10;
+
+  // 검색어 변경 시 디바운스 적용
+  useEffect(() => {
+    if (!isOpen) return;
+
+    if (!searchQuery.trim()) {
+      setResults([]);
+      setCurrentPage(1);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      setCurrentPage(1);
+      handleSearch(searchQuery, 1, activeTab);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery, isOpen, activeTab]);
+
+  // 모달 열릴 때 초기화
+  useEffect(() => {
+    if (isOpen) {
+      setSearchQuery('');
+      setResults([]);
+      setCurrentPage(1);
+      setActiveTab('전체');
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
-  const handleSearch = (query: string) => {
-    setSearchQuery(query);
-    
+  const handleSearch = async (query: string, page: number, tab: SearchTab) => {
     if (query.trim() === '') {
       setResults([]);
       return;
     }
 
-    // 검색어로 필터링
-    const filtered = mockSearchData.filter(
-      (item) =>
-        item.title.toLowerCase().includes(query.toLowerCase()) ||
-        item.subtitle.toLowerCase().includes(query.toLowerCase())
-    );
-    
-    setResults(filtered);
+    setIsLoading(true);
+
+    try {
+      let destinationItems: SearchResult[] = [];
+      let plannerItems: SearchResult[] = [];
+
+      // 탭에 따라 검색
+      if (tab === '전체' || tab === '여행지') {
+        const destinationResults = await searchDestinations(query, page, pageSize);
+        destinationItems = (destinationResults || []).map((item: any) => ({
+          id: item.CONTENTID || item.contentid,
+          type: '여행지' as const,
+          title: item.TITLE || item.title,
+          subtitle: item.REGIONNAME || item.regionName || item.ADDR1 || item.addr1 || '',
+          image: item.FIRSTIMAGE2 || item.firstimage2,
+        }));
+      }
+
+      if (tab === '전체' || tab === '플래너') {
+        try {
+          const plannerResults = await searchPlanners(query, page, pageSize);
+          plannerItems = (plannerResults || []).map((item: any) => ({
+            id: String(item.PLNID || item.plnId),
+            type: '플래너' as const,
+            title: item.PLNTITLE || item.plnTitle,
+            subtitle: item.REGIONNAME || item.regionName || '',
+          }));
+        } catch (err) {
+          console.log('플래너 검색 결과 없음');
+        }
+      }
+
+      // 탭에 따라 결과 설정
+      if (tab === '전체') {
+        // 전체: 첫 페이지만 플래너 포함
+        if (page === 1) {
+          setResults([...destinationItems, ...plannerItems.slice(0, 5)]);
+        } else {
+          setResults(destinationItems);
+        }
+      } else if (tab === '여행지') {
+        setResults(destinationItems);
+      } else {
+        setResults(plannerItems);
+      }
+      
+    } catch (error) {
+      console.error('검색 실패:', error);
+      setResults([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleTabChange = (tab: SearchTab) => {
+    setActiveTab(tab);
+    setCurrentPage(1);
+    if (searchQuery.trim()) {
+      handleSearch(searchQuery, 1, tab);
+    }
+  };
+
+  const handlePageChange = (newPage: number) => {
+    setCurrentPage(newPage);
+    handleSearch(searchQuery, newPage, activeTab);
   };
 
   const getIcon = (type: string) => {
@@ -253,25 +160,60 @@ export function SearchModal({ isOpen, onClose, onSelectDestination, onSelectPlan
     }
   };
 
+  const handleResultClick = (result: SearchResult) => {
+    if (result.type === '여행지' && onSelectDestination) {
+      onSelectDestination(Number(result.id));
+    } else if (result.type === '플래너' && onSelectPlanner) {
+      onSelectPlanner({ id: Number(result.id), title: result.title });
+    }
+    onClose();
+  };
+
+  // 다음 페이지 있는지 확인
+  const currentTypeResults = activeTab === '전체' 
+    ? results.filter(r => r.type === '여행지').length 
+    : results.length;
+  const hasNextPage = currentTypeResults >= pageSize;
+  const hasPrevPage = currentPage > 1;
+
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-start justify-center pt-20 px-4">
       <div className="bg-white rounded-lg w-full max-w-2xl max-h-[80vh] flex flex-col">
         <div className="p-6 border-b">
+          {/* 헤더 + 탭 */}
           <div className="flex items-center justify-between mb-4">
-            <h3>통합 검색</h3>
+            <div className="flex items-center gap-4">
+              <h3 className="font-semibold">통합 검색</h3>
+              <div className="flex gap-1">
+                {(['전체', '여행지', '플래너'] as SearchTab[]).map((tab) => (
+                  <button
+                    key={tab}
+                    onClick={() => handleTabChange(tab)}
+                    className={`px-3 py-1 text-sm rounded-full transition-colors ${
+                      activeTab === tab
+                        ? 'bg-blue-500 text-white'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    {tab}
+                  </button>
+                ))}
+              </div>
+            </div>
             <Button variant="ghost" size="icon" onClick={onClose}>
               <X className="h-5 w-5" />
             </Button>
           </div>
           
+          {/* 검색 입력 */}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
             <Input
               type="search"
-              placeholder="여행지, 플래너를 검색하세요... (예: 경복궁)"
+              placeholder="여행지, 플래너를 검색하세요... (예: 경복궁, 부산)"
               className="pl-10 h-12"
               value={searchQuery}
-              onChange={(e) => handleSearch(e.target.value)}
+              onChange={(e) => setSearchQuery(e.target.value)}
               autoFocus
             />
           </div>
@@ -279,33 +221,31 @@ export function SearchModal({ isOpen, onClose, onSelectDestination, onSelectPlan
 
         {/* 검색 결과 */}
         <div className="flex-1 overflow-y-auto p-6">
-          {searchQuery && results.length === 0 && (
+          {/* 로딩 중 */}
+          {isLoading && (
+            <div className="text-center py-12 text-gray-500">
+              검색 중...
+            </div>
+          )}
+
+          {/* 검색 결과 없음 */}
+          {!isLoading && searchQuery && results.length === 0 && (
             <div className="text-center py-12 text-gray-500">
               검색 결과가 없습니다.
             </div>
           )}
 
-          {results.length > 0 && (
+          {/* 검색 결과 목록 */}
+          {!isLoading && results.length > 0 && (
             <div className="space-y-2">
               <p className="text-sm text-gray-500 mb-4">
-                총 {results.length}개의 결과
+                {currentPage} 페이지 | {results.length}개 결과
               </p>
               {results.map((result) => (
                 <button
                   key={`${result.type}-${result.id}`}
                   className="w-full p-4 hover:bg-gray-50 rounded-lg transition-colors text-left flex items-center gap-4"
-                  onClick={() => {
-                    if (result.type === '여행지' && onSelectDestination) {
-                      onSelectDestination(result.id);
-                    } else if (result.type === '플래너' && onSelectPlanner) {
-                      // 플래너 전체 데이터 전달
-                      const fullPlannerData = plannerFullData[result.id];
-                      if (fullPlannerData) {
-                        onSelectPlanner(fullPlannerData);
-                      }
-                    }
-                    onClose();
-                  }}
+                  onClick={() => handleResultClick(result)}
                 >
                   {result.image && (
                     <img
@@ -313,6 +253,15 @@ export function SearchModal({ isOpen, onClose, onSelectDestination, onSelectPlan
                       alt={result.title}
                       className="w-16 h-16 object-cover rounded flex-shrink-0"
                     />
+                  )}
+                  {!result.image && (
+                    <div className="w-16 h-16 bg-gray-200 rounded flex-shrink-0 flex items-center justify-center">
+                      {result.type === '여행지' ? (
+                        <MapPin className="h-6 w-6 text-gray-400" />
+                      ) : (
+                        <Calendar className="h-6 w-6 text-gray-400" />
+                      )}
+                    </div>
                   )}
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
@@ -329,6 +278,35 @@ export function SearchModal({ isOpen, onClose, onSelectDestination, onSelectPlan
             </div>
           )}
         </div>
+
+        {/* 페이징 버튼 */}
+        {!isLoading && results.length > 0 && (hasPrevPage || hasNextPage) && (
+          <div className="p-4 border-t flex justify-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handlePageChange(currentPage - 1)}
+              disabled={!hasPrevPage}
+              className="flex items-center gap-1"
+            >
+              <ChevronLeft className="h-4 w-4" />
+              이전
+            </Button>
+            <span className="flex items-center px-3 text-sm text-gray-600">
+              {currentPage} 페이지
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handlePageChange(currentPage + 1)}
+              disabled={!hasNextPage}
+              className="flex items-center gap-1"
+            >
+              다음
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );

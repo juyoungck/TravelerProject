@@ -3,7 +3,6 @@
  * 
  * 수정: initialDestinationId 변경 시 useEffect로 감지하여 업데이트
  */
-
 import { useState, useEffect } from 'react';
 import TravelListPage from './TravelListPage';
 import TravelDetailPage from './TravelDetailPage';
