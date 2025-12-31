@@ -83,7 +83,8 @@ export default function App() {
     const savedToken = localStorage.getItem('accessToken');
     if (savedToken) {
       setIsLoggedIn(true);
-      
+    } 
+  }, []);
 
   /**
    * URL 경로 파싱 - 공유 링크 감지
