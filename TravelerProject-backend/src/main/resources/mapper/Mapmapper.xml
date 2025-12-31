@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" 
+    "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+    MapMapper.xml
+    지도 관련 SQL 쿼리
+    
+    Haversine 공식 설명:
+    - 두 지점 간의 대원 거리(지구 표면을 따라 가는 최단 거리)를 계산
+    - 지구 반지름: 6371 km
+    - Oracle에서는 삼각함수 사용 (SIN, COS, ACOS)
+    - 위도/경도는 라디안으로 변환 필요 (도 * π / 180)
+-->
+<mapper namespace="com.traveler.app.dao.MapDao">
+
+    <!-- 결과 매핑 -->
+    <resultMap id="nearbyDestinationMap" type="com.traveler.app.dto.NearbyDestinationDto">
+        <result property="contentid" column="contentid"/>
+        <result property="contenttypeid" column="contenttypeid"/>
+        <result property="title" column="title"/>
+        <result property="addr1" column="addr1"/>
+        <result property="addr2" column="addr2"/>
+        <result property="tel" column="tel"/>
+        <result property="firstimage" column="firstimage"/>
+        <result property="firstimage2" column="firstimage2"/>
+        <result property="mapx" column="mapx"/>
+        <result property="mapy" column="mapy"/>
+        <result property="distance" column="distance"/>
+        <result property="typeName" column="type_name"/>
+        <result property="regnName" column="regn_name"/>
+        <result property="signguName" column="signgu_name"/>
+    </resultMap>
+
+    <!--
+        주변 여행지 조회 (좌표 기반)
+        Haversine 공식을 사용하여 거리 계산
+        
+        파라미터:
+        - lat: 중심 위도 (latitude)
+        - lng: 중심 경도 (longitude)  
+        - radius: 검색 반경 (km)
+        - contenttypeid: 관광 타입 ID (선택)
+        - limit: 최대 조회 개수
+    -->
+    <select id="selectNearbyDestinations" resultMap="nearbyDestinationMap">
+        SELECT * FROM (
+            SELECT 
+                d.contentid,
+                d.contenttypeid,
+                d.title,
+                d.addr1,
+                d.addr2,
+                d.tel,
+                d.firstimage,
+                d.firstimage2,
+                d.mapx,
+                d.mapy,
+                ct.type_name,
+                r.regn_name,
+                s.signgu_name,
+                /* Haversine 공식으로 거리 계산 (km) */
+                ROUND(
+                    6371 * ACOS(
+                        LEAST(1, GREATEST(-1,
+                            COS(#{lat} * 3.141592653589793 / 180) 
+                            * COS(d.mapy * 3.141592653589793 / 180) 
+                            * COS((d.mapx - #{lng}) * 3.141592653589793 / 180) 
+                            + SIN(#{lat} * 3.141592653589793 / 180) 
+                            * SIN(d.mapy * 3.141592653589793 / 180)
+                        ))
+                    ), 2
+                ) AS distance
+            FROM destination d
+            LEFT JOIN content_type ct ON d.contenttypeid = ct.contenttypeid
+            LEFT JOIN ldong_regn_code r ON d.lDongRegnCd = r.lDongRegnCd
+            LEFT JOIN ldong_signgu_code s ON d.lDongRegnCd = s.lDongRegnCd 
+                AND d.lDongSignguCd = s.lDongSignguCd
+            WHERE d.mapx IS NOT NULL 
+              AND d.mapy IS NOT NULL
+              /* 관광 타입 필터 (선택) */
+              <if test="contenttypeid != null">
+                  AND d.contenttypeid = #{contenttypeid}
+              </if>
+            ORDER BY distance ASC
+        )
+        WHERE distance &lt;= #{radius}
+          AND ROWNUM &lt;= #{limit}
+    </select>
+
+    <!--
+        특정 지역 내 여행지 조회
+        플래너에서 지역 선택 시 사용
+        
+        파라미터:
+        - lDongRegnCd: 법정동 시도 코드 (필수)
+        - lDongSignguCd: 법정동 시군구 코드 (선택)
+        - contenttypeid: 관광 타입 ID (선택)
+        - limit: 최대 조회 개수
+    -->
+    <select id="selectDestinationsByRegion" resultMap="nearbyDestinationMap">
+        SELECT * FROM (
+            SELECT 
+                d.contentid,
+                d.contenttypeid,
+                d.title,
+                d.addr1,
+                d.addr2,
+                d.tel,
+                d.firstimage,
+                d.firstimage2,
+                d.mapx,
+                d.mapy,
+                NULL AS distance,
+                ct.type_name,
+                r.regn_name,
+                s.signgu_name
+            FROM destination d
+            LEFT JOIN content_type ct ON d.contenttypeid = ct.contenttypeid
+            LEFT JOIN ldong_regn_code r ON d.lDongRegnCd = r.lDongRegnCd
+            LEFT JOIN ldong_signgu_code s ON d.lDongRegnCd = s.lDongRegnCd 
+                AND d.lDongSignguCd = s.lDongSignguCd
+            WHERE d.mapx IS NOT NULL 
+              AND d.mapy IS NOT NULL
+              AND d.lDongRegnCd = #{lDongRegnCd}
+              /* 시군구 필터 (선택) */
+              <if test="lDongSignguCd != null">
+                  AND d.lDongSignguCd = #{lDongSignguCd}
+              </if>
+              /* 관광 타입 필터 (선택) */
+              <if test="contenttypeid != null">
+                  AND d.contenttypeid = #{contenttypeid}
+              </if>
+            ORDER BY d.view_count DESC NULLS LAST, d.title ASC
+        )
+        WHERE ROWNUM &lt;= #{limit}
+    </select>
+
+    <!--
+        지도용 여행지 검색
+        여행지명, 주소에서 키워드 검색
+        
+        파라미터:
+        - keyword: 검색 키워드
+        - contenttypeid: 관광 타입 ID (선택)
+        - limit: 최대 조회 개수
+    -->
+    <select id="searchDestinationsForMap" resultMap="nearbyDestinationMap">
+        SELECT * FROM (
+            SELECT 
+                d.contentid,
+                d.contenttypeid,
+                d.title,
+                d.addr1,
+                d.addr2,
+                d.tel,
+                d.firstimage,
+                d.firstimage2,
+                d.mapx,
+                d.mapy,
+                NULL AS distance,
+                ct.type_name,
+                r.regn_name,
+                s.signgu_name
+            FROM destination d
+            LEFT JOIN content_type ct ON d.contenttypeid = ct.contenttypeid
+            LEFT JOIN ldong_regn_code r ON d.lDongRegnCd = r.lDongRegnCd
+            LEFT JOIN ldong_signgu_code s ON d.lDongRegnCd = s.lDongRegnCd 
+                AND d.lDongSignguCd = s.lDongSignguCd
+            WHERE d.mapx IS NOT NULL 
+              AND d.mapy IS NOT NULL
+              AND (
+                  UPPER(d.title) LIKE '%' || UPPER(#{keyword}) || '%'
+                  OR UPPER(d.addr1) LIKE '%' || UPPER(#{keyword}) || '%'
+              )
+              /* 관광 타입 필터 (선택) */
+              <if test="contenttypeid != null">
+                  AND d.contenttypeid = #{contenttypeid}
+              </if>
+            ORDER BY 
+                /* 제목에 키워드가 포함된 경우 우선 정렬 */
+                CASE WHEN UPPER(d.title) LIKE '%' || UPPER(#{keyword}) || '%' THEN 0 ELSE 1 END,
+                d.view_count DESC NULLS LAST,
+                d.title ASC
+        )
+        WHERE ROWNUM &lt;= #{limit}
+    </select>
+
+</mapper>

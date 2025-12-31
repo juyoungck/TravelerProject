@@ -14,6 +14,7 @@ import { SignupPage } from "./pages/auth/SignupPage";
 import { MyPage } from "./pages/auth/MyPage";
 import { FindIdPage } from "./pages/auth/FindIdPage";
 import { FindPasswordPage } from "./pages/auth/FindPasswordPage";
+import { SharedPlannerPage } from "./pages/planner/SharedPlannerPage";
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState("home");
@@ -28,6 +29,9 @@ export default function App() {
   // 소셜 로그인 콜백 상태
   const [oauthStatus, setOauthStatus] = useState<'loading' | 'success' | 'error' | null>(null);
   const [oauthError, setOauthError] = useState<string>('');
+  
+  // 공유 링크 상태
+  const [shareLink, setShareLink] = useState<string | null>(null);
 
   /**
    * 소셜 로그인 콜백 처리
@@ -79,11 +83,74 @@ export default function App() {
     const savedToken = localStorage.getItem('accessToken');
     if (savedToken) {
       setIsLoggedIn(true);
+      
+
+  /**
+   * URL 경로 파싱 - 공유 링크 감지
+   */
+  useEffect(() => {
+    const checkShareLink = () => {
+      const path = window.location.pathname;
+      const shareMatch = path.match(/^\/planner\/share\/([a-zA-Z0-9]+)$/);
+      
+      if (shareMatch) {
+        setShareLink(shareMatch[1]);
+        setCurrentPage("shared-planner");
+      }
+    };
+
+    // 초기 로드 시 확인
+    checkShareLink();
+
+    // popstate 이벤트 (브라우저 뒤로가기/앞으로가기)
+    window.addEventListener('popstate', checkShareLink);
+    
+    return () => {
+      window.removeEventListener('popstate', checkShareLink);
+    };
+  }, []);
+
+  /**
+   * ★ URL 파라미터 파싱 - 새 탭에서 열릴 때 처리
+   * 예: http://localhost:5173/?page=travel-detail&contentid=126508
+   */
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const page = urlParams.get('page');
+    const contentid = urlParams.get('contentid');
+
+    console.log('URL 파라미터:', { page, contentid }); // 디버깅용
+
+    // 여행지 상세 페이지로 이동
+    if (page === 'travel-detail' && contentid) {
+      setSelectedDestinationId(contentid);
+      setCurrentPage('travel');
+    }
+    // 다른 페이지들
+    else if (page === 'travel') {
+      setCurrentPage('travel');
+    }
+    else if (page === 'planner') {
+      setCurrentPage('planner');
+    }
+    else if (page === 'map') {
+      setCurrentPage('map');
+    }
+    else if (page === 'event') {
+      setCurrentPage('event');
+    }
+    else if (page === 'board') {
+      setCurrentPage('board');
     }
   }, []);
 
   const handleNavigate = (page: string) => {
     setCurrentPage(page);
+    setShareLink(null);
+    // URL 변경 (공유 링크가 아닌 경우 기본 경로로)
+    if (page === "home") {
+      window.history.pushState({}, '', '/');
+    }
     window.scrollTo(0, 0);
   };
 
@@ -203,6 +270,20 @@ export default function App() {
       return renderOAuthCallback();
     }
     
+    // 공유 링크 페이지
+    if (currentPage === "shared-planner" && shareLink) {
+      return (
+        <SharedPlannerPage
+          shareLink={shareLink}
+          onBack={() => {
+            setShareLink(null);
+            setCurrentPage("home");
+            window.history.pushState({}, '', '/');
+          }}
+        />
+      );
+    }
+
     if (currentPage === "travel") {
       return (
         <TravelPage
@@ -240,7 +321,16 @@ export default function App() {
     }
 
     if (currentPage === "map") {
-      return <MapPage />;
+      return (
+        <MapPage 
+          onNavigate={(page, params) => {
+            if (page === 'travel-detail' && params?.contentid) {
+              setSelectedDestinationId(params.contentid);
+              setCurrentPage('travel');
+            }
+          }}
+        />
+      );
     }
 
     if (currentPage === "board") {
@@ -295,9 +385,9 @@ export default function App() {
     return (
       <>
         <FeaturedCarousel
-          onSelectDestination={(id: number) => {
-          setSelectedDestinationId(id.toString());
-          setCurrentPage("travel");
+          onSelectDestination={(id: string) => {
+            setSelectedDestinationId(id);
+            setCurrentPage("travel");
           }}
         />
         <PopularPlanners
@@ -309,6 +399,15 @@ export default function App() {
       </>
     );
   };
+
+  // 공유 링크 페이지는 헤더/푸터 없이 전체 화면
+  if (currentPage === "shared-planner" && shareLink) {
+    return (
+      <div className="min-h-screen bg-white">
+        {renderPage()}
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-white">
@@ -327,10 +426,10 @@ export default function App() {
         <SearchModal
           isOpen={isSearchModalOpen}
           onClose={() => setIsSearchModalOpen(false)}
-         onSelectDestination={(id: number) => {
-          setSelectedDestinationId(id.toString());
-          setCurrentPage("travel");
-          setIsSearchModalOpen(false);
+          onSelectDestination={(id: string) => {
+            setSelectedDestinationId(id);
+            setCurrentPage("travel");
+            setIsSearchModalOpen(false);
           }}
           onSelectPlanner={(planner: any) => {
             setSelectedPlanner(planner);

@@ -60,10 +60,127 @@ public class DestinationService {
         return tourApiService.fetchDestinationTotalCount(contenttypeid);
     }
 
-   
-    /**
-     * DTO → Entity 변환
-     */
+    // ============================================
+    // 동기화 메서드
+    // ============================================
+
+    @Transactional
+    public int syncDestinations(String contenttypeid, int maxPages) {
+        int totalSaved = 0;
+        int numOfRows = 100;
+
+        log.info("=== 여행지 동기화 시작: 타입={}, 최대페이지={} ===", contenttypeid, maxPages);
+
+        for (int page = 1; page <= maxPages; page++) {
+            log.info("페이지 {} 처리 중...", page);
+
+            List<DestinationDto> destinations = tourApiService.fetchDestinations(contenttypeid, page, numOfRows);
+
+            if (destinations == null || destinations.isEmpty()) {
+                log.info("더 이상 데이터 없음. 동기화 종료.");
+                break;
+            }
+
+            for (DestinationDto dto : destinations) {
+                try {
+                    Destination entity = convertToEntity(dto);
+                    destinationDao.mergeDestination(entity);
+                    totalSaved++;
+                } catch (Exception e) {
+                    log.warn("저장 실패 (contentid={}): {}", dto.getContentid(), e.getMessage());
+                }
+            }
+
+            log.info("페이지 {} 완료: {}건 처리", page, destinations.size());
+
+            try {
+                Thread.sleep(200);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+
+        log.info("=== 여행지 동기화 완료: 총 {}건 저장 ===", totalSaved);
+        return totalSaved;
+    }
+
+    @Transactional
+    public int syncAllDestinations(int pagesPerType) {
+        int total = 0;
+
+        log.info("=== 전체 여행지 동기화 시작 ===");
+
+        for (String contenttypeid : CONTENT_TYPES.keySet()) {
+            try {
+                log.info("관광타입 {} ({}) 동기화 시작", contenttypeid, CONTENT_TYPES.get(contenttypeid));
+                int saved = syncDestinations(contenttypeid, pagesPerType);
+                total += saved;
+                log.info("관광타입 {} 동기화 완료: {}건", contenttypeid, saved);
+            } catch (Exception e) {
+                log.error("관광타입 {} 동기화 실패: {}", contenttypeid, e.getMessage());
+            }
+        }
+
+        log.info("=== 전체 여행지 동기화 완료: 총 {}건 저장 ===", total);
+        return total;
+    }
+
+    @Transactional
+    public boolean updateDestinationDetail(String contentid) {
+        try {
+            DestinationDetailDto detail = tourApiService.fetchDestinationDetail(contentid);
+            
+            if (detail != null) {
+                Destination dest = destinationDao.selectDestinationById(contentid);
+                if (dest != null) {
+                    dest.setOverview(detail.getOverview());
+                    dest.setHomepage(detail.getHomepage());
+                    destinationDao.updateDestinationDetail(dest);
+                    log.info("상세정보 업데이트 완료: contentid={}", contentid);
+                    return true;
+                }
+            }
+            return false;
+        } catch (Exception e) {
+            log.error("상세정보 업데이트 실패 (contentid={}): {}", contentid, e.getMessage());
+            return false;
+        }
+    }
+
+    @Transactional
+    public int syncDestinationImages(String contentid) {
+        try {
+            List<DestinationImageDto> images = tourApiService.fetchDestinationImages(contentid);
+            int saved = 0;
+            
+            destinationImageDao.deleteImagesByContentId(contentid);
+            
+            for (DestinationImageDto dto : images) {
+                try {
+                    DestinationImage img = DestinationImage.builder()
+                            .contentid(contentid)
+                            .originimgurl(dto.getOriginimgurl())
+                            .build();
+                    
+                    destinationImageDao.insertImage(img);
+                    saved++;
+                } catch (Exception e) {
+                    log.warn("이미지 저장 실패: {}", e.getMessage());
+                }
+            }
+            
+            log.info("이미지 동기화 완료 (contentid={}): {}건", contentid, saved);
+            return saved;
+        } catch (Exception e) {
+            log.error("이미지 동기화 실패 (contentid={}): {}", contentid, e.getMessage());
+            return 0;
+        }
+    }
+
+    // ============================================
+    // 조회 메서드 (기존)
+    // ============================================
+
     private Destination convertToEntity(DestinationDto dto) {
         return Destination.builder()
                 .contentid(dto.getContentid())
@@ -84,9 +201,6 @@ public class DestinationService {
                 .build();
     }
 
-    /**
-     * 문자열 → Double 변환 (null 처리)
-     */
     private Double parseDouble(String value) {
         if (value == null || value.isEmpty()) {
             return null;
@@ -98,9 +212,6 @@ public class DestinationService {
         }
     }
 
-    /**
-     * 문자열 → Integer 변환 (null 처리)
-     */
     private Integer parseInteger(String value) {
         if (value == null || value.isEmpty()) {
             return null;
@@ -112,9 +223,6 @@ public class DestinationService {
         }
     }
 
-    /**
-     * 여행지 현황 조회
-     */
     public Map<String, Object> getDestinationStatus() {
         Map<String, Object> status = new HashMap<>();
         
@@ -128,22 +236,41 @@ public class DestinationService {
         return status;
     }
 
-    /**
-     * 여행지 목록 조회 (관광타입별)
-     */
     public List<Destination> getDestinationsByType(String contenttypeid) {
         return destinationDao.selectDestinationsByType(contenttypeid);
     }
     
     /**
-     * 여행지 목록 조회 (페이징, 시군구 이름 포함)
+     * 여행지 목록 조회 (페이징, 시군구 이름 포함) - 기존 메서드
      */
     public Map<String, Object> getDestinationsWithPaging(String contenttypeid, int page, int size) {
+        return getDestinationsWithPagingAndRegion(contenttypeid, page, size, null, null);
+    }
+
+    /**
+     * 여행지 목록 조회 (페이징 + 지역 필터)
+     */
+    public Map<String, Object> getDestinationsWithPagingAndRegion(
+            String contenttypeid, int page, int size, 
+            String lDongRegnCd, String lDongSignguCd) {
+        
         Map<String, Object> result = new HashMap<>();
         
         int offset = (page - 1) * size;
-        List<Destination> list = destinationDao.selectDestinationsByTypeWithPaging(contenttypeid, offset, size);
-        int totalCount = destinationDao.countDestinationByType(contenttypeid);
+        List<Destination> list;
+        int totalCount;
+
+        // 지역 필터 적용
+        if (lDongRegnCd != null && !lDongRegnCd.isEmpty()) {
+            list = destinationDao.selectDestinationsByTypeAndRegion(
+                    contenttypeid, lDongRegnCd, lDongSignguCd, offset, size);
+            totalCount = destinationDao.countDestinationByTypeAndRegion(
+                    contenttypeid, lDongRegnCd, lDongSignguCd);
+        } else {
+            list = destinationDao.selectDestinationsByTypeWithPaging(contenttypeid, offset, size);
+            totalCount = destinationDao.countDestinationByType(contenttypeid);
+        }
+
         int totalPages = (int) Math.ceil((double) totalCount / size);
         
         // 시군구 이름 추가
@@ -166,7 +293,6 @@ public class DestinationService {
             item.put("lDongRegnCd", dest.getLDongRegnCd());
             item.put("lDongSignguCd", dest.getLDongSignguCd());
             
-            // 시군구 이름 조회
             String regionName = getRegionName(dest.getLDongRegnCd(), dest.getLDongSignguCd());
             item.put("regionName", regionName);
             
@@ -182,13 +308,9 @@ public class DestinationService {
         return result;
     }
 
-    /**
-     * 지역명 조회 (시도 + 시군구)
-     */
     private String getRegionName(String lDongRegnCd, String lDongSignguCd) {
         if (lDongRegnCd == null) return "";
         
-        // 시도 이름
         Map<String, String> regionMap = new HashMap<>();
         regionMap.put("11", "서울");
         regionMap.put("26", "부산");
@@ -207,10 +329,11 @@ public class DestinationService {
         regionMap.put("47", "경북");
         regionMap.put("48", "경남");
         regionMap.put("50", "제주");
+        regionMap.put("51", "강원");
+        regionMap.put("52", "전북");
         
         String sidoName = regionMap.getOrDefault(lDongRegnCd, "");
         
-        // 시군구 이름 조회
         String signguName = "";
         if (lDongSignguCd != null && !lDongSignguCd.isEmpty()) {
             try {
@@ -224,18 +347,73 @@ public class DestinationService {
         return sidoName + " " + signguName;
     }
 
-    /**
-     * 여행지 상세 조회
-     */
     public Destination getDestinationById(String contentid) {
         return destinationDao.selectDestinationById(contentid);
     }
 
-    /**
-     * 관광타입 목록 반환
-     */
     public Map<String, String> getContentTypes() {
         return CONTENT_TYPES;
     }
-    
+
+    /**
+     * 키워드 검색 (기존)
+     */
+    public Map<String, Object> searchDestinations(String keyword, int page, int size) {
+        return searchDestinationsWithRegion(keyword, page, size, null, null);
+    }
+
+    /**
+     * 키워드 검색 + 지역 필터
+     */
+    public Map<String, Object> searchDestinationsWithRegion(
+            String keyword, int page, int size,
+            String lDongRegnCd, String lDongSignguCd) {
+        
+        Map<String, Object> result = new HashMap<>();
+        
+        int offset = (page - 1) * size;
+        List<Destination> list;
+        int totalCount;
+
+        if (lDongRegnCd != null && !lDongRegnCd.isEmpty()) {
+            list = destinationDao.searchByKeywordAndRegion(keyword, lDongRegnCd, lDongSignguCd, offset, size);
+            totalCount = destinationDao.countByKeywordAndRegion(keyword, lDongRegnCd, lDongSignguCd);
+        } else {
+            list = destinationDao.searchByKeyword(keyword, offset, size);
+            totalCount = destinationDao.countByKeyword(keyword);
+        }
+
+        int totalPages = (int) Math.ceil((double) totalCount / size);
+        
+        // 데이터 변환
+        List<Map<String, Object>> dataWithRegion = new java.util.ArrayList<>();
+        for (Destination dest : list) {
+            Map<String, Object> item = new HashMap<>();
+            item.put("contentid", dest.getContentid());
+            item.put("contenttypeid", dest.getContenttypeid());
+            item.put("title", dest.getTitle());
+            item.put("addr1", dest.getAddr1());
+            item.put("addr2", dest.getAddr2());
+            item.put("tel", dest.getTel());
+            item.put("firstimage", dest.getFirstimage());
+            item.put("firstimage2", dest.getFirstimage2());
+            item.put("mapx", dest.getMapx());
+            item.put("mapy", dest.getMapy());
+            item.put("lDongRegnCd", dest.getLDongRegnCd());
+            item.put("lDongSignguCd", dest.getLDongSignguCd());
+            
+            String regionName = getRegionName(dest.getLDongRegnCd(), dest.getLDongSignguCd());
+            item.put("regionName", regionName);
+            
+            dataWithRegion.add(item);
+        }
+        
+        result.put("data", dataWithRegion);
+        result.put("currentPage", page);
+        result.put("totalPages", totalPages);
+        result.put("totalCount", totalCount);
+        result.put("pageSize", size);
+        
+        return result;
+    }
 }
