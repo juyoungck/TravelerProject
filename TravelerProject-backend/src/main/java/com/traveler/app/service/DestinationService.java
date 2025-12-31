@@ -22,7 +22,7 @@ import lombok.extern.slf4j.Slf4j;
  * 여행지 관리 서비스
  * API에서 가져온 여행지 데이터를 DB에 저장/조회
  */
-@Service
+@Service  
 @Slf4j
 public class DestinationService {
 
@@ -59,7 +59,7 @@ public class DestinationService {
     public int getApiTotalCount(String contenttypeid) {
         return tourApiService.fetchDestinationTotalCount(contenttypeid);
     }
-
+    
     /**
      * 특정 관광타입 여행지 동기화
      * @param contenttypeid 관광타입ID
@@ -437,7 +437,7 @@ public class DestinationService {
     public Map<String, String> getContentTypes() {
         return CONTENT_TYPES;
     }
-    
+
     /**
      * 상세정보 수집 (overview, homepage)
      * @param startIndex 시작 인덱스 (1부터)

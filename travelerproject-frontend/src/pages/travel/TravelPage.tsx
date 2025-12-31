@@ -1,8 +1,7 @@
 /**
  * TravelPage.tsx - 여행지 메인 페이지 (리스트 ↔ 상세 라우팅)
  */
-
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import TravelListPage from './TravelListPage';
 import TravelDetailPage from './TravelDetailPage';
 
@@ -30,6 +29,12 @@ export function TravelPage({
   const [selectedDestinationId, setSelectedDestinationId] = useState<string | null>(
     initialDestinationId || null
   );
+
+  useEffect(() => {
+    if (initialDestinationId) {
+      setSelectedDestinationId(initialDestinationId);
+    }
+  }, [initialDestinationId]);
 
   if (selectedDestinationId) {
     return (

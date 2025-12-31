@@ -14,6 +14,7 @@ import { SignupPage } from "./pages/auth/SignupPage";
 import { MyPage } from "./pages/auth/MyPage";
 import { FindIdPage } from "./pages/auth/FindIdPage";
 import { FindPasswordPage } from "./pages/auth/FindPasswordPage";
+import { NoticePage } from "./pages/NoticePage";
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState("home");
@@ -169,6 +170,9 @@ export default function App() {
       );
     }
 
+    if (currentPage === "notice") {
+  return <NoticePage />;
+    }
     return (
       <>
         <FeaturedCarousel
@@ -198,15 +202,18 @@ export default function App() {
 
       {renderPage()}
 
-      <Footer />
+      <Footer onNavigate={handleNavigate} />
 
       {isSearchModalOpen && (
         <SearchModal
           isOpen={isSearchModalOpen}
           onClose={() => setIsSearchModalOpen(false)}
           onSelectDestination={(id: number) => {
+            setSelectedDestinationId(null);
+            setTimeout(() =>{
             setSelectedDestinationId(id);
             setCurrentPage("travel");
+            }, 0);
             setIsSearchModalOpen(false);
           }}
           onSelectPlanner={(planner: any) => {

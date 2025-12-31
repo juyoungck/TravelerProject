@@ -11,8 +11,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.traveler.app.entity.Destination;
-import com.traveler.app.scheduler.DestinationScheduler;
 import com.traveler.app.service.DestinationService;
+import com.traveler.app.scheduler.DestinationScheduler;
 
 /**
  * 여행지 API 컨트롤러
@@ -25,11 +25,14 @@ public class DestinationController {
     private final DestinationService destinationService;
     private final DestinationScheduler destinationScheduler;
 
+    
+
     public DestinationController(DestinationService destinationService, DestinationScheduler destinationScheduler) {
         this.destinationService = destinationService;
         this.destinationScheduler = destinationScheduler;
     }
 
+   
     /**
      * 여행지 현황 조회
      * URL: GET /api/destination/status
@@ -201,7 +204,7 @@ public class DestinationController {
         
         return response;
     }
-
+    
     /**
      * 여행지 목록 조회 (관광타입별, 페이징)
      * URL: GET /api/destination/list/{contenttypeid}?page=1&size=10
@@ -229,7 +232,6 @@ public class DestinationController {
     }
     
     
-
     /**
      * 여행지 상세 조회
      * URL: GET /api/destination/detail/{contentid}
@@ -368,4 +370,5 @@ public class DestinationController {
         
         return response;
     }
+
 }
