@@ -1,25 +1,100 @@
 /**
  * TravelDetailPage.tsx - 여행지 상세 페이지
- * 여행지 정보, 리뷰 작성/목록, 찜 기능, 고정 미니탭, 위로가기 버튼 포함
+ * 여행지 정보, 리뷰 작성/목록, 찜 기능, 조회수 증가, 고정 미니탭, 위로가기 버튼 포함
+ * 수정: 지도 로딩, 1인1리뷰, 내 리뷰 최상단, 수정/삭제 기능
  */
 
 import { useState, useEffect } from 'react';
-import { Heart, Eye, MapPin, X, Star, ArrowUp } from 'lucide-react';
+import { Heart, Eye, MapPin, X, Star, ArrowUp, Edit2, Trash2 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Header } from '../../components/layout/Header';
-import { getDestinationDetail } from '../../api/destinationApi';
+import { 
+  getDestinationDetail, 
+  increaseViewCount,
+  getReviewsByDestination,
+  createReview,
+  updateReview,
+  deleteReview,
+  toggleFavorite,
+  checkFavorite,
+  getFavoriteCount,
+  getDestinationImages
+} from '../../api/destinationApi';
 
-interface Review {
-  id: number;
-  destinationId?: string;
-  destinationName?: string;
-  destinationImage?: string;
-  author: string;
-  rating: number;
-  content: string;
-  date: string;
+/** 카카오맵 컴포넌트 - 로딩 문제 해결 */
+const KakaoMap = ({ lat, lng, title }: { lat: number; lng: number; title: string }) => {
+  const [mapLoaded, setMapLoaded] = useState(false);
+
+  useEffect(() => {
+    const checkKakao = () => {
+      if (window.kakao && window.kakao.maps) {
+        window.kakao.maps.load(() => {
+          setMapLoaded(true);
+        });
+      } else {
+        setTimeout(checkKakao, 100);
+      }
+    };
+    checkKakao();
+  }, []);
+
+  useEffect(() => {
+    if (!mapLoaded) return;
+
+    const container = document.getElementById('kakao-map');
+    if (!container) return;
+
+    const options = {
+      center: new window.kakao.maps.LatLng(lat, lng),
+      level: 3,
+    };
+
+    const map = new window.kakao.maps.Map(container, options);
+
+    const markerPosition = new window.kakao.maps.LatLng(lat, lng);
+    const marker = new window.kakao.maps.Marker({ position: markerPosition });
+    marker.setMap(map);
+
+    const infowindow = new window.kakao.maps.InfoWindow({
+      content: `<div style="padding:5px;font-size:12px;">${title}</div>`,
+    });
+    infowindow.open(map, marker);
+
+    const zoomControl = new window.kakao.maps.ZoomControl();
+    map.addControl(zoomControl, window.kakao.maps.ControlPosition.RIGHT);
+  }, [mapLoaded, lat, lng, title]);
+
+  if (!mapLoaded) {
+    return (
+      <div className="w-full h-64 bg-gray-100 rounded-lg flex items-center justify-center">
+        <p className="text-gray-500">지도 로딩 중...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div id="kakao-map" className="w-full h-64 rounded-lg" style={{ minHeight: '256px' }} />
+  );
+};
+
+declare global {
+  interface Window {
+    kakao: any;
+  }
 }
 
+/** 리뷰 타입 정의 */
+interface Review {
+  rvId: number;
+  mId: number;
+  contentid: string;
+  rvContent: string;
+  rvRating: number;
+  createdAt: string;
+  memberNickname: string;
+}
+
+/** 여행지 타입 정의 */
 interface Destination {
   contentid: string;
   contenttypeid: string;
@@ -31,42 +106,61 @@ interface Destination {
   overview: string;
   firstimage: string;
   firstimage2: string;
-  mapx: string;
-  mapy: string;
+  mapx: number;
+  mapy: number;
+  viewCount: number;
   lDongRegnCd: string;
   lDongSignguCd: string;
 }
 
+/** Props 타입 정의 */
 interface TravelDetailPageProps {
   destinationId: string;
   onClose: () => void;
   onNavigate?: (page: string) => void;
   isLoggedIn?: boolean;
-  favoriteDestinations?: any[];
-  onToggleFavorite?: (destination: any) => void;
+  currentUserId?: number;
   onOpenSearch?: () => void;
-  reviews?: Review[];
-  onAddReview?: (review: Review) => void;
 }
 
 export function TravelDetailPage({ 
   destinationId, 
   onClose, 
   onNavigate, 
-  isLoggedIn, 
-  favoriteDestinations = [], 
-  onToggleFavorite, 
-  onOpenSearch, 
-  reviews = [], 
-  onAddReview 
+  isLoggedIn = false,
+  currentUserId,
+  onOpenSearch
 }: TravelDetailPageProps) {
+  // 여행지 정보 상태
   const [destination, setDestination] = useState<Destination | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // 이미지 목록 상태
+  const [images, setImages] = useState<string[]>([]);
+
+  // 리뷰 관련 상태
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [averageRating, setAverageRating] = useState(0);
+  const [reviewCount, setReviewCount] = useState(0);
   const [isWritingReview, setIsWritingReview] = useState(false);
   const [newReviewRating, setNewReviewRating] = useState(0);
   const [hoverRating, setHoverRating] = useState(0);
   const [newReviewContent, setNewReviewContent] = useState('');
+  const [reviewLoading, setReviewLoading] = useState(false);
+  
+  // 수정 모드 상태
+  const [editingReviewId, setEditingReviewId] = useState<number | null>(null);
+  const [editRating, setEditRating] = useState(0);
+  const [editContent, setEditContent] = useState('');
+  const [editHoverRating, setEditHoverRating] = useState(0);
+
+  // 찜 관련 상태
+  const [isFavorite, setIsFavorite] = useState(false);
+  const [favoriteCount, setFavoriteCount] = useState(0);
+  const [favoriteLoading, setFavoriteLoading] = useState(false);
+
+  // UI 관련 상태
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [activeTab, setActiveTab] = useState<'photos' | 'info' | 'reviews' | 'notice'>('photos');
 
@@ -76,7 +170,15 @@ export function TravelDetailPage({
       try {
         setLoading(true);
         const data = await getDestinationDetail(destinationId);
-        setDestination(data);
+        
+        // 조회수 증가
+        await increaseViewCount(destinationId);
+        
+        // 조회수 +1 반영
+        setDestination({
+          ...data,
+          viewCount: (data.viewCount || 0) + 1
+        });
       } catch (err) {
         console.error('여행지 상세 조회 실패:', err);
         setError('여행지 정보를 불러오는데 실패했습니다.');
@@ -90,7 +192,87 @@ export function TravelDetailPage({
     }
   }, [destinationId]);
 
-  /** 로딩 중 */
+  /** 리뷰 목록 조회 */
+  useEffect(() => {
+    const fetchReviews = async () => {
+      try {
+        const response = await getReviewsByDestination(destinationId);
+        if (response.status === 'success') {
+          let reviewList = response.data || [];
+          
+          // 내 리뷰를 최상단으로 정렬
+          if (currentUserId) {
+            reviewList = reviewList.sort((a: Review, b: Review) => {
+              if (a.mId === currentUserId && b.mId !== currentUserId) return -1;
+              if (a.mId !== currentUserId && b.mId === currentUserId) return 1;
+              return 0;
+            });
+          }
+          
+          setReviews(reviewList);
+          setAverageRating(response.averageRating || 0);
+          setReviewCount(response.totalCount || 0);
+        }
+      } catch (err) {
+        console.error('리뷰 조회 실패:', err);
+      }
+    };
+
+    if (destinationId) {
+      fetchReviews();
+    }
+  }, [destinationId, currentUserId]);
+
+    /** 이미지 목록 조회 */
+  useEffect(() => {
+    const fetchImages = async () => {
+      try {
+        const response = await getDestinationImages(destinationId);
+        if (response.status === 'success' && response.data) {
+          // originimgurl만 추출
+          const imageUrls = response.data.map((img: any) => img.originimgurl);
+          setImages(imageUrls);
+        }
+      } catch (err) {
+        console.error('이미지 조회 실패:', err);
+      }
+    };
+
+    if (destinationId) {
+      fetchImages();
+    }
+  }, [destinationId]);
+
+  /** 찜 상태 및 개수 조회 */
+  useEffect(() => {
+    const fetchFavoriteStatus = async () => {
+      try {
+        const countResponse = await getFavoriteCount(destinationId);
+        if (countResponse.status === 'success') {
+          setFavoriteCount(countResponse.favoriteCount || 0);
+        }
+
+        if (isLoggedIn && currentUserId) {
+          const checkResponse = await checkFavorite(currentUserId, destinationId);
+          if (checkResponse.status === 'success') {
+            setIsFavorite(checkResponse.isFavorite);
+          }
+        }
+      } catch (err) {
+        console.error('찜 상태 조회 실패:', err);
+      }
+    };
+
+    if (destinationId) {
+      fetchFavoriteStatus();
+    }
+  }, [destinationId, isLoggedIn, currentUserId]);
+
+  // 내가 이미 리뷰를 작성했는지 확인
+  const myReview = reviews.find(review => review.mId === currentUserId);
+  const hasMyReview = !!myReview;
+
+  /** 로딩 중 화면 */
   if (loading) {
     return (
       <div className="fixed inset-0 z-50 bg-white flex items-center justify-center">
@@ -102,7 +284,7 @@ export function TravelDetailPage({
     );
   }
 
-  /** 에러 또는 데이터 없음 */
+  /** 에러 또는 데이터 없음 화면 */
   if (error || !destination) {
     return (
       <div className="fixed inset-0 z-50 bg-white flex items-center justify-center">
@@ -114,85 +296,215 @@ export function TravelDetailPage({
     );
   }
 
-  // 현재 여행지가 찜 목록에 있는지 확인
-  const isFavorite = favoriteDestinations.some((fav) => fav.contentid === destination.contentid);
-
-  // 찜 토글 핸들러
-  const handleToggleFavorite = () => {
-    if (!isLoggedIn) {
+  /** 찜 토글 핸들러 */
+  const handleToggleFavorite = async () => {
+    if (!isLoggedIn || !currentUserId) {
       alert('로그인이 필요한 서비스입니다.');
       return;
     }
-    
-    if (onToggleFavorite) {
-      onToggleFavorite({
-        contentid: destination.contentid,
-        title: destination.title,
-        firstimage: destination.firstimage,
-        firstimage2: destination.firstimage2,
-        addr1: destination.addr1,
-        overview: destination.overview,
-      });
+
+    try {
+      setFavoriteLoading(true);
+      const response = await toggleFavorite(currentUserId, destination.contentid);
+      
+      if (response.status === 'success') {
+        setIsFavorite(response.isFavorite);
+        setFavoriteCount(response.favoriteCount);
+      }
+    } catch (err) {
+      console.error('찜 토글 실패:', err);
+      alert('찜 처리 중 오류가 발생했습니다.');
+    } finally {
+      setFavoriteLoading(false);
     }
   };
 
-  // 스크롤 이벤트 핸들러
+  /** 리뷰 등록 핸들러 */
+  const handleSubmitReview = async () => {
+    if (!isLoggedIn || !currentUserId) {
+      alert('로그인이 필요한 서비스입니다.');
+      return;
+    }
+
+    // 이미 리뷰 작성했는지 확인
+    if (hasMyReview) {
+      alert('이미 이 여행지에 후기를 작성하셨습니다.');
+      return;
+    }
+
+    if (newReviewRating === 0) {
+      alert('별점을 선택해주세요.');
+      return;
+    }
+
+    if (!newReviewContent.trim()) {
+      alert('후기 내용을 입력해주세요.');
+      return;
+    }
+
+    try {
+      setReviewLoading(true);
+      const response = await createReview({
+        mId: currentUserId,
+        contentid: destination.contentid,
+        rvRating: newReviewRating,
+        rvContent: newReviewContent
+      });
+
+      if (response.status === 'success') {
+        // 리뷰 목록 새로고침
+        const reviewsResponse = await getReviewsByDestination(destinationId);
+        if (reviewsResponse.status === 'success') {
+          let reviewList = reviewsResponse.data || [];
+          // 내 리뷰 최상단 정렬
+          if (currentUserId) {
+            reviewList = reviewList.sort((a: Review, b: Review) => {
+              if (a.mId === currentUserId && b.mId !== currentUserId) return -1;
+              if (a.mId !== currentUserId && b.mId === currentUserId) return 1;
+              return 0;
+            });
+          }
+          setReviews(reviewList);
+          setAverageRating(reviewsResponse.averageRating || 0);
+          setReviewCount(reviewsResponse.totalCount || 0);
+        }
+
+        setNewReviewRating(0);
+        setNewReviewContent('');
+        setIsWritingReview(false);
+        alert('후기가 등록되었습니다.');
+      }
+    } catch (err) {
+      console.error('리뷰 등록 실패:', err);
+      alert('후기 등록 중 오류가 발생했습니다.');
+    } finally {
+      setReviewLoading(false);
+    }
+  };
+
+  /** 리뷰 수정 시작 */
+  const handleStartEdit = (review: Review) => {
+    setEditingReviewId(review.rvId);
+    setEditRating(review.rvRating);
+    setEditContent(review.rvContent);
+  };
+
+  /** 리뷰 수정 취소 */
+  const handleCancelEdit = () => {
+    setEditingReviewId(null);
+    setEditRating(0);
+    setEditContent('');
+    setEditHoverRating(0);
+  };
+
+  /** 리뷰 수정 저장 */
+  const handleSaveEdit = async (reviewId: number) => {
+    if (editRating === 0) {
+      alert('별점을 선택해주세요.');
+      return;
+    }
+
+    if (!editContent.trim()) {
+      alert('후기 내용을 입력해주세요.');
+      return;
+    }
+
+    try {
+      setReviewLoading(true);
+      const response = await updateReview(reviewId, {
+        rvRating: editRating,
+        rvContent: editContent
+      });
+
+      if (response.status === 'success') {
+        // 리뷰 목록 새로고침
+        const reviewsResponse = await getReviewsByDestination(destinationId);
+        if (reviewsResponse.status === 'success') {
+          let reviewList = reviewsResponse.data || [];
+          if (currentUserId) {
+            reviewList = reviewList.sort((a: Review, b: Review) => {
+              if (a.mId === currentUserId && b.mId !== currentUserId) return -1;
+              if (a.mId !== currentUserId && b.mId === currentUserId) return 1;
+              return 0;
+            });
+          }
+          setReviews(reviewList);
+          setAverageRating(reviewsResponse.averageRating || 0);
+          setReviewCount(reviewsResponse.totalCount || 0);
+        }
+
+        handleCancelEdit();
+        alert('후기가 수정되었습니다.');
+      }
+    } catch (err) {
+      console.error('리뷰 수정 실패:', err);
+      alert('후기 수정 중 오류가 발생했습니다.');
+    } finally {
+      setReviewLoading(false);
+    }
+  };
+
+  /** 리뷰 삭제 */
+  const handleDeleteReview = async (reviewId: number) => {
+    if (!confirm('정말 이 후기를 삭제하시겠습니까?')) {
+      return;
+    }
+
+    try {
+      setReviewLoading(true);
+      const response = await deleteReview(reviewId);
+
+      if (response.status === 'success') {
+        // 리뷰 목록 새로고침
+        const reviewsResponse = await getReviewsByDestination(destinationId);
+        if (reviewsResponse.status === 'success') {
+          let reviewList = reviewsResponse.data || [];
+          if (currentUserId) {
+            reviewList = reviewList.sort((a: Review, b: Review) => {
+              if (a.mId === currentUserId && b.mId !== currentUserId) return -1;
+              if (a.mId !== currentUserId && b.mId === currentUserId) return 1;
+              return 0;
+            });
+          }
+          setReviews(reviewList);
+          setAverageRating(reviewsResponse.averageRating || 0);
+          setReviewCount(reviewsResponse.totalCount || 0);
+        }
+
+        alert('후기가 삭제되었습니다.');
+      }
+    } catch (err) {
+      console.error('리뷰 삭제 실패:', err);
+      alert('후기 삭제 중 오류가 발생했습니다.');
+    } finally {
+      setReviewLoading(false);
+    }
+  };
+
+  /** 스크롤 이벤트 핸들러 */
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const scrollTop = e.currentTarget.scrollTop;
     setShowScrollTop(scrollTop > 300);
   };
 
-  // 맨 위로 스크롤
+  /** 맨 위로 스크롤 */
   const scrollToTop = () => {
-    const container = document.querySelector('.overflow-y-auto');
+    const container = document.querySelector('.detail-scroll-container');
     if (container) {
       container.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
 
-  // 평균 별점 계산 - destinationId로 필터링
-  const destinationReviews = reviews.filter((review) => review.destinationId === destinationId);
-  const averageRating = destinationReviews.length > 0
-    ? destinationReviews.reduce((sum, review) => sum + review.rating, 0) / destinationReviews.length
-    : 0;
-
+  /** 섹션으로 스크롤 */
   const scrollToSection = (tab: 'photos' | 'info' | 'reviews' | 'notice') => {
+    setActiveTab(tab);
     const element = document.getElementById(`section-${tab}`);
     if (element) {
       element.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   };
 
-  const handleSubmitReview = () => {
-    if (newReviewRating === 0) {
-      alert('별점을 선택해주세요.');
-      return;
-    }
-    if (!newReviewContent.trim()) {
-      alert('후기 내용을 입력해주세요.');
-      return;
-    }
-
-    const newReview: Review = {
-      id: Date.now(),
-      destinationId: destination.contentid,
-      destinationName: destination.title,
-      destinationImage: destination.firstimage,
-      author: '사용자',
-      rating: newReviewRating,
-      content: newReviewContent,
-      date: new Date().toISOString().split('T')[0],
-    };
-
-    setNewReviewRating(0);
-    setNewReviewContent('');
-    setIsWritingReview(false);
-
-    if (onAddReview) {
-      onAddReview(newReview);
-    }
-  };
-
+  /** 별점 렌더링 */
   const renderStars = (rating: number, size: 'sm' | 'md' | 'lg' = 'md') => {
     const sizeClass = size === 'sm' ? 'h-3 w-3' : size === 'lg' ? 'h-5 w-5' : 'h-4 w-4';
     const fullStars = Math.floor(rating);
@@ -226,15 +538,25 @@ export function TravelDetailPage({
     return types[typeId] || '기타';
   };
 
+  /** 날짜 포맷 */
+  const formatDate = (dateString: string) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('ko-KR');
+  };
+
   return (
-    <div className="fixed inset-0 z-50 bg-white overflow-y-auto" onScroll={handleScroll}>
-      {/* 헤더 - 네비게이션 포함 */}
+    <div 
+      className="fixed inset-0 z-50 bg-white overflow-y-auto detail-scroll-container" 
+      onScroll={handleScroll}
+    >
+      {/* 헤더 */}
       {onNavigate && (
         <Header
           onSearch={() => {}}
           onNavigate={onNavigate}
           onOpenSearch={onOpenSearch || (() => {})}
-          isLoggedIn={isLoggedIn || false}
+          isLoggedIn={isLoggedIn}
         />
       )}
 
@@ -242,58 +564,22 @@ export function TravelDetailPage({
       <div className="sticky top-16 z-50 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/60 border-b shadow-sm">
         <div className="container mx-auto px-4">
           <div className="flex gap-6">
-            <button
-              onClick={() => {
-                setActiveTab('photos');
-                scrollToSection('photos');
-              }}
-              className={`px-4 py-3 transition-colors border-b-2 ${
-                activeTab === 'photos'
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-600 hover:text-blue-600'
-              }`}
-            >
-              사진보기
-            </button>
-            <button
-              onClick={() => {
-                setActiveTab('info');
-                scrollToSection('info');
-              }}
-              className={`px-4 py-3 transition-colors border-b-2 ${
-                activeTab === 'info'
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-600 hover:text-blue-600'
-              }`}
-            >
-              상세정보
-            </button>
-            <button
-              onClick={() => {
-                setActiveTab('reviews');
-                scrollToSection('reviews');
-              }}
-              className={`px-4 py-3 transition-colors border-b-2 ${
-                activeTab === 'reviews'
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-600 hover:text-blue-600'
-              }`}
-            >
-              후기
-            </button>
-            <button
-              onClick={() => {
-                setActiveTab('notice');
-                scrollToSection('notice');
-              }}
-              className={`px-4 py-3 transition-colors border-b-2 ${
-                activeTab === 'notice'
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-600 hover:text-blue-600'
-              }`}
-            >
-              안내사항
-            </button>
+            {(['photos', 'info', 'reviews', 'notice'] as const).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => scrollToSection(tab)}
+                className={`px-4 py-3 transition-colors border-b-2 ${
+                  activeTab === tab
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-gray-600 hover:text-blue-600'
+                }`}
+              >
+                {tab === 'photos' && '사진보기'}
+                {tab === 'info' && '상세정보'}
+                {tab === 'reviews' && '후기'}
+                {tab === 'notice' && '안내사항'}
+              </button>
+            ))}
           </div>
         </div>
       </div>
@@ -318,49 +604,62 @@ export function TravelDetailPage({
               </span>
             </div>
             <div className="flex items-center gap-4">
+              {/* 찜 버튼 */}
               <button 
                 onClick={handleToggleFavorite}
-                className="flex items-center gap-1 text-gray-600 hover:text-red-500 transition-colors cursor-pointer"
+                disabled={favoriteLoading}
+                className="flex items-center gap-1 text-gray-600 hover:text-red-500 transition-colors cursor-pointer disabled:opacity-50"
               >
                 <Heart className={`h-5 w-5 ${isFavorite ? 'fill-red-500 text-red-500' : ''}`} />
-                <span>찜하기</span>
+                <span>{favoriteCount}</span>
               </button>
+              {/* 조회수 */}
+              <div className="flex items-center gap-1 text-gray-600">
+                <Eye className="h-5 w-5" />
+                <span>{destination.viewCount || 0}</span>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* 사진보기 */}
+        
+        {/* 사진보기 섹션 */}
         <section id="section-photos" className="mb-12">
           <h3 className="text-xl font-semibold mb-4">사진보기</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {destination.firstimage ? (
+          <div className="flex gap-4 overflow-x-auto pb-4">
+            {/* 대표 이미지 (firstimage) */}
+            {destination.firstimage && (
               <img
                 src={destination.firstimage}
                 alt={destination.title}
-                className="w-full h-64 object-cover rounded-lg"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).src = '/placeholder-image.jpg';
-                }}
-              />
-            ) : (
-              <div className="w-full h-64 bg-gray-200 rounded-lg flex items-center justify-center">
-                <span className="text-gray-500">이미지 없음</span>
-              </div>
-            )}
-            {destination.firstimage2 && destination.firstimage2 !== destination.firstimage && (
-              <img
-                src={destination.firstimage2}
-                alt={`${destination.title} 썸네일`}
-                className="w-full h-64 object-cover rounded-lg"
+                className="flex-shrink-0 w-80 h-52 object-cover rounded-lg"
                 onError={(e) => {
                   (e.target as HTMLImageElement).style.display = 'none';
                 }}
               />
             )}
+            {/* DB 이미지 목록 (destination_image 테이블) */}
+            {images.map((imageUrl, index) => (
+              <img
+                key={index}
+                src={imageUrl}
+                alt={`${destination.title} ${index + 1}`}
+                className="flex-shrink-0 w-80 h-52 object-cover rounded-lg"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).style.display = 'none';
+                }}
+              />
+            ))}
+            {/* 이미지 없을 때 */}
+            {!destination.firstimage && images.length === 0 && (
+              <div className="w-full h-52 bg-gray-200 rounded-lg flex items-center justify-center">
+                <span className="text-gray-500">이미지가 없습니다</span>
+              </div>
+            )}
           </div>
         </section>
 
-        {/* 상세정보 */}
+        {/* 상세정보 섹션 */}
         <section id="section-info" className="mb-12">
           <h3 className="text-xl font-semibold mb-4">상세정보</h3>
           {destination.overview ? (
@@ -375,18 +674,15 @@ export function TravelDetailPage({
             </div>
           )}
 
-          {/* 지도 */}
+          {/* 지도 영역 */}
           <div className="mb-6">
             <h4 className="font-semibold mb-3">위치</h4>
             {destination.mapx && destination.mapy ? (
-              <div className="w-full h-64 bg-gray-200 rounded-lg flex items-center justify-center">
-                <div className="text-center text-gray-500">
-                  <MapPin className="h-12 w-12 mx-auto mb-2" />
-                  <p>위도: {destination.mapy}</p>
-                  <p>경도: {destination.mapx}</p>
-                  <p className="text-sm mt-2">(카카오맵 연동 예정)</p>
-                </div>
-              </div>
+              <KakaoMap 
+                lat={destination.mapy} 
+                lng={destination.mapx} 
+                title={destination.title}
+              />
             ) : (
               <div className="w-full h-64 bg-gray-200 rounded-lg flex items-center justify-center">
                 <p className="text-gray-500">위치 정보가 없습니다.</p>
@@ -406,35 +702,42 @@ export function TravelDetailPage({
           </div>
         </section>
 
-        {/* 후기 */}
+        {/* 후기 섹션 */}
         <section id="section-reviews" className="mb-12">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
               <h3 className="text-xl font-semibold">후기</h3>
-              {destinationReviews.length > 0 && (
+              {reviewCount > 0 && (
                 <div className="flex items-center gap-2">
                   {renderStars(averageRating, 'md')}
                   <span className="text-sm text-gray-600">
-                    {averageRating.toFixed(1)}/5 ({destinationReviews.length}개)
+                    {averageRating.toFixed(1)}/5 ({reviewCount}개)
                   </span>
                 </div>
               )}
             </div>
+            {/* 후기 작성 버튼 - 이미 작성했으면 비활성화 */}
             <Button 
               onClick={() => {
                 if (!isLoggedIn) {
                   alert('로그인이 필요한 서비스입니다.');
                   return;
                 }
+                if (hasMyReview) {
+                  alert('이미 이 여행지에 후기를 작성하셨습니다.\n기존 후기를 수정해주세요.');
+                  return;
+                }
                 setIsWritingReview(!isWritingReview);
               }}
+              disabled={hasMyReview}
+              className={hasMyReview ? 'opacity-50 cursor-not-allowed' : ''}
             >
-              후기 작성
+              {hasMyReview ? '작성 완료' : '후기 작성'}
             </Button>
           </div>
 
           {/* 후기 작성 폼 */}
-          {isWritingReview && (
+          {isWritingReview && !hasMyReview && (
             <div className="bg-gray-50 p-6 rounded-lg mb-6">
               <h4 className="font-semibold mb-3">후기 작성</h4>
               
@@ -472,7 +775,9 @@ export function TravelDetailPage({
               </div>
 
               <div className="flex gap-2">
-                <Button onClick={handleSubmitReview}>등록</Button>
+                <Button onClick={handleSubmitReview} disabled={reviewLoading}>
+                  {reviewLoading ? '등록 중...' : '등록'}
+                </Button>
                 <Button
                   variant="outline"
                   onClick={() => {
@@ -489,17 +794,94 @@ export function TravelDetailPage({
 
           {/* 후기 목록 */}
           <div className="space-y-4">
-            {destinationReviews.length > 0 ? (
-              destinationReviews.map((review) => (
-                <div key={review.id} className="bg-white border rounded-lg p-4">
-                  <div className="flex items-start justify-between mb-2">
+            {reviews.length > 0 ? (
+              reviews.map((review) => (
+                <div 
+                  key={review.rvId} 
+                  className={`bg-white border rounded-lg p-4 ${
+                    review.mId === currentUserId ? 'border-blue-300 bg-blue-50/30' : ''
+                  }`}
+                >
+                  {/* 수정 모드 */}
+                  {editingReviewId === review.rvId ? (
                     <div>
-                      <span className="font-semibold">{review.author}</span>
-                      <span className="text-sm text-gray-500 ml-2">{review.date}</span>
+                      {/* 별점 수정 */}
+                      <div className="mb-3">
+                        <div className="flex items-center gap-2">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <button
+                              key={star}
+                              type="button"
+                              onClick={() => setEditRating(star)}
+                              onMouseEnter={() => setEditHoverRating(star)}
+                              onMouseLeave={() => setEditHoverRating(0)}
+                              className="text-2xl transition-all"
+                            >
+                              {star <= (editHoverRating || editRating) ? '⭐' : '☆'}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      {/* 내용 수정 */}
+                      <textarea
+                        value={editContent}
+                        onChange={(e) => setEditContent(e.target.value)}
+                        className="w-full min-h-[80px] px-3 py-2 border rounded-md resize-vertical mb-3"
+                      />
+                      <div className="flex gap-2">
+                        <Button 
+                          size="sm" 
+                          onClick={() => handleSaveEdit(review.rvId)}
+                          disabled={reviewLoading}
+                        >
+                          저장
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={handleCancelEdit}>
+                          취소
+                        </Button>
+                      </div>
                     </div>
-                    {renderStars(review.rating, 'sm')}
-                  </div>
-                  <p className="text-gray-700">{review.content}</p>
+                  ) : (
+                    <>
+                      {/* 일반 모드 */}
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold">{review.memberNickname}</span>
+                          {review.mId === currentUserId && (
+                            <span className="text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded">
+                              내 후기
+                            </span>
+                          )}
+                          <span className="text-sm text-gray-500">
+                            {formatDate(review.createdAt)}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {/* 수정/삭제 버튼 - 본인 글만 */}
+                          {review.mId === currentUserId && (
+                            <>
+                              <button
+                                onClick={() => handleStartEdit(review)}
+                                className="p-1 text-gray-400 hover:text-blue-600 transition-colors"
+                                title="수정"
+                              >
+                                <Edit2 className="h-4 w-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteReview(review.rvId)}
+                                className="p-1 text-gray-400 hover:text-red-600 transition-colors"
+                                title="삭제"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </>
+                          )}
+                          {renderStars(review.rvRating, 'sm')}
+                        </div>
+                      </div>
+                      <p className="text-gray-700">{review.rvContent}</p>
+                    </>
+                  )}
                 </div>
               ))
             ) : (
@@ -511,7 +893,7 @@ export function TravelDetailPage({
           </div>
         </section>
 
-        {/* 안내사항 */}
+        {/* 안내사항 섹션 */}
         <section id="section-notice" className="mb-12">
           <h3 className="text-xl font-semibold mb-4">안내사항</h3>
           <div className="bg-gray-50 p-6 rounded-lg space-y-4">
@@ -537,7 +919,7 @@ export function TravelDetailPage({
         </section>
       </div>
 
-      {/* 닫기 버튼 (우측 하단) */}
+      {/* 닫기 버튼 */}
       <button
         onClick={onClose}
         className="fixed bottom-8 right-8 bg-white shadow-lg rounded-full p-4 hover:bg-gray-100 transition-colors"

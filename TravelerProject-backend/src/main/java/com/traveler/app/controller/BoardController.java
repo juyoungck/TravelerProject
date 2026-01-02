@@ -29,12 +29,13 @@ public class BoardController {
     @GetMapping("/list")
     public ResponseEntity<Map<String, Object>> getBoardList(
             @RequestParam(name = "category", defaultValue = "ALL") String category,
+            @RequestParam(name = "searchType", defaultValue = "TITLE") String searchType,
             @RequestParam(name = "keyword", defaultValue = "") String keyword,
             @RequestParam(name = "page", defaultValue = "1") int page,
             @RequestParam(name = "size", defaultValue = "10") int size) {
         
         try {
-            Map<String, Object> result = boardService.getBoardList(category, keyword, page, size);
+            Map<String, Object> result = boardService.getBoardList(category, searchType, keyword, page, size);
             
             Map<String, Object> response = new HashMap<>();
             response.put("status", "success");

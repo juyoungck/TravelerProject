@@ -35,6 +35,10 @@ export function BoardListPage({ onSelectPost, onCreatePost, isLoggedIn }: BoardL
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [totalCount, setTotalCount] = useState(0);
+  const pageSize = 10;
+  const [searchType, setSearchType] = useState<'TITLE' | 'AUTHOR'>('TITLE');
+
 
   /** ★ 카테고리 한글 → 영문 변환 (API 전송용) */
   const getCategoryValue = (cat: '전체' | '동행' | '후기'): string => {
@@ -74,7 +78,14 @@ export function BoardListPage({ onSelectPost, onCreatePost, isLoggedIn }: BoardL
     setLoading(true);
     try {
       const categoryValue = getCategoryValue(selectedCategory);
-      const response = await getBoardList(categoryValue, searchQuery, currentPage, 10);
+      const response = await getBoardList(
+        categoryValue,
+        searchType,
+        searchQuery,
+        currentPage,
+        pageSize
+      );
+
       
       if (response.status === 'success') {
         const convertedPosts: BoardPost[] = (response.data || []).map((item: any) => ({
@@ -91,6 +102,7 @@ export function BoardListPage({ onSelectPost, onCreatePost, isLoggedIn }: BoardL
         
         setPosts(convertedPosts);
         setTotalPages(response.totalPages || 1);
+        setTotalCount(response.totalCount);
       }
     } catch (error) {
       console.error('게시글 목록 조회 실패:', error);
@@ -99,9 +111,9 @@ export function BoardListPage({ onSelectPost, onCreatePost, isLoggedIn }: BoardL
     }
   };
 
-  useEffect(() => {
-    fetchPosts();
-  }, [selectedCategory, searchQuery, currentPage]);
+    useEffect(() => {
+      fetchPosts();
+    }, [selectedCategory, searchQuery, searchType, currentPage]);
 
   /** 검색 실행 */
   const handleSearch = () => {
@@ -177,13 +189,16 @@ export function BoardListPage({ onSelectPost, onCreatePost, isLoggedIn }: BoardL
           ) : posts.length === 0 ? (
             <div className="text-center py-10 text-gray-500">게시글이 없습니다.</div>
           ) : (
-            posts.map((post) => (
+            posts.map((post,index) => (
               <button
                 key={post.id}
                 onClick={() => onSelectPost(post.id)}
                 className="w-full grid grid-cols-12 gap-4 px-6 py-4 border-b hover:bg-gray-50 transition-colors text-left"
               >
-                <div className="col-span-1 text-center text-gray-600">{post.id}</div>
+                <div className="col-span-1 text-center text-gray-600">
+                  {totalCount - ((currentPage - 1) * pageSize + index)}
+                </div>
+
                 <div className="col-span-6">
                   <span
                     className={`inline-block px-2 py-1 text-xs rounded mr-2 ${
@@ -263,13 +278,27 @@ export function BoardListPage({ onSelectPost, onCreatePost, isLoggedIn }: BoardL
       {/* 검색 */}
       <div className="flex justify-center">
         <div className="flex gap-2 w-96">
+          <select
+            value={searchType}
+            onChange={(e) => setSearchType(e.target.value as 'TITLE' | 'AUTHOR')}
+            className="border rounded px-2 text-sm"
+          >
+            <option value="TITLE">제목</option>
+            <option value="AUTHOR">작성자</option>
+          </select>
+
           <Input
             type="search"
-            placeholder="제목 또는 작성자 검색..."
+            placeholder={
+              searchType === 'TITLE'
+                ? '제목 검색...'
+                : '작성자 검색...'
+            }
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             onKeyPress={handleKeyPress}
           />
+
           <Button variant="outline" onClick={handleSearch}>
             <Search className="h-4 w-4" />
           </Button>

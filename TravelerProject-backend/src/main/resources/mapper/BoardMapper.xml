@@ -30,9 +30,15 @@
                     AND b.bd_category = #{category}
                 </if>
                 <if test="keyword != null and keyword != ''">
-                    AND (b.bd_title LIKE '%' || #{keyword} || '%' 
-                         OR m.m_nickname LIKE '%' || #{keyword} || '%')
-                </if>
+				  <choose>
+				    <when test="searchType == 'TITLE'">
+				      AND b.bd_title LIKE '%' || #{keyword} || '%'
+				    </when>
+				    <when test="searchType == 'AUTHOR'">
+				      AND m.m_nickname LIKE '%' || #{keyword} || '%'
+				    </when>
+				  </choose>
+				</if>
                 ORDER BY b.created_at DESC
             ) a
             WHERE ROWNUM &lt;= #{offset} + #{size}
@@ -41,19 +47,25 @@
     </select>
 
     <!-- 게시글 총 개수 조회 -->
-    <select id="selectBoardCount" parameterType="map" resultType="int">
-        SELECT COUNT(*)
-        FROM board b
-        LEFT JOIN member m ON b.m_id = m.m_id
-        WHERE b.is_deleted = 0
-        <if test="category != null and category != '' and category != 'ALL'">
-            AND b.bd_category = #{category}
-        </if>
-        <if test="keyword != null and keyword != ''">
-            AND (b.bd_title LIKE '%' || #{keyword} || '%' 
-                 OR m.m_nickname LIKE '%' || #{keyword} || '%')
-        </if>
-    </select>
+	<select id="selectBoardCount" parameterType="map" resultType="int">
+	    SELECT COUNT(*)
+	    FROM board b
+	    LEFT JOIN member m ON b.m_id = m.m_id
+	    WHERE b.is_deleted = 0
+	    <if test="category != null and category != '' and category != 'ALL'">
+	        AND b.bd_category = #{category}
+	    </if>
+	    <if test="keyword != null and keyword != ''">
+	        <choose>
+	            <when test="searchType == 'TITLE'">
+	                AND b.bd_title LIKE '%' || #{keyword} || '%'
+	            </when>
+	            <when test="searchType == 'AUTHOR'">
+	                AND m.m_nickname LIKE '%' || #{keyword} || '%'
+	            </when>
+	        </choose>
+	    </if>
+	</select>
 
     <!-- 게시글 상세 조회 -->
     <select id="selectBoardDetail" parameterType="int" resultType="com.traveler.app.dto.BoardDto">

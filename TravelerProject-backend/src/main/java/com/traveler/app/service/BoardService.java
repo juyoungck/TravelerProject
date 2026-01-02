@@ -33,13 +33,14 @@ public class BoardService {
      * @param size 페이지당 개수
      * @return 게시글 목록 + 페이징 정보
      */
-    public Map<String, Object> getBoardList(String category, String keyword, int page, int size) {
+    public Map<String, Object> getBoardList(String category, String searchType, String keyword, int page, int size) {
         // offset 계산
         int offset = (page - 1) * size;
         
         // 파라미터 설정
         Map<String, Object> params = new HashMap<>();
         params.put("category", category);
+        params.put("searchType", searchType);
         params.put("keyword", keyword);
         params.put("offset", offset);
         params.put("size", size);
@@ -53,7 +54,7 @@ public class BoardService {
         // 총 페이지 수 계산
         int totalPages = (int) Math.ceil((double) totalCount / size);
         
-        // 결과 반환
+        // 결과 반환	
         Map<String, Object> result = new HashMap<>();
         result.put("list", list);
         result.put("totalCount", totalCount);

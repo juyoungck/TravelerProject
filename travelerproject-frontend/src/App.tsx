@@ -28,7 +28,7 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<{ mId: number; nickname: string } | null>(null);
   
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [selectedDestinationId, setSelectedDestinationId] = useState<number | null>(null);
+  const [selectedDestinationId, setSelectedDestinationId] = useState<string | null>(null);
 
   const [selectedPlanner, setSelectedPlanner] = useState<any>(null);
   const [favoriteDestinations, setFavoriteDestinations] = useState<any[]>([]);
@@ -386,10 +386,8 @@ export default function App() {
           onNavigate={handleNavigate}
           isLoggedIn={isLoggedIn}
           onOpenSearch={() => setIsSearchModalOpen(true)}
-          favoriteDestinations={favoriteDestinations}
-          onToggleFavorite={handleToggleFavorite}
-          reviews={reviews}
-          onAddReview={handleAddReview}
+          currentUserId={currentUser?.mId} 
+          initialDestinationId={selectedDestinationId} 
         />
       );
     }
@@ -527,11 +525,11 @@ export default function App() {
         <SearchModal
           isOpen={isSearchModalOpen}
           onClose={() => setIsSearchModalOpen(false)}
-          onSelectDestination={(id: number) => {
+          onSelectDestination={(id) => {
             setSelectedDestinationId(null);
-            setTimeout(() =>{
-            setSelectedDestinationId(id);
-            setCurrentPage("travel");
+            setTimeout(() => {
+              setSelectedDestinationId(String(id));
+              setCurrentPage("travel");
             }, 0);
             setIsSearchModalOpen(false);
           }}
