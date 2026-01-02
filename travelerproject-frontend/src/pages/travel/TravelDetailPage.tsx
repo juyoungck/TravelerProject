@@ -8,6 +8,7 @@ import { useState, useEffect } from 'react';
 import { Heart, Eye, MapPin, X, Star, ArrowUp, Edit2, Trash2 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Header } from '../../components/layout/Header';
+import KakaoMap from '../../components/map/KakaoMap';
 import { 
   getDestinationDetail, 
   increaseViewCount,
@@ -544,6 +545,19 @@ export function TravelDetailPage({
     const date = new Date(dateString);
     return date.toLocaleDateString('ko-KR');
   };
+  // 지도용 마커 데이터 생성
+  const mapDestination = destination.mapx && destination.mapy ? [{
+    contentid: destination.contentid,
+    contenttypeid: destination.contenttypeid,
+    title: destination.title,
+    addr1: destination.addr1,
+    mapx: parseFloat(destination.mapx),
+    mapy: parseFloat(destination.mapy),
+    firstimage: destination.firstimage,
+    firstimage2: destination.firstimage2,
+    distance: null,
+    typeName: getContentTypeName(destination.contenttypeid),
+  }] : [];
 
   return (
     <div 
@@ -674,15 +688,19 @@ export function TravelDetailPage({
             </div>
           )}
 
-          {/* 지도 영역 */}
+          {/* 지도 - 카카오맵 연동 */}
           <div className="mb-6">
             <h4 className="font-semibold mb-3">위치</h4>
             {destination.mapx && destination.mapy ? (
-              <KakaoMap 
-                lat={destination.mapy} 
-                lng={destination.mapx} 
-                title={destination.title}
-              />
+              <div className="w-full h-64 rounded-lg overflow-hidden border">
+                <KakaoMap
+                  centerLat={parseFloat(destination.mapy)}
+                  centerLng={parseFloat(destination.mapx)}
+                  level={3}
+                  destinations={mapDestination}
+                  height="256px"
+                />
+              </div>
             ) : (
               <div className="w-full h-64 bg-gray-200 rounded-lg flex items-center justify-center">
                 <p className="text-gray-500">위치 정보가 없습니다.</p>

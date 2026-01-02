@@ -2,7 +2,7 @@
  * MapPage.tsx - 지도 페이지
  * 카카오맵 API를 활용한 여행지 지도 페이지
  * 
- * 수정: 상세정보 보기 클릭 시 새 탭으로 열기
+ * 수정: 검색 위치 날씨 표시 추가
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -19,6 +19,7 @@ import {
   NearbyDestination, 
   CONTENT_TYPE_NAME 
 } from '../api/mapApi';
+import { getWeather } from '../api/weatherApi';
 import { MARKER_COLORS, MARKER_EMOJI } from '../utils/markerIcons';
 
 /** 카테고리 목록 */
@@ -41,6 +42,16 @@ const radiusOptions = [
   { value: 10, label: '10km', limit: 100 },
 ];
 
+/** 날씨 아이콘 매핑 */
+const weatherEmoji: { [key: string]: string } = {
+  '맑음': '☀️',
+  '구름많음': '⛅',
+  '흐림': '☁️',
+  '비': '🌧️',
+  '비/눈': '🌨️',
+  '눈': '❄️',
+};
+
 const DEFAULT_CENTER = { lat: 37.5665, lng: 126.9780 };
 
 export function MapPage() {
@@ -61,6 +72,30 @@ export function MapPage() {
   const [searchKeyword, setSearchKeyword] = useState('');
   const [isSearchMode, setIsSearchMode] = useState(false);
   const [lastSearchKeyword, setLastSearchKeyword] = useState('');
+  
+  // 날씨 상태
+  const [weather, setWeather] = useState<{ temperature: string; sky: string } | null>(null);
+  const [isWeatherLoading, setIsWeatherLoading] = useState(false);
+
+  /**
+   * 날씨 조회
+   */
+  const fetchWeather = useCallback(async (lat: number, lng: number) => {
+    setIsWeatherLoading(true);
+    try {
+      const result = await getWeather(lat, lng);
+      if (result.status === 'success' && result.weather) {
+        setWeather(result.weather);
+      } else {
+        setWeather(null);
+      }
+    } catch (err) {
+      console.error('날씨 조회 실패:', err);
+      setWeather(null);
+    } finally {
+      setIsWeatherLoading(false);
+    }
+  }, []);
 
   /**
    * 현재 위치 가져오기 (타임아웃 2초)
@@ -71,6 +106,7 @@ export function MapPage() {
     if (!navigator.geolocation) {
       setMapCenter(DEFAULT_CENTER);
       setIsLocationLoading(false);
+      fetchWeather(DEFAULT_CENTER.lat, DEFAULT_CENTER.lng);
       return;
     }
     
@@ -80,10 +116,12 @@ export function MapPage() {
         setCurrentLocation({ lat: latitude, lng: longitude });
         setMapCenter({ lat: latitude, lng: longitude });
         setIsLocationLoading(false);
+        fetchWeather(latitude, longitude);
       },
       () => {
         setMapCenter(DEFAULT_CENTER);
         setIsLocationLoading(false);
+        fetchWeather(DEFAULT_CENTER.lat, DEFAULT_CENTER.lng);
       },
       {
         enableHighAccuracy: false,
@@ -91,7 +129,7 @@ export function MapPage() {
         maximumAge: 600000,
       }
     );
-  }, []);
+  }, [fetchWeather]);
 
   /**
    * 주변 여행지 조회
@@ -146,6 +184,8 @@ export function MapPage() {
           const first = response.data[0];
           if (mapRef.current && first.mapx && first.mapy) {
             mapRef.current.setCenter(first.mapy, first.mapx, 7);
+            // 검색 결과 첫 번째 위치로 날씨 조회
+            fetchWeather(first.mapy, first.mapx);
           }
         }
       } else {
@@ -156,7 +196,7 @@ export function MapPage() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [fetchWeather]);
 
   /**
    * 검색 버튼 클릭
@@ -175,6 +215,7 @@ export function MapPage() {
     setIsSearchMode(false);
     const contenttypeid = selectedCategory === 'all' ? null : selectedCategory;
     fetchNearbyDestinations(mapCenter.lat, mapCenter.lng, contenttypeid);
+    fetchWeather(mapCenter.lat, mapCenter.lng);
   };
 
   /**
@@ -223,6 +264,7 @@ export function MapPage() {
         setIsSearchMode(false);
         setSearchKeyword('');
         setLastSearchKeyword('');
+        fetchWeather(center.lat, center.lng);
       }
     }
   };
@@ -237,6 +279,7 @@ export function MapPage() {
       setIsSearchMode(false);
       setSearchKeyword('');
       setLastSearchKeyword('');
+      fetchWeather(currentLocation.lat, currentLocation.lng);
     } else {
       getCurrentLocation();
     }
@@ -280,6 +323,13 @@ export function MapPage() {
     return distance < 1 ? `${Math.round(distance * 1000)}m` : `${distance}km`;
   };
 
+  /**
+   * 날씨 아이콘 가져오기
+   */
+  const getWeatherEmoji = (sky: string) => {
+    return weatherEmoji[sky] || '🌤️';
+  };
+
   return (
     <div className="h-[calc(100vh-4rem)] flex relative">
       {/* 왼쪽 사이드바 */}
@@ -290,7 +340,7 @@ export function MapPage() {
           flex flex-col
         `}
       >
-        {/* 현재 위치 정보 */}
+        {/* 현재 위치 정보 + 날씨 */}
         <div className="p-4 border-b bg-gradient-to-r from-blue-50 to-blue-100">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -309,19 +359,36 @@ export function MapPage() {
                 </p>
               </div>
             </div>
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={handleMoveToCurrentLocation}
-              disabled={isLocationLoading}
-              title="현재 위치로 이동"
-            >
-              {isLocationLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Navigation className="h-4 w-4" />
-              )}
-            </Button>
+            
+            {/* 날씨 + 네비게이션 */}
+            <div className="flex items-center gap-2">
+              {/* 날씨 표시 */}
+              {isWeatherLoading ? (
+                <div className="flex items-center gap-1 text-gray-400">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                </div>
+              ) : weather ? (
+                <div className="flex items-center gap-1 text-gray-700">
+                  <span className="text-lg">{getWeatherEmoji(weather.sky)}</span>
+                  <span className="text-sm font-medium">{weather.temperature}°C</span>
+                </div>
+              ) : null}
+              
+              {/* 현재 위치 버튼 */}
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={handleMoveToCurrentLocation}
+                disabled={isLocationLoading}
+                title="현재 위치로 이동"
+              >
+                {isLocationLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Navigation className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
           </div>
         </div>
 

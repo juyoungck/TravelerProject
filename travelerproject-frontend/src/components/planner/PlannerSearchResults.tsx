@@ -2,6 +2,8 @@
  * PlannerSearchResults.tsx - 플래너 검색 결과 리스트
  * 백엔드 API에서 destination 데이터를 가져와 표시
  * 다중 카테고리 + 지역 필터 지원
+ * 
+ * ★ 수정: mapx, mapy 좌표 추가 (지도 실시간 업데이트용)
  */
 
 import { useState, useEffect } from 'react';
@@ -18,6 +20,8 @@ interface Place {
   region: string;
   image: string;
   contentid?: string;
+  mapx?: number;  // ★ 추가
+  mapy?: number;  // ★ 추가
 }
 
 interface DayPlan {
@@ -195,6 +199,9 @@ export function PlannerSearchResults({
     }
   };
 
+  /**
+   * ★ API 응답을 Place 객체로 변환 (좌표 포함)
+   */
   const mapResponseToPlaces = (data: any[]): Place[] => {
     return data.map((item: any) => ({
       id: item.contentid,
@@ -203,6 +210,9 @@ export function PlannerSearchResults({
       category: contentTypeToCategory[item.contenttypeid] || '기타',
       region: item.regionName || item.addr1?.split(' ').slice(0, 2).join(' ') || '',
       image: item.firstimage2 || item.firstimage || 'https://via.placeholder.com/200x200?text=No+Image',
+      // ★ 좌표 추가 (지도 실시간 업데이트용)
+      mapx: item.mapx ? parseFloat(item.mapx) : undefined,
+      mapy: item.mapy ? parseFloat(item.mapy) : undefined,
     }));
   };
 
@@ -278,7 +288,7 @@ function DraggableSearchItem({ place, dayPlans, onAddPlace }: DraggableSearchIte
       id: `new-${place.id}-${Date.now()}`,
       dayId: 'search',
       index: -1,
-      place: place,
+      place: place,  // ★ 좌표 포함된 place 객체 전달
     },
     collect: (monitor) => ({
       isDragging: monitor.isDragging(),

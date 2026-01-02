@@ -22,6 +22,8 @@ import lombok.extern.slf4j.Slf4j;
 /**
  * 여행지 API 컨트롤러
  * 여행지 조회 및 동기화 기능 제공
+ * 
+ * 수정: 지역 필터(lDongRegnCd, lDongSignguCd) 파라미터 추가
  */
 @Slf4j
 @RestController
@@ -146,10 +148,61 @@ public class DestinationController {
         Map<String, Object> response = new HashMap<>();
         
         try {
-            Map<String, Object> result = destinationService.searchDestinationsWithRegion(
-                    keyword, page, size, lDongRegnCd, lDongSignguCd);
+            Map<String, Object> result;
+            
+            // 지역 필터가 있으면 지역별 조회
+            if (lDongRegnCd != null && !lDongRegnCd.isEmpty()) {
+                result = destinationService.getDestinationsWithPagingAndRegion(
+                    contenttypeid, page, size, lDongRegnCd, lDongSignguCd);
+            } else {
+                // 지역 필터 없으면 전체 조회
+                result = destinationService.getDestinationsWithPaging(contenttypeid, page, size);
+            }
+            
             response.put("status", "success");
             response.put("keyword", keyword);
+            response.putAll(result);
+        } catch (Exception e) {
+            response.put("status", "fail");
+            response.put("message", e.getMessage());
+        }
+        
+        return response;
+    }
+    
+    /**
+     * 여행지 검색 (키워드 + 지역 필터 지원)
+     * URL: GET /api/destination/search?keyword=서울&page=1&size=10&lDongRegnCd=11
+     * 
+     * @param keyword 검색 키워드
+     * @param page 페이지 번호
+     * @param size 페이지 크기
+     * @param lDongRegnCd 법정동 시도 코드 (선택)
+     * @param lDongSignguCd 법정동 시군구 코드 (선택)
+     */
+    @GetMapping("/search")
+    public Map<String, Object> searchDestinations(
+            @RequestParam(value = "keyword") String keyword,
+            @RequestParam(value = "page", defaultValue = "1") int page,
+            @RequestParam(value = "size", defaultValue = "10") int size,
+            @RequestParam(value = "lDongRegnCd", required = false) String lDongRegnCd,
+            @RequestParam(value = "lDongSignguCd", required = false) String lDongSignguCd) {
+        
+        Map<String, Object> response = new HashMap<>();
+        
+        try {
+            Map<String, Object> result;
+            
+            // 지역 필터가 있으면 지역별 검색
+            if (lDongRegnCd != null && !lDongRegnCd.isEmpty()) {
+                result = destinationService.searchDestinationsWithRegion(
+                    keyword, page, size, lDongRegnCd, lDongSignguCd);
+            } else {
+                // 지역 필터 없으면 전체 검색
+                result = destinationService.searchDestinations(keyword, page, size);
+            }
+            
+            response.put("status", "success");
             response.putAll(result);
         } catch (Exception e) {
             response.put("status", "fail");

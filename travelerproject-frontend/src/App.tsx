@@ -385,9 +385,9 @@ export default function App() {
         <TravelPage
           onNavigate={handleNavigate}
           isLoggedIn={isLoggedIn}
+          initialDestinationId={selectedDestinationId?.toString() || null}
           onOpenSearch={() => setIsSearchModalOpen(true)}
           currentUserId={currentUser?.mId} 
-          initialDestinationId={selectedDestinationId} 
         />
       );
     }
