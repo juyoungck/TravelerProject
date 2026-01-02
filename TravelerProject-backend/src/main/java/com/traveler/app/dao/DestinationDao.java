@@ -37,15 +37,6 @@ public interface DestinationDao {
         @Param("limit") int limit
     );
 
-    /** 관광타입 + 지역별 여행지 목록 조회 (페이징) */
-    List<Destination> selectDestinationsByTypeAndRegion(
-        @Param("contenttypeid") String contenttypeid,
-        @Param("lDongRegnCd") String lDongRegnCd,
-        @Param("lDongSignguCd") String lDongSignguCd,
-        @Param("offset") int offset,
-        @Param("limit") int limit
-    );
-
     /** 여행지 목록 조회 (관광타입 + 지역 + 페이징) */
     List<Destination> selectDestinationsByTypeAndRegion(
             @Param("contenttypeid") String contenttypeid,

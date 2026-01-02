@@ -115,27 +115,16 @@ public class DestinationService {
             try { Thread.sleep(500); } catch (InterruptedException e) { Thread.currentThread().interrupt(); break; }
         }
         
-        log.info("=== 변경된 여행지 동기화 완료: 총 {}건 ===", total);
-        return total;
+        log.info("=== 변경된 여행지 동기화 완료: 총 {}건 ===", totalCount);
+        return result;
     }
     
-    @Transactional
-    public int syncDestinations(String contenttypeid, int maxPages) {
-        int totalSaved = 0;
-        int numOfRows = 100;
-
-        log.info("=== 여행지 동기화 시작: 타입={}, 최대페이지={} ===", contenttypeid, maxPages);
-
-        for (int page = 1; page <= maxPages; page++) {
-            log.info("페이지 {} 처리 중...", page);
-
-            List<DestinationDto> destinations = tourApiService.fetchDestinations(contenttypeid, page, numOfRows);
-
-            if (destinations == null || destinations.isEmpty()) {
-                log.info("더 이상 데이터 없음. 동기화 종료.");
-                break;
-            }
-        }
+    /**
+     * 조회수 증가
+     * @param contentid 여행지 ID
+     */
+    public void increaseViewCount(String contentid) {
+        destinationDao.increaseViewCount(contentid);
     }
 
     public int syncModifiedDestinations() {
@@ -210,50 +199,6 @@ public class DestinationService {
 
         log.info("========== 변경 데이터 동기화 완료: {}건 ==========", savedCount);
         return savedCount;
-    }
-      
-      
-    @Transactional
-    public int syncAllDestinations(int pagesPerType) {
-        int total = 0;
-
-        log.info("=== 전체 여행지 동기화 시작 ===");
-
-        for (String contenttypeid : CONTENT_TYPES.keySet()) {
-            try {
-                log.info("관광타입 {} ({}) 동기화 시작", contenttypeid, CONTENT_TYPES.get(contenttypeid));
-                int saved = syncDestinations(contenttypeid, pagesPerType);
-                total += saved;
-                log.info("관광타입 {} 동기화 완료: {}건", contenttypeid, saved);
-            } catch (Exception e) {
-                log.error("관광타입 {} 동기화 실패: {}", contenttypeid, e.getMessage());
-            }
-        }
-
-        log.info("=== 전체 여행지 동기화 완료: 총 {}건 저장 ===", total);
-        return total;
-    }
-
-    @Transactional
-    public boolean updateDestinationDetail(String contentid) {
-        try {
-            DestinationDetailDto detail = tourApiService.fetchDestinationDetail(contentid);
-            
-            if (detail != null) {
-                Destination dest = destinationDao.selectDestinationById(contentid);
-                if (dest != null) {
-                    dest.setOverview(detail.getOverview());
-                    dest.setHomepage(detail.getHomepage());
-                    destinationDao.updateDestinationDetail(dest);
-                    log.info("상세정보 업데이트 완료: contentid={}", contentid);
-                    return true;
-                }
-            }
-            return false;
-        } catch (Exception e) {
-            log.error("상세정보 업데이트 실패 (contentid={}): {}", contentid, e.getMessage());
-            return false;
-        }
     }
 
     @Transactional
