@@ -63,6 +63,8 @@ export interface MemberInfo {
 export interface MemberUpdateRequest {
   nickname?: string;
   phone?: string;
+  gender?: string;   // ⭐ 추가
+  birth?: string;    // ⭐ 추가
 }
 
 /** 비밀번호 변경 요청 */

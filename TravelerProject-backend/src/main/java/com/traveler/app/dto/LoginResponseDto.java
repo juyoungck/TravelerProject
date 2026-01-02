@@ -33,4 +33,6 @@ public class LoginResponseDto {
     
     /** 회원 정보 */
     private MemberResponseDto member;
+    
+    private boolean isNewUser;
 }

@@ -54,4 +54,7 @@ public class Board {
     
     /** 삭제일시 */
     private Timestamp deletedAt;
+    
+    /** 작성자 닉네임 (JOIN용, DB 컬럼 아님) */
+    private String authorNickname;
 }

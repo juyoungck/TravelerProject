@@ -24,6 +24,8 @@ import com.traveler.app.entity.Member;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import com.traveler.app.dao.SocialAccountDao;
+import com.traveler.app.entity.SocialAccount;
 
 /**
  * OAuth2Service
@@ -46,6 +48,8 @@ public class OAuth2Service {
     private final JwtService jwtService;
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
+    private final SocialAccountDao socialAccountDao;
+    
     
     // ============================================
     // 소셜 로그인 URL 생성
@@ -354,27 +358,39 @@ public class OAuth2Service {
      * m_username 컬럼에 "KAKAO_123456" 형태로 저장하여 식별
      */
     private LoginResponseDto processOAuth2Login(OAuth2UserDto userDto) {
-        // 1. 소셜 ID 생성 (예: KAKAO_123456)
-        String socialUsername = userDto.getProvider() + "_" + userDto.getProviderId();
+    	    // 1. 소셜 ID 생성 (예: KAKAO_123456)
+    	    String socialUsername = userDto.getProvider() + "_" + userDto.getProviderId();
+    	    
+    	    // 2. 기존 회원 조회 (m_username으로 조회)
+    	    Member member = memberDao.selectMemberByUsername(socialUsername);
+    	    
+    	    // 3. 신규 회원 여부 확인
+    	    boolean isNewUser = false;
+    	    
+    	    // 4. 기존 회원이 없으면 신규 가입
+    	    if (member == null) {
+    	        // ★★★ 추가: 이미 다른 계정에 연동된 소셜인지 확인 ★★★
+    	        SocialAccount existingLink = socialAccountDao.selectByProviderAndProviderId(
+    	                userDto.getProvider(), userDto.getProviderId());
+    	        if (existingLink != null) {
+    	            throw new RuntimeException("이미 다른 계정에 연동된 소셜 계정입니다. 해당 계정으로 로그인해주세요.");
+    	        }
+    	        
+    	        isNewUser = true;
+    	        member = createSocialMember(userDto, socialUsername);
+    	    }
         
-        // 2. 기존 회원 조회 (m_username으로 조회)
-        Member member = memberDao.selectMemberByUsername(socialUsername);
-        
-        // 3. 기존 회원이 없으면 신규 가입
-        if (member == null) {
-            member = createSocialMember(userDto, socialUsername);
-        }
-        
-        // 4. 계정 상태 확인
+        // 5. 계정 상태 확인
         if (!"ACTIVE".equals(member.getMStatus())) {
-            throw new RuntimeException("비활성화된 계정입니다.");
+            throw new RuntimeException("관리자에 의해 비활성화된 계정입니다. 자세한 사항은 문의 부탁드립니다.");
         }
         
-        // 5. JWT 토큰 생성
+        // 6. JWT 토큰 생성
         String accessToken = jwtService.generateAccessToken(member);
         String refreshToken = jwtService.generateRefreshToken(member);
         
-        log.info("소셜 로그인 성공 - provider: {}, 닉네임: {}", userDto.getProvider(), member.getMNickname());
+        log.info("소셜 로그인 성공 - provider: {}, 닉네임: {}, 신규회원: {}", 
+                userDto.getProvider(), member.getMNickname(), isNewUser);
         
         return LoginResponseDto.builder()
                 .accessToken(accessToken)
@@ -382,6 +398,7 @@ public class OAuth2Service {
                 .tokenType("Bearer")
                 .expiresIn(jwtService.getAccessTokenExpirationInSeconds())
                 .member(MemberResponseDto.fromEntity(member))
+                .isNewUser(isNewUser)
                 .build();
     }
     
@@ -412,8 +429,6 @@ public class OAuth2Service {
         }
         
         // 이메일 중복 체크 - 소셜 로그인은 이메일 중복 허용 안 함
-        // 같은 이메일로 일반 가입한 계정이 있으면 해당 계정과 연결하지 않고 새로 생성
-        // (필요시 이 부분 수정하여 계정 연동 가능)
         if (memberDao.countByEmail(email) > 0) {
             email = socialUsername.toLowerCase() + "@social.traveler.com";
         }
@@ -432,6 +447,45 @@ public class OAuth2Service {
         log.info("소셜 회원가입 완료 - provider: {}, username: {}", userDto.getProvider(), socialUsername);
         
         return memberDao.selectMemberByUsername(socialUsername);
+    }
+    
+    // ============================================
+    // 소셜 연동용 메서드 (public) - 추가!
+    // ============================================
+    
+    /**
+     * 카카오 사용자 정보 조회 (연동용)
+     * 인가 코드로 액세스 토큰 받아서 사용자 정보 반환
+     * 
+     * @param code 인가 코드
+     * @return 소셜 사용자 정보
+     */
+    public OAuth2UserDto getKakaoUserInfoByCode(String code) {
+        String accessToken = getKakaoAccessToken(code);
+        return getKakaoUserInfo(accessToken);
+    }
+    
+    /**
+     * 네이버 사용자 정보 조회 (연동용)
+     * 
+     * @param code 인가 코드
+     * @param state 상태값
+     * @return 소셜 사용자 정보
+     */
+    public OAuth2UserDto getNaverUserInfoByCode(String code, String state) {
+        String accessToken = getNaverAccessToken(code, state);
+        return getNaverUserInfo(accessToken);
+    }
+    
+    /**
+     * 구글 사용자 정보 조회 (연동용)
+     * 
+     * @param code 인가 코드
+     * @return 소셜 사용자 정보
+     */
+    public OAuth2UserDto getGoogleUserInfoByCode(String code) {
+        String accessToken = getGoogleAccessToken(code);
+        return getGoogleUserInfo(accessToken);
     }
     
     /**

@@ -24,4 +24,10 @@ public class MemberUpdateDto {
     
     /** 전화번호 (변경할 경우) */
     private String phone;
+    
+    /** 성별 (변경할 경우) - M, F */
+    private String gender;  // ⭐ 추가!
+    
+    /** 생년월일 (변경할 경우) - yyyy-MM-dd */
+    private String birth;   // ⭐ 추가!
 }
