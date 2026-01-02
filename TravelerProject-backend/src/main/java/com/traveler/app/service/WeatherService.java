@@ -12,6 +12,7 @@ import java.util.Map;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import com.traveler.app.util.GridConverter;
@@ -26,7 +27,9 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class WeatherService {
 
-    private static final String API_KEY = "82c35c8d8bc1dfb2da647bac77fc73221519592d1202e7769fef3011e885f90c";
+    @Value("${weather.api.key}")
+    private String apiKey;
+    
     private static final String NCST_URL = "http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtNcst";  // 초단기실황
     private static final String FCST_URL = "http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtFcst";  // 초단기예보
 
@@ -93,7 +96,7 @@ public class WeatherService {
         String baseTimeStr = baseTime.format(DateTimeFormatter.ofPattern("HH")) + "00";
 
         StringBuilder urlBuilder = new StringBuilder(NCST_URL);
-        urlBuilder.append("?" + URLEncoder.encode("serviceKey", "UTF-8") + "=" + API_KEY);
+        urlBuilder.append("?" + URLEncoder.encode("serviceKey", "UTF-8") + "=" + apiKey);
         urlBuilder.append("&" + URLEncoder.encode("pageNo", "UTF-8") + "=" + URLEncoder.encode("1", "UTF-8"));
         urlBuilder.append("&" + URLEncoder.encode("numOfRows", "UTF-8") + "=" + URLEncoder.encode("10", "UTF-8"));
         urlBuilder.append("&" + URLEncoder.encode("dataType", "UTF-8") + "=" + URLEncoder.encode("JSON", "UTF-8"));
@@ -135,7 +138,7 @@ public class WeatherService {
         String baseTimeStr = baseTime.format(DateTimeFormatter.ofPattern("HH")) + "30";
 
         StringBuilder urlBuilder = new StringBuilder(FCST_URL);
-        urlBuilder.append("?" + URLEncoder.encode("serviceKey", "UTF-8") + "=" + API_KEY);
+        urlBuilder.append("?" + URLEncoder.encode("serviceKey", "UTF-8") + "=" + apiKey);
         urlBuilder.append("&" + URLEncoder.encode("pageNo", "UTF-8") + "=" + URLEncoder.encode("1", "UTF-8"));
         urlBuilder.append("&" + URLEncoder.encode("numOfRows", "UTF-8") + "=" + URLEncoder.encode("60", "UTF-8"));
         urlBuilder.append("&" + URLEncoder.encode("dataType", "UTF-8") + "=" + URLEncoder.encode("JSON", "UTF-8"));

@@ -242,8 +242,6 @@ public class TourApiService {
                     .queryParam("MobileApp", tourApiConfig.getMobileApp())
                     .queryParam("_type", "json")
                     .queryParam("contentId", contentid)
-                    .queryParam("overviewYN", "Y")
-                    .queryParam("defaultYN", "Y")
                     .queryParam("numOfRows", 1)
                     .queryParam("pageNo", 1)
                     .build(true)

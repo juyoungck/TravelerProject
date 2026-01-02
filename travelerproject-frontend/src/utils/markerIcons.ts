@@ -11,6 +11,11 @@
  * - 숙박(32): 분홍 (#EC4899)
  * - 쇼핑(38): 노랑 (#EAB308)
  * - 음식점(39): 빨강 (#EF4444)
+ * 
+ * 플래너 일차별 색상 (10일차까지):
+ * - 1일차: 파랑, 2일차: 초록, 3일차: 주황, 4일차: 보라
+ * - 5일차: 분홍, 6일차: 청록, 7일차: 빨강, 8일차: 노랑
+ * - 9일차: 남색, 10일차 이상: 회색
  */
 
 /** 마커 색상 정의 */
@@ -35,6 +40,30 @@ export const MARKER_EMOJI: Record<string, string> = {
   '32': '🏨', // 숙박
   '38': '🛍️', // 쇼핑
   '39': '🍽️', // 음식점
+};
+
+/** ★ 플래너 일차별 색상 배열 (10일차까지 지원) */
+export const PLANNER_DAY_COLORS: string[] = [
+  '#3B82F6', // 1일차 - 파랑
+  '#22C55E', // 2일차 - 초록
+  '#F97316', // 3일차 - 주황
+  '#8B5CF6', // 4일차 - 보라
+  '#EC4899', // 5일차 - 분홍
+  '#06B6D4', // 6일차 - 청록
+  '#EF4444', // 7일차 - 빨강
+  '#EAB308', // 8일차 - 노랑
+  '#6366F1', // 9일차 - 남색 (인디고)
+  '#6B7280', // 10일차 이상 - 회색
+];
+
+/**
+ * 일차 번호에 따른 색상 반환
+ * @param dayNumber 일차 번호 (1부터 시작)
+ * @returns 색상 코드
+ */
+export const getPlannerDayColor = (dayNumber: number): string => {
+  const index = Math.min(dayNumber - 1, PLANNER_DAY_COLORS.length - 1);
+  return PLANNER_DAY_COLORS[Math.max(0, index)];
 };
 
 /**
@@ -121,9 +150,8 @@ const getMarkerIcon = (contenttypeid: string): string => {
  * @returns SVG 문자열 (Data URL 형태)
  */
 export const createPlannerMarkerSvg = (dayNumber: number, orderNumber: number): string => {
-  // 일차별 색상 (1일차: 파랑, 2일차: 초록, 3일차: 주황, 4일차: 보라, 5일차 이상: 회색)
-  const dayColors = ['#3B82F6', '#22C55E', '#F97316', '#8B5CF6', '#6B7280'];
-  const color = dayColors[Math.min(dayNumber - 1, 4)];
+  // ★ 확장된 일차별 색상 사용
+  const color = getPlannerDayColor(dayNumber);
   
   const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
