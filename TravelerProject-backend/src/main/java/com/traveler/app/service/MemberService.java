@@ -226,6 +226,16 @@ public class MemberService {
             member.setMPhone(request.getPhone());
         }
         
+        // ⭐ 성별 변경 추가!
+        if (request.getGender() != null) {
+            member.setMGender(request.getGender());
+        }
+        
+        // ⭐ 생년월일 변경 추가!
+        if (request.getBirth() != null) {
+            member.setMBirth(parseBirthDate(request.getBirth()));
+        }
+        
         memberDao.updateMember(member);
         log.info("회원정보 수정 완료 - 회원ID: {}", mId);
         

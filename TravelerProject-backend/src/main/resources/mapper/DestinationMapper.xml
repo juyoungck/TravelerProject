@@ -276,5 +276,18 @@
         </if>
     </select>
 
+	<!-- 여행지 범위 조회 (인덱스 기반) -->
+   <select id="selectDestinationsByRange" resultType="com.traveler.app.entity.Destination">
+       SELECT * FROM (
+           SELECT 
+               d.*,
+               ROWNUM AS rn
+           FROM (
+               SELECT * FROM destination ORDER BY contentid
+           ) d
+           WHERE ROWNUM &lt;= #{endIndex}
+       )
+       WHERE rn >= #{startIndex}
+   </select>
 
 </mapper>

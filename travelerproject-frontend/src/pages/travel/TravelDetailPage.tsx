@@ -1,6 +1,8 @@
 /**
  * TravelDetailPage.tsx - 여행지 상세 페이지
- * 여행지 정보, 리뷰 작성/목록, 찜 기능, 고정 미니탭, 위로가기 버튼 포함
+ * 여행지 정보, 리뷰 작성/목록, 찜 기능(API 연동), 고정 미니탭, 위로가기 버튼 포함
+ * 
+ * @author TravelerProject
  */
 
 import { useState, useEffect } from 'react';
@@ -8,6 +10,7 @@ import { Heart, Eye, MapPin, X, Star, ArrowUp } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Header } from '../../components/layout/Header';
 import { getDestinationDetail } from '../../api/destinationApi';
+import { favoriteApi } from '../../api/favoriteApi';
 
 interface Review {
   id: number;
@@ -42,8 +45,6 @@ interface TravelDetailPageProps {
   onClose: () => void;
   onNavigate?: (page: string) => void;
   isLoggedIn?: boolean;
-  favoriteDestinations?: any[];
-  onToggleFavorite?: (destination: any) => void;
   onOpenSearch?: () => void;
   reviews?: Review[];
   onAddReview?: (review: Review) => void;
@@ -54,8 +55,6 @@ export function TravelDetailPage({
   onClose, 
   onNavigate, 
   isLoggedIn, 
-  favoriteDestinations = [], 
-  onToggleFavorite, 
   onOpenSearch, 
   reviews = [], 
   onAddReview 
@@ -69,6 +68,12 @@ export function TravelDetailPage({
   const [newReviewContent, setNewReviewContent] = useState('');
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [activeTab, setActiveTab] = useState<'photos' | 'info' | 'reviews' | 'notice'>('photos');
+
+  // ============================================
+  // 찜 상태 관리 (API 연동)
+  // ============================================
+  const [isFavorite, setIsFavorite] = useState(false);
+  const [isLoadingFavorite, setIsLoadingFavorite] = useState(false);
 
   /** 여행지 상세 정보 조회 */
   useEffect(() => {
@@ -89,6 +94,29 @@ export function TravelDetailPage({
       fetchDetail();
     }
   }, [destinationId]);
+
+  /** 페이지 로드 시 찜 여부 확인 (API) */
+  useEffect(() => {
+    const checkFavorite = async () => {
+      // 로그인 안 했거나, destination 없으면 스킵
+      if (!isLoggedIn || !destination?.contentid) {
+        setIsFavorite(false);
+        return;
+      }
+
+      try {
+        const response = await favoriteApi.checkFavoriteDestination(destination.contentid);
+        if (response.status === 'success') {
+          setIsFavorite(response.isFavorite);
+        }
+      } catch (error) {
+        console.error('찜 여부 확인 오류:', error);
+        setIsFavorite(false);
+      }
+    };
+
+    checkFavorite();
+  }, [isLoggedIn, destination?.contentid]);
 
   /** 로딩 중 */
   if (loading) {
@@ -114,25 +142,44 @@ export function TravelDetailPage({
     );
   }
 
-  // 현재 여행지가 찜 목록에 있는지 확인
-  const isFavorite = favoriteDestinations.some((fav) => fav.contentid === destination.contentid);
-
-  // 찜 토글 핸들러
-  const handleToggleFavorite = () => {
+  // ============================================
+  // 찜 토글 핸들러 (API 연동)
+  // ============================================
+  const handleToggleFavorite = async () => {
+    // 로그인 체크
     if (!isLoggedIn) {
       alert('로그인이 필요한 서비스입니다.');
       return;
     }
-    
-    if (onToggleFavorite) {
-      onToggleFavorite({
-        contentid: destination.contentid,
-        title: destination.title,
-        firstimage: destination.firstimage,
-        firstimage2: destination.firstimage2,
-        addr1: destination.addr1,
-        overview: destination.overview,
-      });
+
+    // contentid 체크
+    if (!destination?.contentid) {
+      alert('여행지 정보가 없습니다.');
+      return;
+    }
+
+    // 중복 클릭 방지
+    if (isLoadingFavorite) return;
+
+    setIsLoadingFavorite(true);
+    try {
+      const response = await favoriteApi.toggleFavoriteDestination(destination.contentid);
+      if (response.status === 'success') {
+        setIsFavorite(response.isFavorite);
+        // 성공 메시지 (선택사항 - 너무 자주 뜨면 주석처리)
+        // alert(response.message);
+      } else {
+        alert(response.message || '찜 처리에 실패했습니다.');
+      }
+    } catch (error: any) {
+      console.error('찜 처리 오류:', error);
+      if (error.response?.status === 401) {
+        alert('로그인이 만료되었습니다. 다시 로그인해주세요.');
+      } else {
+        alert('찜 처리 중 오류가 발생했습니다.');
+      }
+    } finally {
+      setIsLoadingFavorite(false);
     }
   };
 
@@ -318,12 +365,20 @@ export function TravelDetailPage({
               </span>
             </div>
             <div className="flex items-center gap-4">
+              {/* 찜하기 버튼 (API 연동) */}
               <button 
                 onClick={handleToggleFavorite}
-                className="flex items-center gap-1 text-gray-600 hover:text-red-500 transition-colors cursor-pointer"
+                disabled={isLoadingFavorite}
+                className={`flex items-center gap-1 transition-colors cursor-pointer ${
+                  isLoadingFavorite 
+                    ? 'text-gray-400 cursor-not-allowed' 
+                    : isFavorite 
+                      ? 'text-red-500 hover:text-red-600' 
+                      : 'text-gray-600 hover:text-red-500'
+                }`}
               >
                 <Heart className={`h-5 w-5 ${isFavorite ? 'fill-red-500 text-red-500' : ''}`} />
-                <span>찜하기</span>
+                <span>{isLoadingFavorite ? '처리중...' : '찜하기'}</span>
               </button>
             </div>
           </div>

@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" 
+    "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+    SocialAccountMapper.xml
+    소셜 계정 연동 SQL 매퍼
+    
+    @author TravelerProject
+-->
+<mapper namespace="com.traveler.app.dao.SocialAccountDao">
+
+    <!-- 결과 매핑 -->
+    <resultMap id="SocialAccountResultMap" type="com.traveler.app.entity.SocialAccount">
+        <id property="saId" column="sa_id"/>
+        <result property="mId" column="m_id"/>
+        <result property="saProvider" column="sa_provider"/>
+        <result property="saProviderId" column="sa_provider_id"/>
+        <result property="saEmail" column="sa_email"/>
+        <result property="saNickname" column="sa_nickname"/>
+        <result property="saAccessToken" column="sa_access_token"/>
+        <result property="saRefreshToken" column="sa_refresh_token"/>
+        <result property="saTokenExpires" column="sa_token_expires"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <!-- 소셜 계정 연동 추가 -->
+    <insert id="insertSocialAccount" parameterType="com.traveler.app.entity.SocialAccount">
+        <selectKey keyProperty="saId" resultType="long" order="BEFORE">
+            SELECT seq_social_account.NEXTVAL FROM DUAL
+        </selectKey>
+        INSERT INTO social_account (
+            sa_id, m_id, sa_provider, sa_provider_id, 
+            sa_email, sa_nickname, sa_access_token, sa_refresh_token,
+            sa_token_expires, created_at, updated_at
+        ) VALUES (
+            #{saId}, #{mId}, #{saProvider}, #{saProviderId},
+            #{saEmail, jdbcType=VARCHAR}, #{saNickname, jdbcType=VARCHAR},
+            #{saAccessToken, jdbcType=VARCHAR}, #{saRefreshToken, jdbcType=VARCHAR},
+            #{saTokenExpires, jdbcType=TIMESTAMP}, SYSDATE, SYSDATE
+        )
+    </insert>
+
+    <!-- 회원 ID로 연동된 소셜 계정 목록 조회 -->
+    <select id="selectByMemberId" parameterType="long" resultMap="SocialAccountResultMap">
+        SELECT * FROM social_account WHERE m_id = #{mId}
+    </select>
+
+    <!-- 제공자 + 제공자ID로 조회 -->
+    <select id="selectByProviderAndProviderId" resultMap="SocialAccountResultMap">
+        SELECT * FROM social_account 
+        WHERE sa_provider = #{provider} AND sa_provider_id = #{providerId}
+    </select>
+
+    <!-- 회원 ID + 제공자로 조회 -->
+    <select id="selectByMemberIdAndProvider" resultMap="SocialAccountResultMap">
+        SELECT * FROM social_account 
+        WHERE m_id = #{mId} AND sa_provider = #{provider}
+    </select>
+
+</mapper>

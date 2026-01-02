@@ -4,6 +4,7 @@ import { Footer } from "./components/layout/Footer";
 import { FeaturedCarousel } from "./components/home/FeaturedCarousel";
 import { PopularPlanners } from "./components/home/PopularPlanners";
 import { SearchModal } from "./components/modals/SearchModal";
+import { SocialLinkModal } from "./components/modals/SocialLinkModal";
 import { TravelPage } from "./pages/travel/TravelPage";
 import { PlannerPage } from "./pages/planner/PlannerPage";
 import { EventPage } from "./pages/event/EventPage";
@@ -16,6 +17,7 @@ import { FindIdPage } from "./pages/auth/FindIdPage";
 import { FindPasswordPage } from "./pages/auth/FindPasswordPage";
 import { NoticePage } from "./pages/NoticePage";
 import { SharedPlannerPage } from "./pages/planner/SharedPlannerPage";
+import { socialApi } from "./api/socialApi";
 
 /**
  * App.tsx - 메인 애플리케이션
@@ -28,8 +30,7 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<{ mId: number; nickname: string } | null>(null);
   
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [selectedDestinationId, setSelectedDestinationId] = useState<number | null>(null);
-
+  const [selectedDestinationId, setSelectedDestinationId] = useState<string | null>(null);
   const [selectedPlanner, setSelectedPlanner] = useState<any>(null);
   const [favoriteDestinations, setFavoriteDestinations] = useState<any[]>([]);
   const [favoritePlanners, setFavoritePlanners] = useState<any[]>([]);
@@ -41,6 +42,15 @@ export default function App() {
   
   // 공유 링크 상태
   const [shareLink, setShareLink] = useState<string | null>(null);
+
+  // 소셜 연동 모달 상태 (추가!)
+  const [isSocialLinkModalOpen, setIsSocialLinkModalOpen] = useState(false);
+  const [socialLinkInfo, setSocialLinkInfo] = useState<{
+    provider: string;
+    providerId: string;
+    email: string;
+    nickname: string;
+  } | null>(null);
 
   /**
    * 페이지 로드 시 로그인 상태 확인
@@ -87,6 +97,7 @@ export default function App() {
     const accessToken = urlParams.get('accessToken');
     const refreshToken = urlParams.get('refreshToken');
     const error = urlParams.get('error');
+    const isNewUser = urlParams.get('isNewUser');
     
     // 소셜 로그인 콜백인 경우
     if (window.location.pathname === '/oauth2/callback' || accessToken || error) {
@@ -103,9 +114,6 @@ export default function App() {
           window.history.replaceState({}, '', '/');
         }, 3000);
       } else if (accessToken && refreshToken) {
-        // 성공 처리
-        setOauthStatus('success');
-        
         // 토큰 저장
         localStorage.setItem('accessToken', accessToken);
         localStorage.setItem('refreshToken', refreshToken);
@@ -113,16 +121,82 @@ export default function App() {
         // 로그인 상태 변경
         setIsLoggedIn(true);
         
-        // 2초 후 홈으로 이동
-        setTimeout(() => {
-          setOauthStatus(null);
-          setCurrentPage('home');
-          // URL 정리
-          window.history.replaceState({}, '', '/');
-        }, 2000);
+        // 신규 회원이면 회원가입 페이지로 (추가정보 입력)
+        if (isNewUser === 'true') {
+          setOauthStatus('success');
+          localStorage.setItem('socialSignupMode', 'true');
+          
+          setTimeout(() => {
+            setOauthStatus(null);
+            setCurrentPage('signup');
+            window.history.replaceState({}, '', '/');
+          }, 1500);
+        } else {
+          // 기존 회원이면 홈으로
+          setOauthStatus('success');
+          
+          setTimeout(() => {
+            setOauthStatus(null);
+            setCurrentPage('home');
+            window.history.replaceState({}, '', '/');
+          }, 2000);
+        }
       }
     }
-  }, []); 
+  }, []);
+
+  /**
+   * 소셜 연동 콜백 처리 (추가!)
+   */
+  useEffect(() => {
+    if (window.location.pathname === '/oauth2/link/callback') {
+      const urlParams = new URLSearchParams(window.location.search);
+      
+      const provider = urlParams.get('provider');
+      const providerId = urlParams.get('providerId');
+      const email = urlParams.get('email') || '';
+      const nickname = urlParams.get('nickname') || '';
+      const isAlreadyRegistered = urlParams.get('isAlreadyRegistered') === 'true';
+      const isAlreadyLinked = urlParams.get('isAlreadyLinked') === 'true';
+      const error = urlParams.get('error');
+      
+      // URL 파라미터 제거
+      window.history.replaceState({}, document.title, '/mypage');
+      
+      // 에러 처리
+      if (error) {
+        alert(decodeURIComponent(error));
+        setCurrentPage('mypage');
+        return;
+      }
+      
+      // 이미 가입된 계정인지 확인
+      if (isAlreadyRegistered) {
+        alert('이미 가입된 소셜 계정입니다.');
+        setCurrentPage('mypage');
+        return;
+      }
+      
+      // 이미 연동된 계정인지 확인
+      if (isAlreadyLinked) {
+        alert('이미 다른 계정에 연동된 소셜 계정입니다.');
+        setCurrentPage('mypage');
+        return;
+      }
+      
+      // 닉네임 선택 모달 표시
+      if (provider && providerId) {
+        setSocialLinkInfo({
+          provider,
+          providerId,
+          email,
+          nickname
+        });
+        setIsSocialLinkModalOpen(true);
+        setCurrentPage('mypage');
+      }
+    }
+  }, []);
 
   /**
    * URL 경로 파싱 - 공유 링크 감지
@@ -162,7 +236,7 @@ export default function App() {
 
     // 여행지 상세 페이지로 이동
     if (page === 'travel-detail' && contentid) {
-      setSelectedDestinationId(contentid);
+      setSelectedDestinationId(Number(contentid));
       setCurrentPage('travel');
     }
     // 다른 페이지들
@@ -189,6 +263,11 @@ export default function App() {
   const handleNavigate = (page: string) => {
     setCurrentPage(page);
     setShareLink(null);
+
+    // ★ 여행지 페이지로 이동할 때 상세 ID 초기화
+  if (page === "travel") {
+    setSelectedDestinationId(null);
+  }
     // URL 변경 (공유 링크가 아닌 경우 기본 경로로)
     if (page === "home") {
       window.history.pushState({}, '', '/');
@@ -252,6 +331,36 @@ export default function App() {
     setCurrentPage("home");
     
     alert("회원탈퇴가 완료되었습니다.");
+  };
+
+  /**
+   * 소셜 연동 확정 핸들러 (추가!)
+   */
+  const handleSocialLinkConfirm = async (useSocialNickname: boolean) => {
+    if (!socialLinkInfo) return;
+    
+    try {
+      const response = await socialApi.confirmSocialLink({
+        provider: socialLinkInfo.provider,
+        providerId: socialLinkInfo.providerId,
+        email: socialLinkInfo.email,
+        nickname: socialLinkInfo.nickname,
+        useSocialNickname
+      });
+      
+      if (response.status === 'success') {
+        alert('소셜 계정이 연동되었습니다!');
+        setIsSocialLinkModalOpen(false);
+        setSocialLinkInfo(null);
+        // 페이지 새로고침으로 연동 상태 갱신
+        window.location.reload();
+      } else {
+        alert(response.message || '연동에 실패했습니다.');
+      }
+    } catch (error: any) {
+      console.error('소셜 연동 실패:', error);
+      alert(error.response?.data?.message || '연동 중 오류가 발생했습니다.');
+    }
   };
 
   /**
@@ -385,6 +494,7 @@ export default function App() {
         <TravelPage
           onNavigate={handleNavigate}
           isLoggedIn={isLoggedIn}
+          initialDestinationId={selectedDestinationId}
           onOpenSearch={() => setIsSearchModalOpen(true)}
           favoriteDestinations={favoriteDestinations}
           onToggleFavorite={handleToggleFavorite}
@@ -456,27 +566,21 @@ export default function App() {
     }
 
     if (currentPage === "mypage") {
-      return (
-        <MyPage
-          onLogout={handleLogout}
-          onWithdraw={handleWithdraw}
-          favoriteDestinations={favoriteDestinations}
-          onRemoveFavorite={handleRemoveFavorite}
-          favoritePlanners={favoritePlanners}
-          onRemoveFavoritePlanner={handleRemoveFavoritePlanner}
-          onNavigateToPlanner={(planner) => {
-            setSelectedPlanner(planner);
-            setCurrentPage("planner");
-          }}
-          onNavigateToDestination={(destinationId) => {
-            setSelectedDestinationId(destinationId?.toString() ?? null);
-            setCurrentPage("travel");
-          }}
-          reviews={reviews}
-          onDeleteReview={handleDeleteReview}
-        />
-      );
-    }
+  return (
+    <MyPage
+      onLogout={handleLogout}
+      onWithdraw={handleWithdraw}
+      onNavigateToPlanner={(planner) => {
+        setSelectedPlanner(planner);
+        setCurrentPage("planner");
+      }}
+      onNavigateToDestination={(contentid) => {
+        setSelectedDestinationId(contentid);
+        setCurrentPage("travel");
+      }}
+    />
+  );
+}
 
     if (currentPage === "notice") {
       return <NoticePage />;
@@ -540,6 +644,21 @@ export default function App() {
             setCurrentPage("planner");
             setIsSearchModalOpen(false);
           }}
+        />
+      )}
+
+      {/* 소셜 연동 모달 (추가!) */}
+      {isSocialLinkModalOpen && socialLinkInfo && (
+        <SocialLinkModal
+          isOpen={isSocialLinkModalOpen}
+          onClose={() => {
+            setIsSocialLinkModalOpen(false);
+            setSocialLinkInfo(null);
+          }}
+          provider={socialLinkInfo.provider}
+          socialNickname={socialLinkInfo.nickname}
+          currentNickname={currentUser?.nickname || ''}
+          onConfirm={handleSocialLinkConfirm}
         />
       )}
     </div>
