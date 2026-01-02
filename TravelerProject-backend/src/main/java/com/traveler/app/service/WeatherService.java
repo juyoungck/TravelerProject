@@ -27,9 +27,9 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class WeatherService {
 
-    @Value("${weather.api.key}")
+	@Value("${weather.api.key}")
     private String apiKey;
-    
+	
     private static final String NCST_URL = "http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtNcst";  // 초단기실황
     private static final String FCST_URL = "http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtFcst";  // 초단기예보
 

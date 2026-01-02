@@ -519,7 +519,7 @@ const KakaoMap = forwardRef<KakaoMapRef, KakaoMapProps>(({
   useEffect(() => {
     if (!mapContainerRef.current) return;
     
-    loadKakaoMap(() => {  
+    loadKakaoMap(() => {
       const map = new kakao.maps.Map(mapContainerRef.current!, {
         center: new kakao.maps.LatLng(centerLat, centerLng),
         level,
