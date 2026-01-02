@@ -165,12 +165,6 @@ export function TravelDetailPage({
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [activeTab, setActiveTab] = useState<'photos' | 'info' | 'reviews' | 'notice'>('photos');
 
-  // ============================================
-  // 찜 상태 관리 (API 연동)
-  // ============================================
-  const [isFavorite, setIsFavorite] = useState(false);
-  const [isLoadingFavorite, setIsLoadingFavorite] = useState(false);
-
   /** 여행지 상세 정보 조회 */
   useEffect(() => {
     const fetchDetail = async () => {
