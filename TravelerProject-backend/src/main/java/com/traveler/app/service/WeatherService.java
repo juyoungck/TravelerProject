@@ -9,9 +9,11 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import com.traveler.app.util.GridConverter;
@@ -21,68 +23,166 @@ import lombok.extern.slf4j.Slf4j;
 /**
  * 날씨 서비스
  * 초단기실황 (기온) + 초단기예보 (하늘상태) API 호출
+ * 
+ * 수정: 5분 캐시 + 중복 호출 방지 + 에러 처리 강화
  */
 @Service
 @Slf4j
 public class WeatherService {
 
-    private static final String API_KEY = "82c35c8d8bc1dfb2da647bac77fc73221519592d1202e7769fef3011e885f90c";
-    private static final String NCST_URL = "http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtNcst";  // 초단기실황
-    private static final String FCST_URL = "http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtFcst";  // 초단기예보
+    @Value("${weather.api.key}")
+    private String apiKey;
+    
+    private static final String NCST_URL = "http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtNcst";
+    private static final String FCST_URL = "http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtFcst";
+    
+    /** 캐시 유효 시간: 5분 (밀리초) */
+    private static final long CACHE_DURATION = 5 * 60 * 1000;
+    
+    /** 위치 동일 판정 거리 (km) */
+    private static final double SAME_LOCATION_THRESHOLD = 1.0;
+    
+    /** 캐시 저장소 */
+    private final ConcurrentHashMap<String, CacheData> weatherCache = new ConcurrentHashMap<>();
+    
+    /** 요청 중인 좌표 (중복 호출 방지) */
+    private final ConcurrentHashMap<String, Boolean> requestingKeys = new ConcurrentHashMap<>();
+
+    /**
+     * 캐시 데이터 클래스
+     */
+    private static class CacheData {
+        double lat;
+        double lon;
+        Map<String, Object> data;
+        long timestamp;
+        
+        CacheData(double lat, double lon, Map<String, Object> data) {
+            this.lat = lat;
+            this.lon = lon;
+            this.data = data;
+            this.timestamp = System.currentTimeMillis();
+        }
+        
+        boolean isValid() {
+            return (System.currentTimeMillis() - timestamp) < CACHE_DURATION;
+        }
+    }
 
     /**
      * 위경도로 현재 날씨 조회
-     * @param lat 위도
-     * @param lon 경도
-     * @return 날씨 정보 (기온, 기상상황)
      */
     public Map<String, Object> getWeather(double lat, double lon) {
         Map<String, Object> result = new HashMap<>();
+        
+        // 1. 캐시 확인
+        CacheData cached = findValidCache(lat, lon);
+        if (cached != null) {
+            log.info("날씨 캐시 사용: lat={}, lon={}", lat, lon);
+            return cached.data;
+        }
+        
+        // 2. 중복 호출 방지
+        String requestKey = getGridKey(lat, lon);
+        if (requestingKeys.putIfAbsent(requestKey, true) != null) {
+            log.info("날씨 API 요청 중... 대기: {}", requestKey);
+            result.put("status", "pending");
+            result.put("message", "요청 중입니다.");
+            return result;
+        }
 
         try {
-            // 1. 위경도 → 격자 변환
+            // 3. 위경도 → 격자 변환
             int[] grid = GridConverter.toGrid(lat, lon);
             int nx = grid[0];
             int ny = grid[1];
 
-            log.info("좌표 변환: lat={}, lon={} → nx={}, ny={}", lat, lon, nx, ny);
+            log.info("날씨 API 호출: lat={}, lon={} → nx={}, ny={}", lat, lon, nx, ny);
 
-            // 2. 초단기실황 API 호출 (기온, 강수형태)
+            // 4. 초단기실황 API 호출
             Map<String, String> ncstData = callNcstApi(nx, ny);
             
-            // 3. 초단기예보 API 호출 (하늘상태)
+            // 5. 초단기예보 API 호출
             String skyCode = callFcstApi(nx, ny);
 
-            // 4. 기상상황 결정
-            String pty = ncstData.get("pty");  // 강수형태
+            // 6. 기온이 없으면 실패
+            if (ncstData.get("temperature") == null) {
+                result.put("status", "fail");
+                result.put("message", "날씨 데이터를 가져올 수 없습니다.");
+                return result;
+            }
+
+            // 7. 기상상황 결정
+            String pty = ncstData.get("pty");
             String sky = determineSky(pty, skyCode);
 
-            // 5. 결과 구성
+            // 8. 결과 구성
             Map<String, String> weather = new HashMap<>();
             weather.put("temperature", ncstData.get("temperature"));
             weather.put("sky", sky);
 
             result.put("status", "success");
             result.put("weather", weather);
+            
+            // 9. 캐시 저장
+            weatherCache.put(requestKey, new CacheData(lat, lon, result));
+            
+            // 오래된 캐시 정리
+            cleanExpiredCache();
 
         } catch (Exception e) {
             log.error("날씨 조회 실패: {}", e.getMessage());
             result.put("status", "fail");
             result.put("message", e.getMessage());
+        } finally {
+            // 요청 완료 표시
+            requestingKeys.remove(requestKey);
         }
 
         return result;
     }
+    
+    /**
+     * 격자 키 생성 (nx_ny)
+     */
+    private String getGridKey(double lat, double lon) {
+        int[] grid = GridConverter.toGrid(lat, lon);
+        return grid[0] + "_" + grid[1];
+    }
+    
+    /**
+     * 유효한 캐시 찾기
+     */
+    private CacheData findValidCache(double lat, double lon) {
+        String key = getGridKey(lat, lon);
+        CacheData cached = weatherCache.get(key);
+        
+        if (cached != null && cached.isValid()) {
+            return cached;
+        }
+        
+        // 만료된 캐시 삭제
+        if (cached != null) {
+            weatherCache.remove(key);
+        }
+        
+        return null;
+    }
+    
+    /**
+     * 만료된 캐시 정리
+     */
+    private void cleanExpiredCache() {
+        weatherCache.entrySet().removeIf(entry -> !entry.getValue().isValid());
+    }
 
     /**
-     * 초단기실황 API 호출 (기온, 강수형태)
-     * 매시 정시 발표, 40분 후 API 제공
+     * 초단기실황 API 호출
      */
     private Map<String, String> callNcstApi(int nx, int ny) throws Exception {
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime baseTime;
         
-        // 40분 이후면 현재 시간, 이전이면 1시간 전
         if (now.getMinute() >= 40) {
             baseTime = now;
         } else {
@@ -93,7 +193,7 @@ public class WeatherService {
         String baseTimeStr = baseTime.format(DateTimeFormatter.ofPattern("HH")) + "00";
 
         StringBuilder urlBuilder = new StringBuilder(NCST_URL);
-        urlBuilder.append("?" + URLEncoder.encode("serviceKey", "UTF-8") + "=" + API_KEY);
+        urlBuilder.append("?" + URLEncoder.encode("serviceKey", "UTF-8") + "=" + apiKey);
         urlBuilder.append("&" + URLEncoder.encode("pageNo", "UTF-8") + "=" + URLEncoder.encode("1", "UTF-8"));
         urlBuilder.append("&" + URLEncoder.encode("numOfRows", "UTF-8") + "=" + URLEncoder.encode("10", "UTF-8"));
         urlBuilder.append("&" + URLEncoder.encode("dataType", "UTF-8") + "=" + URLEncoder.encode("JSON", "UTF-8"));
@@ -109,10 +209,7 @@ public class WeatherService {
     }
 
     /**
-     * 초단기예보 API 호출 (하늘상태)
-     * 매시 30분 발표, 약 45분 후 API 제공
-     * 예: 10:29 → 08:30 데이터 (09:30은 아직 안 나옴)
-     *     10:45 → 09:30 데이터
+     * 초단기예보 API 호출
      */
     private String callFcstApi(int nx, int ny) throws Exception {
         LocalDateTime now = LocalDateTime.now();
@@ -120,14 +217,11 @@ public class WeatherService {
         int minute = now.getMinute();
         LocalDateTime baseTime;
         
-        // 45분 이후면 현재 시간의 30분, 이전이면 이전 시간의 30분
         if (minute >= 45) {
             baseTime = now;
         } else if (minute >= 15) {
-            // 15~44분이면 1시간 전 30분
             baseTime = now.minusHours(1);
         } else {
-            // 0~14분이면 2시간 전 30분
             baseTime = now.minusHours(2);
         }
 
@@ -135,7 +229,7 @@ public class WeatherService {
         String baseTimeStr = baseTime.format(DateTimeFormatter.ofPattern("HH")) + "30";
 
         StringBuilder urlBuilder = new StringBuilder(FCST_URL);
-        urlBuilder.append("?" + URLEncoder.encode("serviceKey", "UTF-8") + "=" + API_KEY);
+        urlBuilder.append("?" + URLEncoder.encode("serviceKey", "UTF-8") + "=" + apiKey);
         urlBuilder.append("&" + URLEncoder.encode("pageNo", "UTF-8") + "=" + URLEncoder.encode("1", "UTF-8"));
         urlBuilder.append("&" + URLEncoder.encode("numOfRows", "UTF-8") + "=" + URLEncoder.encode("60", "UTF-8"));
         urlBuilder.append("&" + URLEncoder.encode("dataType", "UTF-8") + "=" + URLEncoder.encode("JSON", "UTF-8"));
@@ -158,12 +252,16 @@ public class WeatherService {
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
         conn.setRequestMethod("GET");
         conn.setRequestProperty("Content-type", "application/json");
+        conn.setConnectTimeout(5000);
+        conn.setReadTimeout(5000);
 
+        int responseCode = conn.getResponseCode();
+        
         BufferedReader rd;
-        if (conn.getResponseCode() >= 200 && conn.getResponseCode() <= 300) {
-            rd = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+        if (responseCode >= 200 && responseCode <= 300) {
+            rd = new BufferedReader(new InputStreamReader(conn.getInputStream(), "UTF-8"));
         } else {
-            rd = new BufferedReader(new InputStreamReader(conn.getErrorStream()));
+            rd = new BufferedReader(new InputStreamReader(conn.getErrorStream(), "UTF-8"));
         }
 
         StringBuilder sb = new StringBuilder();
@@ -174,18 +272,48 @@ public class WeatherService {
         rd.close();
         conn.disconnect();
 
-        return sb.toString();
+        String response = sb.toString();
+        
+        if (responseCode != 200) {
+            log.error("API 응답 에러 - 코드: {}, 응답: {}", responseCode, 
+                response.substring(0, Math.min(200, response.length())));
+            throw new RuntimeException("API 호출 실패 (HTTP " + responseCode + ")");
+        }
+        
+        if (!response.trim().startsWith("{")) {
+            log.error("API 응답이 JSON이 아님: {}", response.substring(0, Math.min(200, response.length())));
+            throw new RuntimeException("API 응답 형식 오류");
+        }
+
+        return response;
     }
 
     /**
-     * 초단기실황 응답 파싱 (기온, 강수형태)
+     * 초단기실황 응답 파싱
      */
     private Map<String, String> parseNcstResponse(String response) {
         Map<String, String> data = new HashMap<>();
 
         try {
             JSONObject json = new JSONObject(response);
-            JSONObject body = json.getJSONObject("response").getJSONObject("body");
+            JSONObject responseObj = json.getJSONObject("response");
+            
+            JSONObject header = responseObj.getJSONObject("header");
+            String resultCode = header.getString("resultCode");
+            
+            if (!"00".equals(resultCode)) {
+                String resultMsg = header.optString("resultMsg", "알 수 없는 오류");
+                log.error("초단기실황 API 오류: {} - {}", resultCode, resultMsg);
+                return data;
+            }
+            
+            JSONObject body = responseObj.getJSONObject("body");
+            
+            if (body.isNull("items") || body.optString("items", "").isEmpty()) {
+                log.warn("초단기실황 데이터 없음");
+                return data;
+            }
+            
             JSONArray items = body.getJSONObject("items").getJSONArray("item");
 
             for (int i = 0; i < items.length(); i++) {
@@ -194,10 +322,10 @@ public class WeatherService {
                 String value = item.getString("obsrValue");
 
                 switch (category) {
-                    case "T1H":  // 기온
+                    case "T1H":
                         data.put("temperature", value);
                         break;
-                    case "PTY":  // 강수형태
+                    case "PTY":
                         data.put("pty", value);
                         break;
                 }
@@ -210,12 +338,29 @@ public class WeatherService {
     }
 
     /**
-     * 초단기예보 응답 파싱 (하늘상태 - 첫 번째 값)
+     * 초단기예보 응답 파싱
      */
     private String parseFcstResponse(String response) {
         try {
             JSONObject json = new JSONObject(response);
-            JSONObject body = json.getJSONObject("response").getJSONObject("body");
+            JSONObject responseObj = json.getJSONObject("response");
+            
+            JSONObject header = responseObj.getJSONObject("header");
+            String resultCode = header.getString("resultCode");
+            
+            if (!"00".equals(resultCode)) {
+                String resultMsg = header.optString("resultMsg", "알 수 없는 오류");
+                log.error("초단기예보 API 오류: {} - {}", resultCode, resultMsg);
+                return "1";
+            }
+            
+            JSONObject body = responseObj.getJSONObject("body");
+            
+            if (body.isNull("items") || body.optString("items", "").isEmpty()) {
+                log.warn("초단기예보 데이터 없음");
+                return "1";
+            }
+            
             JSONArray items = body.getJSONObject("items").getJSONArray("item");
 
             for (int i = 0; i < items.length(); i++) {
@@ -230,14 +375,13 @@ public class WeatherService {
             log.error("초단기예보 파싱 실패: {}", e.getMessage());
         }
 
-        return "1";  // 기본값: 맑음
+        return "1";
     }
 
     /**
-     * 기상상황 결정 (PTY + SKY 조합)
+     * 기상상황 결정
      */
     private String determineSky(String pty, String skyCode) {
-        // 강수형태 우선 (비/눈이 오면 SKY 무시)
         if (pty != null && !"0".equals(pty)) {
             switch (pty) {
                 case "1":
@@ -252,7 +396,6 @@ public class WeatherService {
             }
         }
 
-        // 강수 없으면 하늘상태로 판단
         if (skyCode != null) {
             switch (skyCode) {
                 case "1":
@@ -264,6 +407,6 @@ public class WeatherService {
             }
         }
 
-        return "맑음";  // 기본값
+        return "맑음";
     }
 }
