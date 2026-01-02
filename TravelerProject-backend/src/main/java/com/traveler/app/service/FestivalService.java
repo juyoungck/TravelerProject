@@ -32,7 +32,7 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class FestivalService {
 
-    @Value("${tourapi.service-keys[0]}")
+    @Value("${tourapi.service-key}")
     private String apiKey;
 
     private static final String BASE_URL = "http://apis.data.go.kr/B551011/KorService2/searchFestival2";
