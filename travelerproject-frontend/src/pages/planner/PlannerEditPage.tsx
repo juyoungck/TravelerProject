@@ -4,6 +4,9 @@
  * 백엔드 API 연동 완료 + 지역 선택 기능
  * 
  * 수정: 중앙 지도 영역에 카카오맵 컴포넌트 추가
+ * 수정: 일차 추가 버튼 삭제 (날짜에 따라 자동 생성)
+ * 수정: 저장 버튼에 outline 스타일 추가
+ * 수정: handleMovePlace, handleRemovePlace 함수 시그니처 수정 (드래그앤드롭 정상 작동)
  */
 
 import { useState, useEffect, useRef, useMemo } from 'react';
@@ -23,7 +26,6 @@ import {
   Globe,
   Lock,
   Loader2,
-  Plus,
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -48,7 +50,6 @@ interface Place {
   category: string;
   region: string;
   image: string;
-  // 지도 표시용 좌표 (옵션)
   mapx?: number;
   mapy?: number;
   contentid?: string;
@@ -134,7 +135,17 @@ export function PlannerEditPage({ onBack, initialData }: PlannerEditPageProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  const currentUserId = 1;
+  // 현재 로그인한 사용자 ID 가져오기
+  const getCurrentUserId = (): number => {
+    const memberInfo = localStorage.getItem('memberInfo');
+    if (memberInfo) {
+      const member = JSON.parse(memberInfo);
+      return member.mId || 1;
+    }
+    return 1;
+  };
+
+  const currentUserId = getCurrentUserId();
 
   // 시도 목록 로드
   useEffect(() => {
@@ -157,7 +168,6 @@ export function PlannerEditPage({ onBack, initialData }: PlannerEditPageProps) {
     if (days > 0 && days !== dayPlans.length) {
       const newDayPlans: DayPlan[] = [];
       for (let i = 1; i <= days; i++) {
-        // 기존 DAY 데이터가 있으면 유지
         const existingDay = dayPlans.find(d => d.day === i);
         if (existingDay) {
           newDayPlans.push(existingDay);
@@ -229,7 +239,6 @@ export function PlannerEditPage({ onBack, initialData }: PlannerEditPageProps) {
     
     dayPlans.forEach((dayPlan) => {
       dayPlan.places.forEach((place, index) => {
-        // 좌표가 있는 장소만 지도에 표시
         if (place.mapx && place.mapy) {
           places.push({
             contentid: place.contentid || place.id,
@@ -247,7 +256,7 @@ export function PlannerEditPage({ onBack, initialData }: PlannerEditPageProps) {
   }, [dayPlans]);
 
   /**
-   * 지도 중심 좌표 계산 (첫 번째 장소 또는 기본값)
+   * 지도 중심 좌표 계산
    */
   const mapCenter = useMemo(() => {
     if (plannerPlacesForMap.length > 0) {
@@ -256,7 +265,6 @@ export function PlannerEditPage({ onBack, initialData }: PlannerEditPageProps) {
         lng: plannerPlacesForMap[0].mapx,
       };
     }
-    // 기본값: 서울
     return { lat: 37.5665, lng: 126.9780 };
   }, [plannerPlacesForMap]);
 
@@ -299,8 +307,8 @@ export function PlannerEditPage({ onBack, initialData }: PlannerEditPageProps) {
       plnTitle: title,
       startDate: startDate,
       endDate: endDate,
-      lDongRegnCd: selectedLDongRegnCd || null,
-      lDongSignguCd: selectedLDongSignguCd || null,
+      lDongRegnCd: selectedLDongRegnCd || undefined,
+      lDongSignguCd: selectedLDongSignguCd || undefined,
       isPublic: isPublic ? 1 : 0,
       dayPlans: dayPlanRequests,
     };
@@ -381,8 +389,8 @@ export function PlannerEditPage({ onBack, initialData }: PlannerEditPageProps) {
     }
 
     try {
-      const result = await createShareLink(plannerId);
-      const shareUrl = `${window.location.origin}/planner/share/${result.shareToken}`;
+      const shareLink = await createShareLink(plannerId);
+      const shareUrl = `${window.location.origin}/planner/share/${shareLink}`;
       
       await navigator.clipboard.writeText(shareUrl);
       alert(`공유 링크가 복사되었습니다!\n\n${shareUrl}`);
@@ -400,45 +408,64 @@ export function PlannerEditPage({ onBack, initialData }: PlannerEditPageProps) {
     return diffDays;
   };
 
+  /**
+   * 장소 이동 (Day 간 이동 + 같은 Day 내 순서 변경)
+   * @param placeId 이동할 장소 ID
+   * @param fromDayId 출발 Day ID
+   * @param toDayId 도착 Day ID
+   * @param toIndex 도착 위치 인덱스
+   */
   const handleMovePlace = (
-    sourceDayId: string,
-    sourceIndex: number,
-    targetDayId: string,
-    targetIndex: number
+    placeId: string,
+    fromDayId: string,
+    toDayId: string,
+    toIndex: number
   ) => {
-    if (sourceDayId === targetDayId && sourceIndex === targetIndex) return;
-
     setDayPlans((prevDayPlans) => {
       const newDayPlans = [...prevDayPlans];
 
-      const sourceDayIndex = newDayPlans.findIndex((d) => d.id === sourceDayId);
-      const targetDayIndex = newDayPlans.findIndex((d) => d.id === targetDayId);
+      // 출발 Day 찾기
+      const fromDayIndex = newDayPlans.findIndex((d) => d.id === fromDayId);
+      // 도착 Day 찾기
+      const toDayIndex = newDayPlans.findIndex((d) => d.id === toDayId);
 
-      if (sourceDayIndex === -1 || targetDayIndex === -1) return prevDayPlans;
+      if (fromDayIndex === -1 || toDayIndex === -1) return prevDayPlans;
 
-      const sourceDay = { ...newDayPlans[sourceDayIndex] };
-      const targetDay = { ...newDayPlans[targetDayIndex] };
+      // 출발 Day에서 장소 찾기
+      const fromDay = { ...newDayPlans[fromDayIndex] };
+      fromDay.places = [...fromDay.places];
+      
+      const placeIndex = fromDay.places.findIndex((p) => p.id === placeId);
+      if (placeIndex === -1) return prevDayPlans;
 
-      sourceDay.places = [...sourceDay.places];
-      if (sourceDayId !== targetDayId) {
-        targetDay.places = [...targetDay.places];
-      }
+      // 장소 제거
+      const [movedPlace] = fromDay.places.splice(placeIndex, 1);
 
-      const [movedPlace] = sourceDay.places.splice(sourceIndex, 1);
-
-      if (sourceDayId === targetDayId) {
-        sourceDay.places.splice(targetIndex, 0, movedPlace);
-        newDayPlans[sourceDayIndex] = sourceDay;
+      if (fromDayId === toDayId) {
+        // 같은 Day 내 이동 - 인덱스 조정
+        let adjustedIndex = toIndex;
+        if (placeIndex < toIndex) {
+          adjustedIndex = toIndex - 1;
+        }
+        fromDay.places.splice(adjustedIndex, 0, movedPlace);
+        newDayPlans[fromDayIndex] = fromDay;
       } else {
-        targetDay.places.splice(targetIndex, 0, movedPlace);
-        newDayPlans[sourceDayIndex] = sourceDay;
-        newDayPlans[targetDayIndex] = targetDay;
+        // 다른 Day로 이동
+        const toDay = { ...newDayPlans[toDayIndex] };
+        toDay.places = [...toDay.places];
+        toDay.places.splice(toIndex, 0, movedPlace);
+        
+        newDayPlans[fromDayIndex] = fromDay;
+        newDayPlans[toDayIndex] = toDay;
       }
 
       return newDayPlans;
     });
   };
 
+  /**
+   * 새 장소 추가 (검색 결과에서 드래그)
+   */
   const handleAddPlaceAtIndex = (place: Place, dayId: string, index?: number) => {
     setDayPlans((prevDayPlans) => {
       const newDayPlans = [...prevDayPlans];
@@ -466,7 +493,12 @@ export function PlannerEditPage({ onBack, initialData }: PlannerEditPageProps) {
     });
   };
 
-  const handleRemovePlace = (dayId: string, placeIndex: number) => {
+  /**
+   * 장소 삭제
+   * @param dayId Day ID
+   * @param placeId 삭제할 장소 ID
+   */
+  const handleRemovePlace = (dayId: string, placeId: string) => {
     setDayPlans((prevDayPlans) => {
       const newDayPlans = [...prevDayPlans];
       const dayIndex = newDayPlans.findIndex((d) => d.id === dayId);
@@ -474,8 +506,7 @@ export function PlannerEditPage({ onBack, initialData }: PlannerEditPageProps) {
       if (dayIndex === -1) return prevDayPlans;
 
       const day = { ...newDayPlans[dayIndex] };
-      day.places = [...day.places];
-      day.places.splice(placeIndex, 1);
+      day.places = day.places.filter((p) => p.id !== placeId);
       
       newDayPlans[dayIndex] = day;
       return newDayPlans;
@@ -499,7 +530,6 @@ export function PlannerEditPage({ onBack, initialData }: PlannerEditPageProps) {
       alert('최소 1일 이상의 일정이 필요합니다.');
       return;
     }
-
     
     setDayPlans((prevDayPlans) => {
       const filtered = prevDayPlans.filter((d) => d.id !== dayId);
@@ -510,23 +540,10 @@ export function PlannerEditPage({ onBack, initialData }: PlannerEditPageProps) {
     });
   };
 
-  const handleAddDay = () => {
-    const maxDay = dayPlans.length > 0 ? Math.max(...dayPlans.map(d => d.day)) : 0;
-    const nextDay = maxDay + 1;
-    
-    const newDay: DayPlan = {
-      id: `day-${nextDay}-${Date.now()}`,
-      day: nextDay,
-      places: [],
-      memo: '',
-    };
-    setDayPlans([...dayPlans, newDay]);
-  };
-
   return (
     <DndProvider backend={HTML5Backend}>
       <div className="h-screen flex flex-col bg-gray-100">
-        {/* 상단 헤더 - 뒤로가기와 제목만 */}
+        {/* 상단 헤더 */}
         <header className="bg-white border-b px-4 py-2 flex items-center">
           <Button variant="ghost" size="icon" onClick={onBack}>
             <ArrowLeft className="h-5 w-5" />
@@ -542,7 +559,7 @@ export function PlannerEditPage({ onBack, initialData }: PlannerEditPageProps) {
           {isLeftSidebarOpen && (
             <div className="w-80 bg-white border-r overflow-y-auto">
               <div className="p-4">
-                {/* 삭제/공유/저장 버튼 - 플래너 제목 위 */}
+                {/* 삭제/공유/저장 버튼 */}
                 <div className="flex justify-end gap-2 mb-3">
                   {plannerId && (
                     <>
@@ -566,7 +583,7 @@ export function PlannerEditPage({ onBack, initialData }: PlannerEditPageProps) {
                       </Button>
                     </>
                   )}
-                  <Button size="sm" onClick={handleSave} disabled={isSaving}>
+                  <Button variant="outline" size="sm" onClick={handleSave} disabled={isSaving}>
                     {isSaving ? (
                       <Loader2 className="h-4 w-4 mr-1 animate-spin" />
                     ) : (
@@ -764,13 +781,7 @@ export function PlannerEditPage({ onBack, initialData }: PlannerEditPageProps) {
 
                 {/* DAY 리스트 */}
                 <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <h4 className="text-sm font-semibold">일정</h4>
-                    <Button variant="outline" size="sm" onClick={handleAddDay}>
-                      <Plus className="h-4 w-4 mr-1" />
-                      일차 추가
-                    </Button>
-                  </div>
+                  <h4 className="text-sm font-semibold mb-3">일정</h4>
                   <PlannerDayList
                     dayPlans={dayPlans}
                     onMovePlace={handleMovePlace}
@@ -792,7 +803,7 @@ export function PlannerEditPage({ onBack, initialData }: PlannerEditPageProps) {
             {isLeftSidebarOpen ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
           </button>
 
-          {/* ★ 중앙 지도 - 카카오맵 (항상 표시) */}
+          {/* 중앙 지도 - 카카오맵 */}
           <div className="flex-1 relative">
             <KakaoMap
               ref={mapRef}

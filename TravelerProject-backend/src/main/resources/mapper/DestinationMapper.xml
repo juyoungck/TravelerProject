@@ -211,6 +211,8 @@
             sync_date = CURRENT_TIMESTAMP
         WHERE contentid = #{contentid}
     </update>
+    
+    
 
     <!-- 키워드 검색 -->
     <select id="searchByKeyword" resultType="com.traveler.app.entity.Destination">
@@ -275,19 +277,26 @@
             AND lDongSignguCd = #{lDongSignguCd}
         </if>
     </select>
+    
+	    <!-- 조회수 증가 -->
+	<update id="increaseViewCount" parameterType="String">
+	    UPDATE destination
+	    SET view_count = view_count + 1
+	    WHERE contentid = #{contentid}
+	</update>
 
 	<!-- 여행지 범위 조회 (인덱스 기반) -->
-   <select id="selectDestinationsByRange" resultType="com.traveler.app.entity.Destination">
-       SELECT * FROM (
-           SELECT 
-               d.*,
-               ROWNUM AS rn
-           FROM (
-               SELECT * FROM destination ORDER BY contentid
-           ) d
-           WHERE ROWNUM &lt;= #{endIndex}
-       )
-       WHERE rn >= #{startIndex}
-   </select>
+	<select id="selectDestinationsByRange" resultType="com.traveler.app.entity.Destination">
+	    SELECT * FROM (
+	        SELECT 
+	            d.*,
+	            ROWNUM AS rn
+	        FROM (
+	            SELECT * FROM destination ORDER BY contentid
+	        ) d
+	        WHERE ROWNUM &lt;= #{endIndex}
+	    )
+	    WHERE rn >= #{startIndex}
+	</select>
 
 </mapper>

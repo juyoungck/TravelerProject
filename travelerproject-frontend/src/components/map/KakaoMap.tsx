@@ -2,7 +2,12 @@
  * KakaoMap.tsx
  * 카카오맵 공통 컴포넌트
  * 
- * 수정: 상세정보 보기 버튼 클릭 시 onNavigateToDetail 콜백 호출
+ * 기능:
+ * - 여행지 마커 표시 (카테고리별 색상)
+ * - 인포윈도우 (이미지, 정보, 찜 버튼, 상세보기)
+ * - 플래너 마커 (일차별 색상 + 순서 번호)
+ * - 플래너 경로 선 그리기 (일차별 색상)
+ * - 현재 위치 표시
  */
 
 import { useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react';
@@ -12,6 +17,7 @@ import {
   createSelectedMarkerSvg, 
   createCurrentLocationMarkerSvg,
   createPlannerMarkerSvg,
+  getPlannerDayColor,
   MARKER_COLORS,
   MARKER_EMOJI
 } from '../../utils/markerIcons';
@@ -64,7 +70,9 @@ interface KakaoMapProps {
   onMarkerClick?: (destination: NearbyDestination) => void;
   onMapMoved?: (lat: number, lng: number) => void;
   onMapClick?: () => void;
-  onNavigateToDetail?: (contentid: string) => void;  // ★ 상세페이지 이동 콜백
+  onNavigateToDetail?: (contentid: string) => void;
+  onToggleFavorite?: (destination: NearbyDestination) => void;  // ★ 찜 토글 콜백
+  isFavorite?: (contentid: string) => boolean;  // ★ 찜 여부 확인 함수
   className?: string;
   height?: string;
 }
@@ -102,7 +110,9 @@ const KakaoMap = forwardRef<KakaoMapRef, KakaoMapProps>(({
   onMarkerClick,
   onMapMoved,
   onMapClick,
-  onNavigateToDetail,  // ★ 추가
+  onNavigateToDetail,
+  onToggleFavorite,  // ★ 추가
+  isFavorite,  // ★ 추가
   className = '',
   height = '100%',
 }, ref) => {
@@ -110,17 +120,30 @@ const KakaoMap = forwardRef<KakaoMapRef, KakaoMapProps>(({
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<kakao.maps.Map | null>(null);
   const markersRef = useRef<kakao.maps.Marker[]>([]);
+  const plannerMarkersRef = useRef<kakao.maps.Marker[]>([]);  // ★ 플래너 마커 분리
+  const polylinesRef = useRef<kakao.maps.Polyline[]>([]);  // ★ 경로 선
   const infoWindowRef = useRef<kakao.maps.CustomOverlay | null>(null);
   const currentLocationMarkerRef = useRef<kakao.maps.Marker | null>(null);
   const destinationsMapRef = useRef<Map<string, NearbyDestination>>(new Map());
   const markerDestMapRef = useRef<Map<kakao.maps.Marker, NearbyDestination>>(new Map());
   const selectedMarkerRef = useRef<kakao.maps.Marker | null>(null);
   
-  // ★ 콜백을 ref로 저장 (클로저 문제 해결)
+  // 콜백을 ref로 저장 (클로저 문제 해결)
   const onNavigateToDetailRef = useRef(onNavigateToDetail);
+  const onToggleFavoriteRef = useRef(onToggleFavorite);
+  const isFavoriteRef = useRef(isFavorite);
+  
   useEffect(() => {
     onNavigateToDetailRef.current = onNavigateToDetail;
   }, [onNavigateToDetail]);
+  
+  useEffect(() => {
+    onToggleFavoriteRef.current = onToggleFavorite;
+  }, [onToggleFavorite]);
+  
+  useEffect(() => {
+    isFavoriteRef.current = isFavorite;
+  }, [isFavorite]);
 
   /** 마커 이미지 원복 */
   const resetMarkerImage = useCallback((marker: kakao.maps.Marker, destination: NearbyDestination) => {
@@ -144,118 +167,235 @@ const KakaoMap = forwardRef<KakaoMapRef, KakaoMapProps>(({
     }
   }, [resetMarkerImage]);
 
-  /** 인포윈도우 DOM 요소 생성 */
+  /** ★ 인포윈도우 DOM 요소 생성 (찜 버튼 추가) */
   const createInfoWindowElement = useCallback((destination: NearbyDestination): HTMLElement => {
-    const emoji = MARKER_EMOJI[destination.contenttypeid] || '📍';
-    const color = MARKER_COLORS[destination.contenttypeid] || '#6B7280';
-    const imageUrl = destination.firstimage2 || destination.firstimage;
-    
-    let distanceText = '';
-    if (destination.distance !== null && destination.distance !== undefined) {
-      distanceText = destination.distance < 1 
-        ? `${Math.round(destination.distance * 1000)}m` 
+  const emoji = MARKER_EMOJI[destination.contenttypeid] || '📍';
+  const color = MARKER_COLORS[destination.contenttypeid] || '#6B7280';
+  const imageUrl = destination.firstimage2 || destination.firstimage;
+
+  const favorited = isFavoriteRef.current
+    ? isFavoriteRef.current(destination.contentid)
+    : false;
+
+  let distanceText = '';
+  if (destination.distance !== null && destination.distance !== undefined) {
+    distanceText =
+      destination.distance < 1
+        ? `${Math.round(destination.distance * 1000)}m`
         : `${destination.distance}km`;
-    }
+  }
 
-    const container = document.createElement('div');
-    container.style.cssText = `
+  /** 공통 컨테이너 */
+  const container = document.createElement('div');
+  container.style.cssText = `
+    position: relative;
+    width: 280px;
+    padding: 12px;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    cursor: default;
+  `;
+
+  container.addEventListener('mousedown', e => e.stopPropagation());
+  container.addEventListener('touchstart', e => e.stopPropagation());
+
+  /** 닫기 버튼 */
+  const closeBtn = document.createElement('button');
+  closeBtn.innerHTML = '✕';
+  closeBtn.style.cssText = `
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 24px;
+    height: 24px;
+    border: none;
+    background: rgba(243,244,246,0.9);
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 14px;
+    color: #6b7280;
+    z-index: 10;
+  `;
+  closeBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    closeInfoWindow();
+  });
+
+  /** 찜 버튼 */
+  const favoriteBtn = document.createElement('button');
+  favoriteBtn.textContent = favorited ? '♥' : '♡';
+  favoriteBtn.style.cssText = `
+    position: absolute;
+    top: 40px;
+    right: 8px;
+    border: none;
+    background: rgba(255,255,255,0.9);
+    cursor: pointer;
+    font-size: 22px;
+    color: ${favorited ? '#EF4444' : '#374151'};
+    padding: 0 4px;
+    line-height: 1;
+    z-index: 10;
+    transition: transform 0.1s;
+  `;
+
+  favoriteBtn.addEventListener('mouseenter', () => {
+    favoriteBtn.style.transform = 'scale(1.2)';
+  });
+  favoriteBtn.addEventListener('mouseleave', () => {
+    favoriteBtn.style.transform = 'scale(1)';
+  });
+  favoriteBtn.addEventListener('mousedown', e => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (onToggleFavoriteRef.current) {
+      onToggleFavoriteRef.current(destination);
+      const active = favoriteBtn.textContent === '♥';
+      favoriteBtn.textContent = active ? '♡' : '♥';
+      favoriteBtn.style.color = active ? '#9ca3af' : '#EF4444';
+    } else {
+      alert('로그인이 필요한 기능입니다.');
+    }
+  });
+
+  /** 이미지 영역 */
+  if (imageUrl) {
+    const imgContainer = document.createElement('div');
+    imgContainer.style.cssText = `
+      width: 100%;
+      height: 120px;
+      border-radius: 8px;
+      overflow: hidden;
+      margin-bottom: 10px;
       position: relative;
-      width: 280px;
-      padding: 12px;
-      background: white;
-      border-radius: 12px;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     `;
 
-    // 닫기 버튼
-    const closeBtn = document.createElement('button');
-    closeBtn.innerHTML = '✕';
-    closeBtn.style.cssText = `
-      position: absolute; top: 8px; right: 8px; width: 24px; height: 24px;
-      border: none; background: #f3f4f6; border-radius: 50%; cursor: pointer;
-      font-size: 14px; color: #6b7280; z-index: 10;
+    // 👉 버튼을 이미지 위로
+    imgContainer.appendChild(closeBtn);
+    imgContainer.appendChild(favoriteBtn);
+
+    const img = document.createElement('img');
+    img.src = imageUrl;
+    img.alt = destination.title;
+    img.style.cssText = `
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
     `;
-    closeBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      closeInfoWindow();
-    });
+    img.onerror = () => {
+      imgContainer.style.display = 'none';
+      // 이미지 없어진 경우 → 버튼을 컨테이너로 이동
+      container.appendChild(closeBtn);
+      container.appendChild(favoriteBtn);
+    };
+
+    imgContainer.appendChild(img);
+    container.appendChild(imgContainer);
+  } else {
+    // 👉 이미지 없을 때는 컨테이너 우상단
     container.appendChild(closeBtn);
+    container.appendChild(favoriteBtn);
+  }
 
-    // 이미지
-    if (imageUrl) {
-      const imgContainer = document.createElement('div');
-      imgContainer.style.cssText = `width: 100%; height: 120px; border-radius: 8px; overflow: hidden; margin-bottom: 10px;`;
-      const img = document.createElement('img');
-      img.src = imageUrl;
-      img.alt = destination.title;
-      img.style.cssText = `width: 100%; height: 100%; object-fit: cover;`;
-      img.onerror = () => { imgContainer.style.display = 'none'; };
-      imgContainer.appendChild(img);
-      container.appendChild(imgContainer);
-    }
+  /** 타입 + 거리 */
+  const badgeContainer = document.createElement('div');
+  badgeContainer.style.cssText = `
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+  `;
 
-    // 타입 배지 + 거리
-    const badgeContainer = document.createElement('div');
-    badgeContainer.style.cssText = `display: flex; align-items: center; gap: 8px; margin-bottom: 6px;`;
-    
-    const badge = document.createElement('span');
-    badge.innerHTML = `${emoji} ${destination.typeName || '여행지'}`;
-    badge.style.cssText = `background: ${color}20; color: ${color}; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 500;`;
-    badgeContainer.appendChild(badge);
-    
-    if (distanceText) {
-      const distance = document.createElement('span');
-      distance.textContent = distanceText;
-      distance.style.cssText = `color: #9ca3af; font-size: 11px;`;
-      badgeContainer.appendChild(distance);
-    }
-    container.appendChild(badgeContainer);
+  const badge = document.createElement('span');
+  badge.innerHTML = `${emoji} ${destination.typeName || '여행지'}`;
+  badge.style.cssText = `
+    background: ${color}20;
+    color: ${color};
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 500;
+  `;
+  badgeContainer.appendChild(badge);
 
-    // 제목
-    const title = document.createElement('h3');
-    title.textContent = destination.title;
-    title.style.cssText = `margin: 0 0 6px 0; font-size: 16px; font-weight: 600; color: #1f2937; line-height: 1.3; padding-right: 20px;`;
-    container.appendChild(title);
+  if (distanceText) {
+    const distance = document.createElement('span');
+    distance.textContent = distanceText;
+    distance.style.cssText = `font-size: 11px; color: #9ca3af;`;
+    badgeContainer.appendChild(distance);
+  }
 
-    // 주소
-    const addr = document.createElement('p');
-    addr.textContent = destination.addr1 || '주소 정보 없음';
-    addr.style.cssText = `margin: 0 0 10px 0; font-size: 13px; color: #6b7280; line-height: 1.4;`;
-    container.appendChild(addr);
+  container.appendChild(badgeContainer);
 
-    // ★ 상세정보 보기 버튼 - mousedown으로 새 탭 열기
-    const detailBtn = document.createElement('button');
-    detailBtn.textContent = '상세정보 보기 ↗';
-    detailBtn.style.cssText = `
-      display: block; width: 100%; padding: 10px; background: ${color}; color: white; border: none;
-      border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; text-align: center;
-    `;
-    
-    detailBtn.addEventListener('mousedown', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      
-      const url = window.location.origin + '/?page=travel-detail&contentid=' + destination.contentid;
-      window.open(url, '_blank');
-      
-      // 인포윈도우 닫기 (마우스 포인터 고정 문제 해결)
-      closeInfoWindow();
-    });
-    
-    container.appendChild(detailBtn);
+  /** 제목 */
+  const title = document.createElement('h3');
+  title.textContent = destination.title;
+  title.style.cssText = `
+    margin: 0 0 6px 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: #1f2937;
+    padding-right: 50px;
+  `;
+  container.appendChild(title);
 
-    // 말풍선 꼬리
-    const tail = document.createElement('div');
-    tail.style.cssText = `
-      position: absolute; bottom: -10px; left: 50%; transform: translateX(-50%);
-      width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent;
-      border-top: 10px solid white;
-    `;
-    container.appendChild(tail);
+  /** 주소 */
+  const addr = document.createElement('p');
+  addr.textContent = destination.addr1 || '주소 정보 없음';
+  addr.style.cssText = `
+    margin: 0 0 10px 0;
+    font-size: 13px;
+    color: #6b7280;
+  `;
+  container.appendChild(addr);
 
-    return container;
-  }, [closeInfoWindow]);
+  /** 상세 버튼 */
+  const detailBtn = document.createElement('button');
+  detailBtn.textContent = '상세정보 보기 ↗';
+  detailBtn.style.cssText = `
+    width: 100%;
+    padding: 10px;
+    background: ${color};
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    cursor: pointer;
+  `;
+
+  detailBtn.addEventListener('mousedown', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    window.open(
+      `${window.location.origin}/?page=travel-detail&contentid=${destination.contentid}`,
+      '_blank'
+    );
+    closeInfoWindow();
+  });
+
+  container.appendChild(detailBtn);
+
+  /** 말풍선 꼬리 */
+  const tail = document.createElement('div');
+  tail.style.cssText = `
+    position: absolute;
+    bottom: -10px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 0;
+    height: 0;
+    border-left: 10px solid transparent;
+    border-right: 10px solid transparent;
+    border-top: 10px solid white;
+  `;
+  container.appendChild(tail);
+
+  return container;
+}, [closeInfoWindow]);
+
 
   /** 인포윈도우 표시 */
   const showInfoWindow = useCallback((marker: kakao.maps.Marker, destination: NearbyDestination, map: kakao.maps.Map) => {
@@ -306,7 +446,6 @@ const KakaoMap = forwardRef<KakaoMapRef, KakaoMapProps>(({
     
     markerDestMapRef.current.set(marker, destination);
     
-    // ★ 마커 클릭 → 리스트 선택만 호출 (인포윈도우는 MapPage에서 selectMarker 호출)
     kakao.maps.event.addListener(marker, 'click', function() {
       if (onMarkerClick) {
         onMarkerClick(destination);
@@ -328,6 +467,51 @@ const KakaoMap = forwardRef<KakaoMapRef, KakaoMapProps>(({
       image: new kakao.maps.MarkerImage(src, size, option),
       title: `${place.dayNumber}일차 ${place.orderNumber}번: ${place.title}`,
       map,
+    });
+  }, []);
+
+  /** ★ 플래너 경로 선 그리기 */
+  const drawPlannerRoutes = useCallback((places: PlannerPlace[], map: kakao.maps.Map) => {
+    // 기존 경로 선 제거
+    polylinesRef.current.forEach(polyline => polyline.setMap(null));
+    polylinesRef.current = [];
+    
+    if (places.length < 2) return;
+    
+    // 일차별로 그룹화
+    const dayGroups: Map<number, PlannerPlace[]> = new Map();
+    places.forEach(place => {
+      const dayPlaces = dayGroups.get(place.dayNumber) || [];
+      dayPlaces.push(place);
+      dayGroups.set(place.dayNumber, dayPlaces);
+    });
+    
+    // 각 일차별로 경로 선 그리기
+    dayGroups.forEach((dayPlaces, dayNumber) => {
+      // 순서대로 정렬
+      dayPlaces.sort((a, b) => a.orderNumber - b.orderNumber);
+      
+      if (dayPlaces.length < 2) return;
+      
+      // 경로 좌표 배열 생성
+      const path = dayPlaces.map(place => 
+        new kakao.maps.LatLng(place.mapy, place.mapx)
+      );
+      
+      // 일차별 색상
+      const color = getPlannerDayColor(dayNumber);
+      
+      // Polyline 생성
+      const polyline = new kakao.maps.Polyline({
+        path: path,
+        strokeWeight: 4,
+        strokeColor: color,
+        strokeOpacity: 0.8,
+        strokeStyle: 'solid',
+      });
+      
+      polyline.setMap(map);
+      polylinesRef.current.push(polyline);
     });
   }, []);
 
@@ -361,6 +545,10 @@ const KakaoMap = forwardRef<KakaoMapRef, KakaoMapProps>(({
     return () => {
       markersRef.current.forEach(m => m.setMap(null));
       markersRef.current = [];
+      plannerMarkersRef.current.forEach(m => m.setMap(null));
+      plannerMarkersRef.current = [];
+      polylinesRef.current.forEach(p => p.setMap(null));
+      polylinesRef.current = [];
       markerDestMapRef.current.clear();
       if (infoWindowRef.current) infoWindowRef.current.setMap(null);
       if (currentLocationMarkerRef.current) currentLocationMarkerRef.current.setMap(null);
@@ -374,11 +562,11 @@ const KakaoMap = forwardRef<KakaoMapRef, KakaoMapProps>(({
     }
   }, [centerLat, centerLng]);
 
-  /** 마커 업데이트 */
+  /** 마커 업데이트 (여행지) */
   useEffect(() => {
     if (!mapRef.current) return;
     
-    // ★ 현재 열린 인포윈도우 정보 저장
+    // 현재 열린 인포윈도우 정보 저장
     const currentSelectedId = selectedMarkerRef.current 
       ? markerDestMapRef.current.get(selectedMarkerRef.current)?.contentid 
       : null;
@@ -396,25 +584,44 @@ const KakaoMap = forwardRef<KakaoMapRef, KakaoMapProps>(({
         markersRef.current.push(marker);
         destinationsMapRef.current.set(dest.contentid, dest);
         
-        // ★ 이전에 선택된 마커면 인포윈도우 다시 표시
+        // 이전에 선택된 마커면 인포윈도우 다시 표시
         if (currentSelectedId && dest.contentid === currentSelectedId) {
           setTimeout(() => {
-            showInfoWindow(marker, dest, mapRef.current!);
+            if (mapRef.current) {
+              showInfoWindow(marker, dest, mapRef.current);
+            }
           }, 10);
         }
       }
     });
   }, [destinations, createMarker, showInfoWindow]);
 
-  /** 플래너 마커 */
+  /** ★ 플래너 마커 + 경로 선 업데이트 (실시간) */
   useEffect(() => {
-    if (!mapRef.current || !plannerPlaces.length) return;
+    if (!mapRef.current) return;
+    
+    // 기존 플래너 마커 제거
+    plannerMarkersRef.current.forEach(m => m.setMap(null));
+    plannerMarkersRef.current = [];
+    
+    // 기존 경로 선 제거
+    polylinesRef.current.forEach(p => p.setMap(null));
+    polylinesRef.current = [];
+    
+    if (!plannerPlaces.length) return;
+    
+    // 새 플래너 마커 생성
     plannerPlaces.forEach(place => {
       if (place.mapx && place.mapy) {
-        markersRef.current.push(createPlannerMarker(place, mapRef.current!));
+        const marker = createPlannerMarker(place, mapRef.current!);
+        plannerMarkersRef.current.push(marker);
       }
     });
-  }, [plannerPlaces, createPlannerMarker]);
+    
+    // 경로 선 그리기
+    drawPlannerRoutes(plannerPlaces, mapRef.current);
+    
+  }, [plannerPlaces, createPlannerMarker, drawPlannerRoutes]);
 
   /** 현재 위치 마커 */
   useEffect(() => {

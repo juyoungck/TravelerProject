@@ -496,10 +496,7 @@ export default function App() {
           isLoggedIn={isLoggedIn}
           initialDestinationId={selectedDestinationId}
           onOpenSearch={() => setIsSearchModalOpen(true)}
-          favoriteDestinations={favoriteDestinations}
-          onToggleFavorite={handleToggleFavorite}
-          reviews={reviews}
-          onAddReview={handleAddReview}
+          currentUserId={currentUser?.mId} 
         />
       );
     }
@@ -631,11 +628,11 @@ export default function App() {
         <SearchModal
           isOpen={isSearchModalOpen}
           onClose={() => setIsSearchModalOpen(false)}
-          onSelectDestination={(id: number) => {
+          onSelectDestination={(id) => {
             setSelectedDestinationId(null);
-            setTimeout(() =>{
-            setSelectedDestinationId(id);
-            setCurrentPage("travel");
+            setTimeout(() => {
+              setSelectedDestinationId(String(id));
+              setCurrentPage("travel");
             }, 0);
             setIsSearchModalOpen(false);
           }}

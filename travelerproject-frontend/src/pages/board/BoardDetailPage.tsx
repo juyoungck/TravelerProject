@@ -76,6 +76,7 @@ export function BoardDetailPage({
   const [newComment, setNewComment] = useState('');
   const [replyingTo, setReplyingTo] = useState<number | null>(null);
   const [replyContent, setReplyContent] = useState('');
+  
 
   /** 날짜 포맷 */
   const formatDate = (dateStr: string): string => {

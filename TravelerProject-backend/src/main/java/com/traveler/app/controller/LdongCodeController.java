@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -16,6 +17,8 @@ import com.traveler.app.service.LdongCodeService;
 /**
  * 법정동 코드 API 컨트롤러
  * 법정동 코드 조회 및 동기화 기능 제공
+ * 
+ * 수정: 시군구 조회 API에 PathVariable 방식 추가
  */
 @RestController
 @RequestMapping("/api/ldong")
@@ -31,14 +34,11 @@ public class LdongCodeController {
      * API 응답 원본 확인 (디버그용)
      * 호출 URL: GET /api/ldong/test-api
      */
-    
-    
     @GetMapping("/test-api")
     public Map<String, Object> testApi() {
         Map<String, Object> response = new HashMap<>();
         
         try {
-            // TourApiService를 통해 원본 데이터 확인
             var regnCodes = ldongCodeService.fetchRegnCodesForTest();
             response.put("status", "success");
             response.put("data", regnCodes);
@@ -88,7 +88,24 @@ public class LdongCodeController {
     }
 
     /**
-     * 시군구 코드 목록 조회 (시도별)
+     * 시군구 코드 목록 조회 (PathVariable 방식) - 프론트엔드 호환용
+     * 호출 URL: GET /api/ldong/signgu/11
+     */
+    @GetMapping("/signgu/{regnCd}")
+    public Map<String, Object> getSignguCodesByPath(@PathVariable("regnCd") String regnCd) {
+        Map<String, Object> response = new HashMap<>();
+        
+        List<LdongSignguCode> list = ldongCodeService.getSignguCodesByRegnCd(regnCd);
+        response.put("status", "success");
+        response.put("regnCd", regnCd);
+        response.put("count", list.size());
+        response.put("data", list);
+        
+        return response;
+    }
+
+    /**
+     * 시군구 코드 목록 조회 (RequestParam 방식) - 기존 호환용
      * 호출 URL: GET /api/ldong/signgu?regnCd=11
      */
     @GetMapping("/signgu")

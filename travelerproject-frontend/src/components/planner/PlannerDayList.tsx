@@ -1,6 +1,8 @@
 /**
  * PlannerDayList.tsx - 플래너 일자별 일정 리스트
  * 각 일차별 장소 목록 및 드롭 영역
+ * 
+ * 수정: drop 이벤트에서만 검색 결과 추가되도록 변경
  */
 
 import { useRef } from 'react';
@@ -96,8 +98,12 @@ function DaySection({
 }: DaySectionProps) {
   const ref = useRef<HTMLDivElement>(null);
 
-  const [{ isOver }, drop] = useDrop(() => ({
+  const [{ isOver, canDrop }, drop] = useDrop(() => ({
     accept: "PLACE",
+    /**
+     * drop 이벤트 - 드롭했을 때만 실행
+     * 검색 결과에서 드래그한 경우 여기서 추가
+     */
     drop: (
       item: {
         id: string;
@@ -107,6 +113,7 @@ function DaySection({
       },
       monitor,
     ) => {
+      // 다른 드롭 타겟(DraggablePlaceItem)이 이미 처리했으면 무시
       if (monitor.didDrop()) return;
 
       // 검색 결과에서 드래그한 경우 - 맨 끝에 추가
@@ -116,10 +123,11 @@ function DaySection({
           dayPlan.id,
           dayPlan.places.length,
         );
-        // place 제거하여 일반 아이템처럼 취급
-        delete item.place;
-      } else if (item.dayId !== dayPlan.id) {
-        // 다른 Day에서 드래그한 경우
+        return;
+      }
+      
+      // 다른 Day에서 드래그한 경우 - 맨 끝으로 이동
+      if (item.dayId !== dayPlan.id) {
         onMovePlace(
           item.id,
           item.dayId,
@@ -128,8 +136,12 @@ function DaySection({
         );
       }
     },
+    /**
+     * hover에서는 아무것도 하지 않음 - 스쳐 지나가도 추가 안 됨
+     */
     collect: (monitor) => ({
       isOver: monitor.isOver({ shallow: true }),
+      canDrop: monitor.canDrop(),
     }),
   }));
 
@@ -152,13 +164,15 @@ function DaySection({
       </div>
       <div
         ref={ref}
-        className={`min-h-[100px] p-2 ${
-          isOver ? "bg-blue-50" : "bg-white"
-        } transition-colors`}
+        className={`min-h-[100px] p-2 transition-colors ${
+          isOver && canDrop ? "bg-blue-100 border-2 border-dashed border-blue-400" : "bg-white"
+        }`}
       >
         {dayPlan.places.length === 0 ? (
-          <div className="text-center text-gray-400 text-sm py-8">
-            장소를 드래그해서 추가하세요
+          <div className={`text-center text-sm py-8 ${
+            isOver && canDrop ? "text-blue-600 font-medium" : "text-gray-400"
+          }`}>
+            {isOver && canDrop ? "여기에 드롭하세요!" : "장소를 드래그해서 추가하세요"}
           </div>
         ) : (
           <div className="space-y-2">

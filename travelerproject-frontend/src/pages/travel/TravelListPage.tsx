@@ -1,12 +1,18 @@
 /**
  * TravelListPage.tsx - 여행지 목록 페이지
  * 지역/테마별 필터링 및 여행지 카드 리스트 표시
+ * 찜 개수, 별점, 사용자 찜 여부 API 연동
  */
 
 import { useState, useEffect } from 'react';
-import { getDestinationList } from '../../api/destinationApi';
+import { 
+  getDestinationList, 
+  getFavoriteCount, 
+  checkFavorite, 
+  getReviewsByDestination,
+  toggleFavorite 
+} from '../../api/destinationApi';
 import { MapPin, Heart, Star, ChevronLeft, ChevronRight } from 'lucide-react';
-import { Button } from '../../components/ui/button';
 
 interface Destination {
   contentid: string;
@@ -20,14 +26,21 @@ interface Destination {
   lDongSignguCd: string;
   viewCount: number;
   overview: string;
+  regionName?: string;
+}
+
+/** 여행지별 추가 정보 (찜, 별점) */
+interface DestinationStats {
+  favoriteCount: number;
+  isFavorite: boolean;
+  averageRating: number;
+  reviewCount: number;
 }
 
 interface TravelListPageProps {
   onSelectDestination?: (id: string) => void;
   isLoggedIn?: boolean;
-  favoriteDestinations?: any[];
-  onToggleFavorite?: (destination: any) => void;
-  reviews?: any[];
+  currentUserId?: number;
 }
 
 /** 콘텐츠 타입 코드 → 이름 변환 */
@@ -40,27 +53,6 @@ const contentTypeMap: { [key: string]: string } = {
   '32': '숙박',
   '38': '쇼핑',
   '39': '음식',
-};
-
-/** 법정동 시도 코드 → 이름 변환 */
-const regionMap: { [key: string]: string } = {
-  '11': '서울',
-  '26': '부산',
-  '27': '대구',
-  '28': '인천',
-  '29': '광주',
-  '30': '대전',
-  '31': '울산',
-  '36': '세종',
-  '41': '경기',
-  '42': '강원',
-  '43': '충북',
-  '44': '충남',
-  '45': '전북',
-  '46': '전남',
-  '47': '경북',
-  '48': '경남',
-  '50': '제주',
 };
 
 /** 카테고리 필터 */
@@ -76,18 +68,18 @@ const categories = [
 
 const TravelListPage = ({
   onSelectDestination,
-  isLoggedIn,
-  favoriteDestinations = [],
-  onToggleFavorite,
-  reviews = []
+  isLoggedIn = false,
+  currentUserId
 }: TravelListPageProps) => {
   const [destinations, setDestinations] = useState<Destination[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [selectedCategory, setSelectedCategory] = useState('all');
-  const [selectedRegion, setSelectedRegion] = useState('all');
   const pageSize = 10;
+
+  // 여행지별 통계 정보 (찜 개수, 별점 등)
+  const [statsMap, setStatsMap] = useState<{ [contentid: string]: DestinationStats }>({});
 
   /** 여행지 목록 조회 */
   useEffect(() => {
@@ -100,6 +92,9 @@ const TravelListPage = ({
         if (result.data) {
           setDestinations(result.data);
           setTotalPages(result.totalPages || 1);
+          
+          // 각 여행지별 통계 정보 조회
+          fetchDestinationStats(result.data);
         } else {
           setDestinations([]);
         }
@@ -114,57 +109,97 @@ const TravelListPage = ({
     fetchData();
   }, [currentPage, selectedCategory]);
 
-  /** 찜 여부 확인 */
-  const isFavorite = (contentid: string) => {
-    return favoriteDestinations.some((fav) => fav.contentid === contentid);
+  /** 여행지별 통계 정보 조회 (찜 개수, 별점, 사용자 찜 여부) */
+  const fetchDestinationStats = async (destList: Destination[]) => {
+    const newStatsMap: { [contentid: string]: DestinationStats } = {};
+
+    // 병렬로 API 호출
+    await Promise.all(
+      destList.map(async (dest) => {
+        try {
+          // 찜 개수 조회
+          const favoriteRes = await getFavoriteCount(dest.contentid);
+          const favoriteCount = favoriteRes.status === 'success' ? favoriteRes.favoriteCount : 0;
+
+          // 리뷰/별점 조회
+          const reviewRes = await getReviewsByDestination(dest.contentid);
+          const averageRating = reviewRes.status === 'success' ? reviewRes.averageRating : 0;
+          const reviewCount = reviewRes.status === 'success' ? reviewRes.totalCount : 0;
+
+          // 로그인한 경우 사용자 찜 여부 확인
+          let isFavorite = false;
+          if (isLoggedIn && currentUserId) {
+            const checkRes = await checkFavorite(currentUserId, dest.contentid);
+            isFavorite = checkRes.status === 'success' ? checkRes.isFavorite : false;
+          }
+
+          newStatsMap[dest.contentid] = {
+            favoriteCount,
+            isFavorite,
+            averageRating,
+            reviewCount
+          };
+        } catch (error) {
+          console.error(`통계 조회 실패 (${dest.contentid}):`, error);
+          newStatsMap[dest.contentid] = {
+            favoriteCount: 0,
+            isFavorite: false,
+            averageRating: 0,
+            reviewCount: 0
+          };
+        }
+      })
+    );
+
+    setStatsMap(newStatsMap);
   };
 
   /** 찜 토글 */
-  const handleToggleFavorite = (e: React.MouseEvent, destination: Destination) => {
-    e.stopPropagation(); // 카드 클릭 이벤트 방지
+  const handleToggleFavorite = async (e: React.MouseEvent, destination: Destination) => {
+    e.stopPropagation();
     
-    if (!isLoggedIn) {
+    if (!isLoggedIn || !currentUserId) {
       alert('로그인이 필요한 서비스입니다.');
       return;
     }
-    
-    if (onToggleFavorite) {
-      onToggleFavorite({
-        contentid: destination.contentid,
-        title: destination.title,
-        firstimage: destination.firstimage,
-        firstimage2: destination.firstimage2,
-        addr1: destination.addr1,
-      });
+
+    try {
+      const response = await toggleFavorite(currentUserId, destination.contentid);
+      
+      if (response.status === 'success') {
+        // 해당 여행지의 통계 정보 업데이트
+        setStatsMap(prev => ({
+          ...prev,
+          [destination.contentid]: {
+            ...prev[destination.contentid],
+            isFavorite: response.isFavorite,
+            favoriteCount: response.favoriteCount
+          }
+        }));
+      }
+    } catch (error) {
+      console.error('찜 토글 실패:', error);
+      alert('찜 처리 중 오류가 발생했습니다.');
     }
   };
 
-  /** 리뷰 평균 별점 계산 */
-  const getAverageRating = (contentid: string) => {
-    const destReviews = reviews.filter((r) => r.destinationId === contentid);
-    if (destReviews.length === 0) return 0;
-    const sum = destReviews.reduce((acc, r) => acc + r.rating, 0);
-    return (sum / destReviews.length).toFixed(1);
-  };
-
-  /** 리뷰 개수 */
-  const getReviewCount = (contentid: string) => {
-    return reviews.filter((r) => r.destinationId === contentid).length;
-  };
-
-  /** 찜 개수 (임시로 0) */
-  const getLikeCount = (contentid: string) => {
-    return favoriteDestinations.filter((fav) => fav.contentid === contentid).length || 0;
+  /** 통계 정보 가져오기 */
+  const getStats = (contentid: string): DestinationStats => {
+    return statsMap[contentid] || {
+      favoriteCount: 0,
+      isFavorite: false,
+      averageRating: 0,
+      reviewCount: 0
+    };
   };
 
   /** 지역명 가져오기 */
-  const getRegionName = (destination: any) => {
+  const getRegionName = (destination: Destination) => {
     return destination.regionName || '';
   };
 
-  /** 썸네일 URL (로컬 저장된 이미지 사용) */
+  /** 썸네일 URL */
   const getThumbnailUrl = (destination: Destination) => {
-    // 로컬에 저장된 썸네일 사용
     return `http://localhost:8080/thumbnails/${destination.contentid}.jpg`;
   };
 
@@ -239,87 +274,91 @@ const TravelListPage = ({
 
       {/* 여행지 리스트 */}
       <div className="space-y-4">
-        {destinations.map((destination) => (
-          <div
-            key={destination.contentid}
-            onClick={() => onSelectDestination?.(destination.contentid)}
-            className="flex gap-4 p-4 bg-white border rounded-lg hover:shadow-md transition-shadow cursor-pointer"
-          >
-            {/* 썸네일 이미지 */}
-            <div className="flex-shrink-0 w-40 h-28 rounded-lg overflow-hidden bg-gray-200">
-              <img
-                src={getThumbnailUrl(destination)}
-                alt={destination.title}
-                className="w-full h-full object-cover"
-                onError={(e) => {
-                  // 로컬 썸네일 없으면 원본 이미지 사용
-                  const target = e.target as HTMLImageElement;
-                  if (destination.firstimage2) {
-                    target.src = destination.firstimage2;
-                  } else if (destination.firstimage) {
-                    target.src = destination.firstimage;
-                  } else {
-                    target.src = '/placeholder-image.jpg';
-                  }
-                }}
-              />
-            </div>
+        {destinations.map((destination) => {
+          const stats = getStats(destination.contentid);
+          
+          return (
+            <div
+              key={destination.contentid}
+              onClick={() => onSelectDestination?.(destination.contentid)}
+              className="flex gap-4 p-4 bg-white border rounded-lg hover:shadow-md transition-shadow cursor-pointer"
+            >
+              {/* 썸네일 이미지 */}
+              <div className="flex-shrink-0 w-40 h-28 rounded-lg overflow-hidden bg-gray-200">
+                <img
+                  src={getThumbnailUrl(destination)}
+                  alt={destination.title}
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    const target = e.target as HTMLImageElement;
+                    if (destination.firstimage2) {
+                      target.src = destination.firstimage2;
+                    } else if (destination.firstimage) {
+                      target.src = destination.firstimage;
+                    } else {
+                      target.src = '/placeholder-image.jpg';
+                    }
+                  }}
+                />
+              </div>
 
-            {/* 여행지 정보 */}
-            <div className="flex-1 flex flex-col justify-between">
-              <div>
-                {/* 제목 및 카테고리 */}
-                <div className="flex items-center gap-2 mb-1">
-                  <h3 className="font-semibold text-lg">{destination.title}</h3>
-                  <span className="px-2 py-0.5 bg-blue-100 text-blue-600 text-xs rounded">
-                    {contentTypeMap[destination.contenttypeid] || '기타'}
+              {/* 여행지 정보 */}
+              <div className="flex-1 flex flex-col justify-between">
+                <div>
+                  {/* 제목 및 카테고리 */}
+                  <div className="flex items-center gap-2 mb-1">
+                    <h3 className="font-semibold text-lg">{destination.title}</h3>
+                    <span className="px-2 py-0.5 bg-blue-100 text-blue-600 text-xs rounded">
+                      {contentTypeMap[destination.contenttypeid] || '기타'}
+                    </span>
+                  </div>
+                  
+                  {/* 지역 */}
+                  <p className="text-gray-600 text-sm">
+                    {getRegionName(destination)}
+                  </p>
+                </div>
+
+                {/* 하단 정보 - API 연동 */}
+                <div className="flex items-center gap-4 text-sm text-gray-500">
+                  <span>조회 {destination.viewCount?.toLocaleString() || 0}</span>
+                  <span>좋아요 {stats.favoriteCount}</span>
+                  {stats.reviewCount > 0 && (
+                    <span className="flex items-center gap-1">
+                      <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+                      {stats.averageRating.toFixed(1)} ({stats.reviewCount})
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* 우측 버튼 */}
+              <div className="flex flex-col items-end justify-between">
+                {/* 별점 표시 */}
+                <div className="flex items-center gap-1 text-gray-400">
+                  <Star className={`w-4 h-4 ${stats.reviewCount > 0 ? 'fill-yellow-400 text-yellow-400' : ''}`} />
+                  <span className="text-sm">
+                    {stats.reviewCount > 0 ? stats.averageRating.toFixed(1) : '-'}
                   </span>
                 </div>
-                
-                {/* 지역 */}
-                <p className="text-gray-600 text-sm">
-                  {getRegionName(destination)}
-                </p>
-                {/* 지역 */}
-              </div>
 
-              {/* 하단 정보 */}
-              <div className="flex items-center gap-4 text-sm text-gray-500">
-                <span>조회 {destination.viewCount?.toLocaleString() || 0}</span>
-                <span>좋아요 {getLikeCount(destination.contentid)}</span>
-                {getReviewCount(destination.contentid) > 0 && (
-                  <span className="flex items-center gap-1">
-                    <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                    {getAverageRating(destination.contentid)}
-                  </span>
-                )}
+                {/* 찜 버튼 */}
+                <button
+                  onClick={(e) => handleToggleFavorite(e, destination)}
+                  className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                >
+                  <Heart
+                    className={`w-5 h-5 ${
+                      stats.isFavorite
+                        ? 'fill-red-500 text-red-500'
+                        : 'text-gray-400'
+                    }`}
+                  />
+                </button>
               </div>
             </div>
-
-            {/* 우측 버튼 */}
-            <div className="flex flex-col items-end justify-between">
-              {/* 별점 표시 */}
-              <div className="flex items-center gap-1 text-gray-400">
-                <Star className="w-4 h-4" />
-                <span className="text-sm">-</span>
-              </div>
-
-              {/* 찜 버튼 */}
-              <button
-                onClick={(e) => handleToggleFavorite(e, destination)}
-                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-              >
-                <Heart
-                  className={`w-5 h-5 ${
-                    isFavorite(destination.contentid)
-                      ? 'fill-red-500 text-red-500'
-                      : 'text-gray-400'
-                  }`}
-                />
-              </button>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* 데이터 없음 */}
@@ -332,7 +371,6 @@ const TravelListPage = ({
       {/* 페이지네이션 */}
       {destinations.length > 0 && (
         <div className="flex items-center justify-center gap-2 mt-8">
-          {/* 이전 버튼 */}
           <button
             onClick={() => handlePageChange(currentPage - 1)}
             disabled={currentPage === 1}
@@ -341,7 +379,6 @@ const TravelListPage = ({
             <ChevronLeft className="w-5 h-5" />
           </button>
 
-          {/* 페이지 번호 */}
           {getPageNumbers().map((page) => (
             <button
               key={page}
@@ -356,7 +393,6 @@ const TravelListPage = ({
             </button>
           ))}
 
-          {/* 다음 버튼 */}
           <button
             onClick={() => handlePageChange(currentPage + 1)}
             disabled={currentPage === totalPages}
