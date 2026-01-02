@@ -1,13 +1,16 @@
 /**
  * TravelDetailPage.tsx - 여행지 상세 페이지
  * 여행지 정보, 리뷰 작성/목록, 찜 기능, 고정 미니탭, 위로가기 버튼 포함
+ * 
+ * 수정: 위치 섹션에 카카오맵 실제 지도 표시
  */
 
 import { useState, useEffect } from 'react';
-import { Heart, Eye, MapPin, X, Star, ArrowUp } from 'lucide-react';
+import { Heart, MapPin, X, Star, ArrowUp } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Header } from '../../components/layout/Header';
 import { getDestinationDetail } from '../../api/destinationApi';
+import KakaoMap from '../../components/map/KakaoMap';
 
 interface Review {
   id: number;
@@ -226,6 +229,20 @@ export function TravelDetailPage({
     return types[typeId] || '기타';
   };
 
+  // 지도용 마커 데이터 생성
+  const mapDestination = destination.mapx && destination.mapy ? [{
+    contentid: destination.contentid,
+    contenttypeid: destination.contenttypeid,
+    title: destination.title,
+    addr1: destination.addr1,
+    mapx: parseFloat(destination.mapx),
+    mapy: parseFloat(destination.mapy),
+    firstimage: destination.firstimage,
+    firstimage2: destination.firstimage2,
+    distance: null,
+    typeName: getContentTypeName(destination.contenttypeid),
+  }] : [];
+
   return (
     <div className="fixed inset-0 z-50 bg-white overflow-y-auto" onScroll={handleScroll}>
       {/* 헤더 - 네비게이션 포함 */}
@@ -375,17 +392,18 @@ export function TravelDetailPage({
             </div>
           )}
 
-          {/* 지도 */}
+          {/* 지도 - 카카오맵 연동 */}
           <div className="mb-6">
             <h4 className="font-semibold mb-3">위치</h4>
             {destination.mapx && destination.mapy ? (
-              <div className="w-full h-64 bg-gray-200 rounded-lg flex items-center justify-center">
-                <div className="text-center text-gray-500">
-                  <MapPin className="h-12 w-12 mx-auto mb-2" />
-                  <p>위도: {destination.mapy}</p>
-                  <p>경도: {destination.mapx}</p>
-                  <p className="text-sm mt-2">(카카오맵 연동 예정)</p>
-                </div>
+              <div className="w-full h-64 rounded-lg overflow-hidden border">
+                <KakaoMap
+                  centerLat={parseFloat(destination.mapy)}
+                  centerLng={parseFloat(destination.mapx)}
+                  level={3}
+                  destinations={mapDestination}
+                  height="256px"
+                />
               </div>
             ) : (
               <div className="w-full h-64 bg-gray-200 rounded-lg flex items-center justify-center">

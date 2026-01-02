@@ -385,6 +385,7 @@ export default function App() {
         <TravelPage
           onNavigate={handleNavigate}
           isLoggedIn={isLoggedIn}
+          initialDestinationId={selectedDestinationId?.toString()}
           onOpenSearch={() => setIsSearchModalOpen(true)}
           initialDestinationId={selectedDestinationId?.toString() || null}
           favoriteDestinations={favoriteDestinations}

@@ -58,6 +58,4 @@ public class DestinationScheduler {
     public void manualUpdate() {
         updateDestinationData();
     }
-    
-    
 }
