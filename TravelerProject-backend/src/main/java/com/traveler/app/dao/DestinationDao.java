@@ -46,6 +46,14 @@ public interface DestinationDao {
         @Param("limit") int limit
     );
 
+    /** 여행지 목록 조회 (관광타입 + 지역 + 페이징) */
+    List<Destination> selectDestinationsByTypeAndRegion(
+            @Param("contenttypeid") String contenttypeid,
+            @Param("lDongRegnCd") String lDongRegnCd,
+            @Param("lDongSignguCd") String lDongSignguCd,
+            @Param("offset") int offset,
+            @Param("limit") int limit);
+
     /** 시군구 이름 조회 */
     String selectSignguName(
         @Param("lDongRegnCd") String lDongRegnCd,
@@ -58,12 +66,11 @@ public interface DestinationDao {
     /** 관광타입별 여행지 개수 */
     int countDestinationByType(@Param("contenttypeid") String contenttypeid);
 
-    /** 관광타입 + 지역별 여행지 개수 */
+    /** 여행지 개수 조회 (관광타입 + 지역) */
     int countDestinationByTypeAndRegion(
-        @Param("contenttypeid") String contenttypeid,
-        @Param("lDongRegnCd") String lDongRegnCd,
-        @Param("lDongSignguCd") String lDongSignguCd
-    );
+            @Param("contenttypeid") String contenttypeid,
+            @Param("lDongRegnCd") String lDongRegnCd,
+            @Param("lDongSignguCd") String lDongSignguCd);
 
     /** 상세정보 업데이트 */
     void updateDestinationDetail(
@@ -96,17 +103,19 @@ public interface DestinationDao {
 
     /** 키워드 + 지역 검색 */
     List<Destination> searchByKeywordAndRegion(
-        @Param("keyword") String keyword,
-        @Param("lDongRegnCd") String lDongRegnCd,
-        @Param("lDongSignguCd") String lDongSignguCd,
-        @Param("offset") int offset,
-        @Param("limit") int limit
+            @Param("keyword") String keyword,
+            @Param("lDongRegnCd") String lDongRegnCd,
+            @Param("lDongSignguCd") String lDongSignguCd,
+            @Param("offset") int offset,
+            @Param("limit") int limit
     );
 
     /** 키워드 + 지역 검색 결과 개수 */
     int countByKeywordAndRegion(
-        @Param("keyword") String keyword,
-        @Param("lDongRegnCd") String lDongRegnCd,
-        @Param("lDongSignguCd") String lDongSignguCd
+            @Param("keyword") String keyword,
+            @Param("lDongRegnCd") String lDongRegnCd,
+            @Param("lDongSignguCd") String lDongSignguCd
     );
+    
+    void increaseViewCount(@Param("contentid") String contentid);
 }

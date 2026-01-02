@@ -277,6 +277,13 @@
             AND lDongSignguCd = #{lDongSignguCd}
         </if>
     </select>
+    
+	    <!-- 조회수 증가 -->
+	<update id="increaseViewCount" parameterType="String">
+	    UPDATE destination
+	    SET view_count = view_count + 1
+	    WHERE contentid = #{contentid}
+	</update>
 
 	<!-- 여행지 범위 조회 (인덱스 기반) -->
 	<select id="selectDestinationsByRange" resultType="com.traveler.app.entity.Destination">

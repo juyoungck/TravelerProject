@@ -8,12 +8,13 @@ import api from './api';
 /** 게시글 목록 조회 */
 export const getBoardList = async (
   category: string = 'ALL',
+  searchType: 'TITLE' | 'AUTHOR' = 'TITLE',
   keyword: string = '',
   page: number = 1,
   size: number = 10
 ) => {
   const response = await api.get('/board/list', {
-    params: { category, keyword, page, size }
+    params: { category, searchType, keyword, page, size }
   });
   return response.data;
 };
