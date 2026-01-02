@@ -17,6 +17,8 @@ import com.traveler.app.service.DestinationService;
 /**
  * 여행지 API 컨트롤러
  * 여행지 조회 및 동기화 기능 제공
+ * 
+ * 수정: 지역 필터(lDongRegnCd, lDongSignguCd) 파라미터 추가
  */
 @RestController
 @RequestMapping("/api/destination")
@@ -203,19 +205,36 @@ public class DestinationController {
     }
 
     /**
-     * 여행지 목록 조회 (관광타입별, 페이징)
-     * URL: GET /api/destination/list/{contenttypeid}?page=1&size=10
+     * 여행지 목록 조회 (관광타입별, 페이징, 지역 필터 지원)
+     * URL: GET /api/destination/list/{contenttypeid}?page=1&size=10&lDongRegnCd=11&lDongSignguCd=11110
+     * 
+     * @param contenttypeid 관광타입 ID (12: 관광지, 14: 문화시설, ...)
+     * @param page 페이지 번호 (1부터 시작)
+     * @param size 페이지 크기
+     * @param lDongRegnCd 법정동 시도 코드 (선택)
+     * @param lDongSignguCd 법정동 시군구 코드 (선택)
      */
     @GetMapping("/list/{contenttypeid}")
     public Map<String, Object> getDestinationsByType(
             @PathVariable("contenttypeid") String contenttypeid,
             @RequestParam(value = "page", defaultValue = "1") int page,
-            @RequestParam(value = "size", defaultValue = "10") int size) {
+            @RequestParam(value = "size", defaultValue = "10") int size,
+            @RequestParam(value = "lDongRegnCd", required = false) String lDongRegnCd,
+            @RequestParam(value = "lDongSignguCd", required = false) String lDongSignguCd) {
         
         Map<String, Object> response = new HashMap<>();
         
         try {
-            Map<String, Object> result = destinationService.getDestinationsWithPaging(contenttypeid, page, size);
+            Map<String, Object> result;
+            
+            // 지역 필터가 있으면 지역별 조회
+            if (lDongRegnCd != null && !lDongRegnCd.isEmpty()) {
+                result = destinationService.getDestinationsWithPagingAndRegion(
+                    contenttypeid, page, size, lDongRegnCd, lDongSignguCd);
+            } else {
+                // 지역 필터 없으면 전체 조회
+                result = destinationService.getDestinationsWithPaging(contenttypeid, page, size);
+            }
             
             response.put("status", "success");
             response.put("contenttypeid", contenttypeid);
@@ -228,7 +247,47 @@ public class DestinationController {
         return response;
     }
     
-    
+    /**
+     * 여행지 검색 (키워드 + 지역 필터 지원)
+     * URL: GET /api/destination/search?keyword=서울&page=1&size=10&lDongRegnCd=11
+     * 
+     * @param keyword 검색 키워드
+     * @param page 페이지 번호
+     * @param size 페이지 크기
+     * @param lDongRegnCd 법정동 시도 코드 (선택)
+     * @param lDongSignguCd 법정동 시군구 코드 (선택)
+     */
+    @GetMapping("/search")
+    public Map<String, Object> searchDestinations(
+            @RequestParam(value = "keyword") String keyword,
+            @RequestParam(value = "page", defaultValue = "1") int page,
+            @RequestParam(value = "size", defaultValue = "10") int size,
+            @RequestParam(value = "lDongRegnCd", required = false) String lDongRegnCd,
+            @RequestParam(value = "lDongSignguCd", required = false) String lDongSignguCd) {
+        
+        Map<String, Object> response = new HashMap<>();
+        
+        try {
+            Map<String, Object> result;
+            
+            // 지역 필터가 있으면 지역별 검색
+            if (lDongRegnCd != null && !lDongRegnCd.isEmpty()) {
+                result = destinationService.searchDestinationsWithRegion(
+                    keyword, page, size, lDongRegnCd, lDongSignguCd);
+            } else {
+                // 지역 필터 없으면 전체 검색
+                result = destinationService.searchDestinations(keyword, page, size);
+            }
+            
+            response.put("status", "success");
+            response.putAll(result);
+        } catch (Exception e) {
+            response.put("status", "fail");
+            response.put("message", e.getMessage());
+        }
+        
+        return response;
+    }
 
     /**
      * 여행지 상세 조회

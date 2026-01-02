@@ -387,6 +387,7 @@ export default function App() {
           isLoggedIn={isLoggedIn}
           initialDestinationId={selectedDestinationId?.toString()}
           onOpenSearch={() => setIsSearchModalOpen(true)}
+          initialDestinationId={selectedDestinationId?.toString() || null}
           favoriteDestinations={favoriteDestinations}
           onToggleFavorite={handleToggleFavorite}
           reviews={reviews}

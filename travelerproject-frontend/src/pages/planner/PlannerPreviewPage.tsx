@@ -4,6 +4,7 @@
  * 백엔드 API 연동 완료
  *
  * 수정: 중앙 지도 영역에 카카오맵 컴포넌트 추가
+ * 수정: 본인이 작성한 플래너만 편집 가능
  */
 
 import { useState, useEffect, useMemo, useRef } from 'react';
@@ -95,6 +96,22 @@ const convertToDayPlan = (dayPlanDetail: DayPlanDetail): DayPlan => ({
   })),
 });
 
+/**
+ * 현재 로그인한 사용자 ID 가져오기
+ */
+const getCurrentUserId = (): number | null => {
+  const memberInfo = localStorage.getItem('memberInfo');
+  if (memberInfo) {
+    try {
+      const member = JSON.parse(memberInfo);
+      return member.mId || null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+};
+
 export function PlannerPreviewPage({ 
   planner, 
   onBack, 
@@ -115,13 +132,17 @@ export function PlannerPreviewPage({
   const isLiked = favoritePlanners?.some((fav) => fav.id === planner.id) || false;
   const likes = (plannerDetail?.favoriteCount || planner.likes);
 
+  // ★ 본인 플래너인지 확인
+  const currentUserId = getCurrentUserId();
+  const isOwner = plannerDetail ? plannerDetail.mId === currentUserId : false;
+
   /**
    * dayPlans를 KakaoMap용 PlannerPlace 배열로 변환
    */
   const plannerPlacesForMap = useMemo((): PlannerPlace[] => {
     const places: PlannerPlace[] = [];
     
-    dayPlans.forEach((dayPlan) => {  // ★ mockDayPlans → dayPlans
+    dayPlans.forEach((dayPlan) => {
       dayPlan.places.forEach((place, index) => {
         if (place.mapx && place.mapy) {
           places.push({
@@ -137,7 +158,7 @@ export function PlannerPreviewPage({
     });
     
     return places;
-  }, [dayPlans]);  // ★ mockDayPlans → dayPlans
+  }, [dayPlans]);
 
   /**
    * 지도 중심 좌표 계산
@@ -151,8 +172,6 @@ export function PlannerPreviewPage({
     }
     return { lat: 37.5665, lng: 126.9780 };
   }, [plannerPlacesForMap]);
-
-  // ★ 중복 선언 제거됨 (startDate, endDate, isPublic)
 
   /**
    * 플래너 상세 데이터 조회
@@ -198,11 +217,25 @@ export function PlannerPreviewPage({
     }
   };
 
+  /**
+   * 편집 버튼 클릭 핸들러
+   * - 로그인 여부 확인
+   * - 본인 플래너인지 확인
+   */
   const handleEdit = () => {
+    // 로그인 확인
     if (!isLoggedIn) {
       alert('로그인이 필요한 서비스입니다.');
       return;
     }
+    
+    // 본인 플래너인지 확인
+    if (!isOwner) {
+      alert('본인이 작성한 플래너만 편집할 수 있습니다.');
+      return;
+    }
+    
+    // 편집 페이지로 이동
     if (onEdit && plannerDetail) {
       onEdit({
         id: plannerDetail.plnId,
@@ -292,14 +325,18 @@ export function PlannerPreviewPage({
                     <Heart className={`h-3 w-3 mr-1 ${isLiked ? 'fill-current' : ''}`} />
                     {likes}
                   </Button>
-                  <Button
-                    size="sm"
-                    onClick={handleEdit}
-                    className="flex-1 text-xs px-2 py-1 h-7"
-                  >
-                    <Edit className="h-3 w-3 mr-1" />
-                    편집
-                  </Button>
+                  {/* 본인 플래너일 때만 편집 버튼 표시 */}
+                  {isOwner && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleEdit}
+                      className="flex-1 text-xs px-2 py-1 h-7"
+                    >
+                      <Edit className="h-3 w-3 mr-1" />
+                      편집
+                    </Button>
+                  )}
                 </div>
               </div>
 
