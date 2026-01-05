@@ -1,41 +1,31 @@
 package com.traveler.app.entity;
 
-import java.sql.Timestamp;
-
 import lombok.AllArgsConstructor;
 import lombok.Builder;
-import lombok.Getter;
+import lombok.Data;
 import lombok.NoArgsConstructor;
-import lombok.Setter;
+
+import java.time.LocalDateTime;
 
 /**
  * FavoritePlanner Entity
- * 플래너 찜 엔티티
- * 
- * 테이블: favorite_planner
- * - fav_id: 찜 ID (PK)
- * - m_id: 회원 ID (FK)
- * - pln_id: 플래너 ID (FK)
- * - created_at: 생성일
- * 
- * @author TravelerProject
+ * 플래너 찜(즐겨찾기) 정보
  */
-@Getter
-@Setter
+@Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class FavoritePlanner {
     
-    /** 찜 ID */
+    /** 찜 ID (PK) */
     private Long favId;
     
-    /** 회원 ID */
+    /** 회원 ID (FK) */
     private Long mId;
     
-    /** 플래너 ID */
+    /** 플래너 ID (FK) */
     private Long plnId;
     
     /** 생성일 */
-    private Timestamp createdAt;
+    private LocalDateTime createdAt;
 }
