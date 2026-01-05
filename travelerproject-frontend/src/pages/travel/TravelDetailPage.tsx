@@ -2,6 +2,7 @@
  * TravelDetailPage.tsx - 여행지 상세 페이지
  * 여행지 정보, 리뷰 작성/목록, 찜 기능, 조회수 증가, 고정 미니탭, 위로가기 버튼 포함
  * 수정: 지도 로딩, 1인1리뷰, 내 리뷰 최상단, 수정/삭제 기능, 리뷰 이미지
+ * 수정: 페이지 진입 시 스크롤 맨 위로 이동
  */
 
 import { useState, useEffect, useRef } from 'react';
@@ -22,6 +23,12 @@ import {
   getDestinationImages,
   getReviewImages
 } from '../../api/destinationApi';
+
+declare global {
+  interface Window {
+    kakao: any;
+  }
+}
 
 /** 리뷰 타입 정의 */
 interface Review {
@@ -141,13 +148,28 @@ export function TravelDetailPage({
   const [favoriteCount, setFavoriteCount] = useState(0);
   const [favoriteLoading, setFavoriteLoading] = useState(false);
 
-  // UI 관련 상태
-  const [showScrollTop, setShowScrollTop] = useState(false);
-  const [activeTab, setActiveTab] = useState<'photos' | 'info' | 'reviews' | 'notice'>('photos');
-
   // 이미지 업로드 상태 (새 리뷰 작성용)
   const [reviewImages, setReviewImages] = useState<File[]>([]);
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
+  
+  // UI 관련 상태
+  const [showScrollTop, setShowScrollTop] = useState(false);
+  const [activeTab, setActiveTab] = useState<'photos' | 'info' | 'reviews' | 'notice'>('photos');
+  
+  /** 페이지 진입 시 스크롤 맨 위로 이동 */
+  useEffect(() => {
+    // 스크롤 컨테이너를 찾아서 맨 위로
+    const container = document.querySelector('.detail-scroll-container');
+    if (container) {
+      container.scrollTo({ top: 0, behavior: 'instant' });
+    }
+    // window 스크롤도 맨 위로
+    window.scrollTo({ top: 0, behavior: 'instant' });
+    
+    // 탭도 초기화
+    setActiveTab('photos');
+  }, [destinationId]);
+  
 
   /** 여행지 상세 정보 조회 */
   useEffect(() => {

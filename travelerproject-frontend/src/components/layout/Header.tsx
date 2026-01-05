@@ -49,7 +49,7 @@ export function Header({
               onClick={() => onNavigate("event")}
               className="text-sm hover:text-blue-600 transition-colors"
             >
-              공연, 축제
+              이벤트
             </button>
             <button
               onClick={() => onNavigate("board")}
