@@ -94,6 +94,12 @@
         WHERE m_id = #{mId}
     </delete>
 
+    <!-- 회원의 플래너 찜 삭제 -->
+    <delete id="deleteFavoritePlannersByMemberId">
+        DELETE FROM favorite_planner
+        WHERE m_id = #{mId}
+    </delete>
+
     <!-- 회원의 게시글 삭제 -->
     <delete id="deleteBoardsByMemberId">
         DELETE FROM board
@@ -102,14 +108,14 @@
 
     <!-- 회원의 댓글 삭제 -->
     <delete id="deleteCommentsByMemberId">
-        DELETE FROM comment
+        DELETE FROM board_comment
         WHERE m_id = #{mId}
     </delete>
 
-    <!-- 회원의 플래너 삭제 (일정 먼저 삭제 후 플래너 삭제) -->
+    <!-- 회원의 플래너 삭제 (ON DELETE CASCADE로 day, place 자동 삭제) -->
     <delete id="deletePlannersByMemberId">
-        DELETE FROM planner_schedule
-        WHERE pln_id IN (SELECT pln_id FROM planner WHERE m_id = #{mId})
+        DELETE FROM planner
+        WHERE m_id = #{mId}
     </delete>
 
     <!-- 회원의 소셜 계정 삭제 -->
@@ -294,6 +300,102 @@
         SELECT COUNT(*)
         FROM board
         WHERE TRUNC(created_at) = TRUNC(SYSDATE)
+    </select>
+
+    <!-- 오늘 생성된 플래너 수 -->
+    <select id="countTodayNewPlanners" resultType="int">
+        SELECT COUNT(*)
+        FROM planner
+        WHERE TRUNC(created_at) = TRUNC(SYSDATE)
+    </select>
+
+    <!-- ============================================ -->
+    <!-- 플래너 관리 -->
+    <!-- ============================================ -->
+
+    <!-- 플래너 목록 조회 (페이징 + 검색) -->
+    <select id="selectPlanners" resultType="map">
+        SELECT * FROM (
+            SELECT ROWNUM AS rn, t.* FROM (
+                SELECT 
+                    p.pln_id AS "plnId",
+                    p.m_id AS "mId",
+                    p.pln_title AS "plnTitle",
+                    p.start_date AS "startDate",
+                    p.end_date AS "endDate",
+                    p.total_days AS "totalDays",
+                    p.is_public AS "isPublic",
+                    p.created_at AS "createdAt",
+                    m.m_nickname AS "authorNickname"
+                FROM planner p
+                LEFT JOIN member m ON p.m_id = m.m_id
+                WHERE 1=1
+                <if test="search != null and search != ''">
+                    AND (
+                        LOWER(p.pln_title) LIKE LOWER('%' || #{search} || '%')
+                        OR LOWER(m.m_nickname) LIKE LOWER('%' || #{search} || '%')
+                    )
+                </if>
+                <if test="status != null and status != ''">
+                    <choose>
+                        <when test="status == 'PUBLIC'">
+                            AND p.is_public = 1
+                        </when>
+                        <when test="status == 'PRIVATE'">
+                            AND (p.is_public = 0 OR p.is_public IS NULL)
+                        </when>
+                    </choose>
+                </if>
+                ORDER BY p.created_at DESC
+            ) t
+        ) WHERE rn BETWEEN #{offset} + 1 AND #{offset} + #{limit}
+    </select>
+
+    <!-- 플래너 총 개수 -->
+    <select id="countPlannersWithFilter" resultType="int">
+        SELECT COUNT(*)
+        FROM planner p
+        LEFT JOIN member m ON p.m_id = m.m_id
+        WHERE 1=1
+        <if test="search != null and search != ''">
+            AND (
+                LOWER(p.pln_title) LIKE LOWER('%' || #{search} || '%')
+                OR LOWER(m.m_nickname) LIKE LOWER('%' || #{search} || '%')
+            )
+        </if>
+        <if test="status != null and status != ''">
+            <choose>
+                <when test="status == 'PUBLIC'">
+                    AND p.is_public = 1
+                </when>
+                <when test="status == 'PRIVATE'">
+                    AND (p.is_public = 0 OR p.is_public IS NULL)
+                </when>
+            </choose>
+        </if>
+    </select>
+
+    <!-- 플래너 공개/비공개 변경 -->
+    <update id="updatePlannerStatus">
+        UPDATE planner
+        SET is_public = #{isPublic}
+        WHERE pln_id = #{plnId}
+    </update>
+
+    <!-- 플래너 삭제 -->
+    <delete id="deletePlanner">
+        DELETE FROM planner
+        WHERE pln_id = #{plnId}
+    </delete>
+
+    <!-- 공개 플래너 수 -->
+    <select id="countPublicPlanners" resultType="int">
+        SELECT COUNT(*) FROM planner WHERE is_public = 1
+    </select>
+
+    <!-- 비공개 플래너 수 -->
+    <select id="countPrivatePlanners" resultType="int">
+        SELECT COUNT(*) FROM planner WHERE is_public = 0 OR is_public IS NULL
     </select>
 
 </mapper>

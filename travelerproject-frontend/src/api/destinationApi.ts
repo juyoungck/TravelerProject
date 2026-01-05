@@ -6,22 +6,74 @@ import api from './api';
  */
 
 // ============================================
+// 타입 정의
+// ============================================
+
+/** 시도 정보 */
+export interface Region {
+  lDongRegnCd: string;
+  regnName: string;
+}
+
+/** 시군구 정보 */
+export interface Signgu {
+  lDongRegnCd: string;
+  lDongSignguCd: string;
+  signguName: string;
+}
+
+/** 콘텐츠 타입 (관광타입) */
+export const CONTENT_TYPES: { [key: string]: string } = {
+  '12': '관광지',
+  '14': '문화시설',
+  '28': '레포츠',
+  '32': '숙박',
+  '38': '쇼핑',
+  '39': '음식점',
+};
+
+// ============================================
+// 지역 코드 API
+// ============================================
+
+/** 시도 목록 조회 */
+export const getRegions = async (): Promise<Region[]> => {
+  const response = await api.get('/destination/regions');
+  return response.data.data;
+};
+
+/** 시군구 목록 조회 */
+export const getSignguList = async (lDongRegnCd: string): Promise<Signgu[]> => {
+  const response = await api.get(`/destination/regions/${lDongRegnCd}/signgu`);
+  return response.data.data;
+};
+
+// ============================================
 // 여행지 기본 API
 // ============================================
 
-/** 여행지 목록 조회 (관광타입별) */
+/** * 여행지 목록 조회 (관광타입별) 
+ * contenttypeid가 없거나 빈 문자열이면 전체 목록 조회 (/destination/list)
+ * 값이 있으면 해당 타입 조회 (/destination/list/{id})
+ */
 export const getDestinationList = async (
-  contenttypeid: string, 
+  contenttypeid?: string, // 👈 물음표(?)를 붙여서 선택적 파라미터로 변경
   page: number = 1, 
   size: number = 10,
+  sort: string = 'latest',
   lDongRegnCd?: string,
   lDongSignguCd?: string
 ) => {
-  const params: any = { page, size };
+  const params: any = { page, size, sort};
   if (lDongRegnCd) params.lDongRegnCd = lDongRegnCd;
   if (lDongSignguCd) params.lDongSignguCd = lDongSignguCd;
   
-  const response = await api.get(`/destination/list/${contenttypeid}`, { params });
+  // ✅ 수정된 부분: contenttypeid 유무에 따라 URL 분기 처리
+  // 값이 있으면: /destination/list/12
+  // 값이 없으면: /destination/list
+  const url = contenttypeid ? `/destination/list/${contenttypeid}` : '/destination/list';
+
+  const response = await api.get(url, { params });
   return response.data;
 };
 

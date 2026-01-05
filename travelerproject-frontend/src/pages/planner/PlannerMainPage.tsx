@@ -51,8 +51,10 @@ export function PlannerMainPage({ onCreatePlanner, onViewMore, onSelectPlanner }
     if (memberInfo) {
       try {
         const member = JSON.parse(memberInfo);
-        return member.mId || null;
+        // mId가 있는지 확인
+        return member.mId ? Number(member.mId) : null;
       } catch (e) {
+        console.error("회원정보 파싱 실패", e);
         return null;
       }
     }
@@ -89,12 +91,7 @@ export function PlannerMainPage({ onCreatePlanner, onViewMore, onSelectPlanner }
         }));
         setMyPlanners(planners);
       }
-    } catch (error) {
-      console.error('나의 플래너 목록 로드 실패:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    };
 
   /** 전체 플래너 목록 불러오기 (찜 많은 순) */
   const fetchAllPlanners = async (page: number = 1) => {

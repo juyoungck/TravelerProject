@@ -1,6 +1,7 @@
 package com.traveler.app.dao;
 
 import java.util.List;
+import java.util.Map;
 
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -14,6 +15,20 @@ import com.traveler.app.entity.Destination;
  */
 @Mapper
 public interface DestinationDao {
+
+    // ============================================
+    // 지역 코드 조회
+    // ============================================
+
+    /** 시도 목록 조회 */
+    List<Map<String, Object>> selectRegions();
+
+    /** 시군구 목록 조회 (시도 코드로) */
+    List<Map<String, Object>> selectSignguList(@Param("lDongRegnCd") String lDongRegnCd);
+
+    // ============================================
+    // 여행지 조회
+    // ============================================
 
     /** 여행지 저장/수정 (MERGE) */
     void mergeDestination(Destination destination);
@@ -34,7 +49,8 @@ public interface DestinationDao {
     List<Destination> selectDestinationsByTypeWithPaging(
         @Param("contenttypeid") String contenttypeid,
         @Param("offset") int offset,
-        @Param("limit") int limit
+        @Param("limit") int limit,
+        @Param("sort") String sort
     );
 
     /** 여행지 목록 조회 (관광타입 + 지역 + 페이징) */
@@ -43,7 +59,9 @@ public interface DestinationDao {
             @Param("lDongRegnCd") String lDongRegnCd,
             @Param("lDongSignguCd") String lDongSignguCd,
             @Param("offset") int offset,
-            @Param("limit") int limit);
+            @Param("limit") int limit,
+            @Param("sort") String sort
+    		);
 
     /** 시군구 이름 조회 */
     String selectSignguName(

@@ -147,8 +147,9 @@ api.interceptors.response.use(
           clearTokens();
           localStorage.removeItem('memberInfo');
           
-          // 로그인 페이지로 이동 (필요 시)
-          // window.location.href = '/login';
+          /// 변경 (활성화 + alert 추가)
+          alert('로그인이 만료되었습니다. 다시 로그인해주세요.');
+          window.location.href = '/login';
         }
       }
     }

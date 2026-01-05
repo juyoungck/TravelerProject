@@ -358,10 +358,10 @@ public class MemberService {
     }
     
     /**
-     * 회원 탈퇴
+     * 회원 탈퇴 (Hard Delete - 완전 삭제)
      * 
      * @param mId 회원 ID
-     * @param password 비밀번호 확인
+     * @param password 비밀번호 확인 (소셜 전용 계정은 "social" 전달)
      */
     @Transactional
     public void withdraw(Long mId, String password) {
@@ -371,18 +371,53 @@ public class MemberService {
             throw new RuntimeException("회원 정보를 찾을 수 없습니다.");
         }
         
-        // 비밀번호 확인
-        if (!passwordEncoder.matches(password, member.getMPasswd())) {
-            throw new RuntimeException("비밀번호가 일치하지 않습니다.");
-        }
+        // 소셜 전용 계정이 아닌 경우에만 비밀번호 확인
+        // loginType이 LOCAL 또는 BOTH인 경우 비밀번호 필요
+        String loginType = member.getMLoginType();
+        boolean isSocialOnly = "SOCIAL".equals(loginType) || 
+                               "KAKAO".equals(loginType) || 
+                               "NAVER".equals(loginType) || 
+                               "GOOGLE".equals(loginType);
         
-        // 상태 변경 (soft delete)
-        memberDao.updateMemberStatus(mId, "DELETED");
+        if (!isSocialOnly) {
+            // 비밀번호 확인
+            if (password == null || !passwordEncoder.matches(password, member.getMPasswd())) {
+                throw new RuntimeException("비밀번호가 일치하지 않습니다.");
+            }
+        }
         
         // 모든 세션 로그아웃
         jwtService.logoutAll(mId);
         
-        log.info("회원 탈퇴 완료 - 회원ID: {}", mId);
+        // 회원 관련 데이터 삭제 (순서 중요!)
+        // 1. 리뷰 삭제
+        memberDao.deleteReviewsByMemberId(mId);
+        
+        // 2. 여행지 찜 삭제
+        memberDao.deleteFavoriteDestinationsByMemberId(mId);
+        
+        // 3. 플래너 찜 삭제
+        memberDao.deleteFavoritePlannersByMemberId(mId);
+        
+        // 4. 댓글 삭제 (게시글보다 먼저!)
+        memberDao.deleteCommentsByMemberId(mId);
+        
+        // 5. 게시글 삭제
+        memberDao.deleteBoardsByMemberId(mId);
+        
+        // 6. 플래너 삭제 (CASCADE로 day, place 자동 삭제)
+        memberDao.deletePlannersByMemberId(mId);
+        
+        // 7. 소셜 계정 연동 정보 삭제
+        memberDao.deleteSocialAccountsByMemberId(mId);
+        
+        // 8. 리프레시 토큰 삭제
+        memberDao.deleteRefreshTokensByMemberId(mId);
+        
+        // 9. 회원 삭제
+        memberDao.deleteMember(mId);
+        
+        log.info("회원 탈퇴 완료 (Hard Delete) - 회원ID: {}, 로그인타입: {}", mId, loginType);
     }
     
     /**

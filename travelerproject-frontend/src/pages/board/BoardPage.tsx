@@ -5,7 +5,7 @@
  * ★ 플래너 미리보기 → App.tsx로 전달
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { BoardListPage } from './BoardListPage';
 import { BoardDetailPage } from './BoardDetailPage';
 import { BoardCreatePage } from './BoardCreatePage';
@@ -16,6 +16,7 @@ interface BoardPageProps {
   isLoggedIn?: boolean;
   currentUserId?: number;
   onOpenSearch?: () => void;
+  initialBoardId?: number | null;
   onViewPlanner?: (plnId: number) => void;  // ★ App.tsx에서 전달받음
 }
 
@@ -30,6 +31,13 @@ export function BoardPage({
   const [isCreating, setIsCreating] = useState(false);
   const [isEditing, setIsEditing] = useState(false);  // ★ 편집 모드 상태
   const [refreshKey, setRefreshKey] = useState(0);
+
+  // 초기 게시글 ID가 있으면 해당 게시글로 이동
+  useEffect(() => {
+    if (initialBoardId) {
+      setSelectedBdId(initialBoardId);
+    }
+  }, [initialBoardId]);
 
   /** 글 작성 완료 후 */
   const handleCreateComplete = () => {

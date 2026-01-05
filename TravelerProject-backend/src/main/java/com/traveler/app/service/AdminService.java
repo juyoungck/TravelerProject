@@ -65,22 +65,25 @@ public class AdminService {
         // 1. 회원의 리뷰 삭제
         adminDao.deleteReviewsByMemberId(mId);
         
-        // 2. 회원의 찜 삭제
+        // 2. 회원의 여행지 찜 삭제
         adminDao.deleteFavoritesByMemberId(mId);
         
-        // 3. 회원의 게시글 삭제
-        adminDao.deleteBoardsByMemberId(mId);
+        // 3. 회원의 플래너 찜 삭제
+        adminDao.deleteFavoritePlannersByMemberId(mId);
         
-        // 4. 회원의 댓글 삭제
+        // 4. 회원의 댓글 삭제 (게시글보다 먼저!)
         adminDao.deleteCommentsByMemberId(mId);
         
-        // 5. 회원의 플래너 삭제
+        // 5. 회원의 게시글 삭제
+        adminDao.deleteBoardsByMemberId(mId);
+        
+        // 6. 회원의 플래너 삭제
         adminDao.deletePlannersByMemberId(mId);
         
-        // 6. 소셜 계정 연동 정보 삭제
+        // 7. 소셜 계정 연동 정보 삭제
         adminDao.deleteSocialAccountsByMemberId(mId);
         
-        // 7. 회원 삭제
+        // 8. 회원 삭제
         adminDao.deleteMember(mId);
         
         log.info("회원 완전 삭제 완료 - mId: {}", mId);
@@ -172,6 +175,7 @@ public class AdminService {
         stats.put("activeMembers", adminDao.countMembers(null, "ACTIVE"));
         // 비활성 회원 수
         stats.put("inactiveMembers", adminDao.countMembers(null, "DELETED"));
+        
         // 전체 게시글 수
         stats.put("totalBoards", adminDao.countBoards(null, null));
         // 공개 게시글 수
@@ -191,6 +195,55 @@ public class AdminService {
         // 오늘 작성된 게시글 수
         stats.put("todayNewBoards", adminDao.countTodayNewBoards());
         
+        // 오늘 생성된 플래너 수
+        stats.put("todayNewPlanners", adminDao.countTodayNewPlanners());
+        
+        // 공개/비공개 플래너 수
+        stats.put("publicPlanners", adminDao.countPublicPlanners());
+        stats.put("privatePlanners", adminDao.countPrivatePlanners());
+        
         return stats;
+    }
+
+    // ============================================
+    // 플래너 관리
+    // ============================================
+
+    /**
+     * 플래너 목록 조회 (페이징 + 검색)
+     */
+    public Map<String, Object> getPlanners(int page, int size, String search, String status) {
+        int offset = (page - 1) * size;
+        
+        List<Map<String, Object>> planners = adminDao.selectPlanners(offset, size, search, status);
+        int totalCount = adminDao.countPlannersWithFilter(search, status);
+        int totalPages = (int) Math.ceil((double) totalCount / size);
+        
+        Map<String, Object> result = new HashMap<>();
+        result.put("data", planners);
+        result.put("totalCount", totalCount);
+        result.put("currentPage", page);
+        result.put("totalPages", totalPages);
+        
+        return result;
+    }
+
+    /**
+     * 플래너 공개/비공개 변경
+     */
+    @Transactional
+    public void updatePlannerStatus(Long plnId, String status) {
+        int isPublic = "PUBLIC".equals(status) ? 1 : 0;
+        adminDao.updatePlannerStatus(plnId, isPublic);
+        log.info("플래너 상태 변경 - ID: {}, 상태: {}", plnId, status);
+    }
+
+    /**
+     * 플래너 삭제
+     */
+    @Transactional
+    public void deletePlanner(Long plnId) {
+        adminDao.deletePlanner(plnId);
+        log.info("플래너 삭제 - ID: {}", plnId);
     }
 }

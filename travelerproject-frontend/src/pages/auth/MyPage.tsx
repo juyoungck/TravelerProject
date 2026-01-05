@@ -27,6 +27,7 @@ interface MyPageProps {
   onWithdraw: () => void;
   onNavigateToPlanner?: (planner: any) => void;
   onNavigateToDestination?: (contentid: string) => void;
+  onNavigateToBoard?: (bdId: number) => void;
 }
 
 type TabType = 'info' | 'reviews' | 'favorites' | 'admin';
@@ -52,6 +53,7 @@ export function MyPage({
   onWithdraw, 
   onNavigateToPlanner, 
   onNavigateToDestination,
+  onNavigateToBoard,
 }: MyPageProps) {
   // ============================================
   // 상태 관리
@@ -414,8 +416,17 @@ export function MyPage({
     return date.toLocaleDateString('ko-KR');
   };
 
-  // 소셜 회원인지 확인
-  const isSocialOnlyUser = memberInfo?.loginType === 'SOCIAL';
+  // 소셜 회원인지 확인 (SOCIAL 타입만 비밀번호 입력 불필요)
+  // loginType이 'LOCAL' 또는 'BOTH'면 비밀번호 필요
+  const isSocialOnlyUser = memberInfo?.loginType === 'SOCIAL' || 
+                           memberInfo?.loginType === 'KAKAO' || 
+                           memberInfo?.loginType === 'NAVER' || 
+                           memberInfo?.loginType === 'GOOGLE';
+  
+  // 디버깅용 로그 (나중에 삭제)
+  console.log('memberInfo:', memberInfo);
+  console.log('loginType:', memberInfo?.loginType);
+  console.log('isSocialOnlyUser:', isSocialOnlyUser);
 
   // ============================================
   // 로딩 상태
@@ -994,7 +1005,12 @@ export function MyPage({
       {/* 관리자 패널 탭 */}
       {/* ============================================ */}
       {activeTab === 'admin' && memberInfo?.role === 'ADMIN' && (
-        <AdminPanel onClose={() => setActiveTab('info')} />
+        <AdminPanel 
+          onClose={() => setActiveTab('info')} 
+          onNavigateToDestination={onNavigateToDestination}
+          onNavigateToBoard={onNavigateToBoard}
+          onNavigateToPlanner={(plnId) => onNavigateToPlanner?.({ plnId })}
+        />
       )}
 
       {/* ============================================ */}

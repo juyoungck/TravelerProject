@@ -68,6 +68,19 @@ export interface AdminReview {
   authorNickname: string;
 }
 
+/** 플래너 정보 */
+export interface AdminPlanner {
+  plnId: number;
+  mId: number;
+  plnTitle: string;
+  startDate: string;
+  endDate: string;
+  totalDays: number;
+  isPublic: number;
+  createdAt: string;
+  authorNickname: string;
+}
+
 /** 대시보드 통계 */
 export interface DashboardStats {
   totalMembers: number;
@@ -78,8 +91,11 @@ export interface DashboardStats {
   hiddenBoards: number;
   totalReviews: number;
   totalPlanners: number;
+  publicPlanners: number;
+  privatePlanners: number;
   todayNewMembers: number;
   todayNewBoards: number;
+  todayNewPlanners: number;
 }
 
 /** API 응답 (목록) */
@@ -219,6 +235,42 @@ export const deleteReview = async (rvId: number): Promise<AdminResponse> => {
 };
 
 // ============================================
+// 플래너 관리 API
+// ============================================
+
+/** 플래너 목록 조회 */
+export const getPlanners = async (
+  page: number = 1,
+  size: number = 10,
+  search?: string,
+  status?: string
+): Promise<AdminListResponse<AdminPlanner>> => {
+  const params = new URLSearchParams();
+  params.append('page', page.toString());
+  params.append('size', size.toString());
+  if (search) params.append('search', search);
+  if (status) params.append('status', status);
+
+  const response = await adminAxios.get(`/admin/planners?${params.toString()}`);
+  return response.data;
+};
+
+/** 플래너 상태 변경 (공개/비공개) */
+export const updatePlannerStatus = async (
+  plnId: number,
+  status: 'PUBLIC' | 'PRIVATE'
+): Promise<AdminResponse> => {
+  const response = await adminAxios.put(`/admin/planners/${plnId}/status`, { status });
+  return response.data;
+};
+
+/** 플래너 삭제 */
+export const deletePlanner = async (plnId: number): Promise<AdminResponse> => {
+  const response = await adminAxios.delete(`/admin/planners/${plnId}`);
+  return response.data;
+};
+
+// ============================================
 // 내보내기
 // ============================================
 
@@ -239,6 +291,11 @@ export const adminApi = {
   // 리뷰 관리
   getReviews,
   deleteReview,
+  
+  // 플래너 관리
+  getPlanners,
+  updatePlannerStatus,
+  deletePlanner,
 };
 
 export default adminApi;

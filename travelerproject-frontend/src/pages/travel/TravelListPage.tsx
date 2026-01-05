@@ -1,409 +1,375 @@
 /**
- * TravelListPage.tsx - 여행지 목록 페이지
- * 지역/테마별 필터링 및 여행지 카드 리스트 표시
- * 찜 개수, 별점, 사용자 찜 여부 API 연동
+ * TravelListPage.tsx
+ * * 수정: 상세 지역(시군구) 다중 선택 기능 적용
+ * * 상태: selectedSigngu string -> string[] (배열)로 변경
  */
 
 import { useState, useEffect } from 'react';
+import { Heart, ChevronLeft, ChevronRight, RefreshCw, Star } from 'lucide-react';
+import { Button } from '../../components/ui/button';
 import { 
   getDestinationList, 
-  getFavoriteCount, 
-  checkFavorite, 
-  getReviewsByDestination,
-  toggleFavorite 
+  getRegions, 
+  getSignguList,
+  CONTENT_TYPES
 } from '../../api/destinationApi';
-import { MapPin, Heart, Star, ChevronLeft, ChevronRight } from 'lucide-react';
 
-interface Destination {
-  contentid: string;
-  contenttypeid: string;
-  title: string;
-  addr1: string;
-  addr2: string;
-  firstimage: string;
-  firstimage2: string;
+interface Region {
   lDongRegnCd: string;
-  lDongSignguCd: string;
-  viewCount: number;
-  overview: string;
-  regionName?: string;
+  regnName: string;
 }
 
-/** 여행지별 추가 정보 (찜, 별점) */
-interface DestinationStats {
-  favoriteCount: number;
-  isFavorite: boolean;
-  averageRating: number;
-  reviewCount: number;
+interface Signgu {
+  lDongRegnCd: string;
+  lDongSignguCd: string;
+  signguName: string;
 }
 
 interface TravelListPageProps {
-  onSelectDestination?: (id: string) => void;
+  onSelectDestination: (id: string) => void;
   isLoggedIn?: boolean;
-  currentUserId?: number;
+  favoriteDestinations?: any[];
+  onToggleFavorite?: (destination: any) => void;
+  currentUserId?: number; 
 }
 
-/** 콘텐츠 타입 코드 → 이름 변환 */
-const contentTypeMap: { [key: string]: string } = {
-  '12': '관광',
-  '14': '문화',
-  '15': '축제',
-  '25': '여행코스',
-  '28': '레저',
-  '32': '숙박',
-  '38': '쇼핑',
-  '39': '음식',
-};
-
-/** 카테고리 필터 */
-const categories = [
-  { id: 'all', name: '전체' },
-  { id: '12', name: '관광' },
-  { id: '14', name: '문화' },
-  { id: '28', name: '레저' },
-  { id: '32', name: '숙박' },
-  { id: '38', name: '쇼핑' },
-  { id: '39', name: '음식' },
-];
-
-const TravelListPage = ({
+export function TravelListPage({ 
   onSelectDestination,
-  isLoggedIn = false,
-  currentUserId
-}: TravelListPageProps) => {
-  const [destinations, setDestinations] = useState<Destination[]>([]);
-  const [loading, setLoading] = useState(true);
+  isLoggedIn,
+  favoriteDestinations = [],
+  onToggleFavorite,
+  currentUserId, 
+}: TravelListPageProps) {
+  
+  // ============================================
+  // 상태 관리
+  // ============================================
+  const [regions, setRegions] = useState<Region[]>([]);
+  const [signguList, setSignguList] = useState<Signgu[]>([]);
+  
+  const [selectedRegion, setSelectedRegion] = useState<string>('');
+  
+  // ✅ [수정] 다중 선택을 위해 문자열('') 대신 배열([])로 초기화
+  const [selectedSigngu, setSelectedSigngu] = useState<string[]>([]);
+  
+  const [selectedContentType, setSelectedContentType] = useState<string>('');
+  const [sortBy, setSortBy] = useState<'latest' | 'popular'>('latest');
+  const [destinations, setDestinations] = useState<any[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [selectedCategory, setSelectedCategory] = useState('all');
-  const pageSize = 10;
+  const [isLoading, setIsLoading] = useState(false);
+  const [isRegionsLoading, setIsRegionsLoading] = useState(true);
 
-  // 여행지별 통계 정보 (찜 개수, 별점 등)
-  const [statsMap, setStatsMap] = useState<{ [contentid: string]: DestinationStats }>({});
+  const itemsPerPage = 10;
 
-  /** 여행지 목록 조회 */
+  // 지역명 단축 헬퍼 함수
+  const formatRegionName = (fullName: string) => {
+    const shortNames: { [key: string]: string } = {
+      '서울특별시': '서울',
+      '부산광역시': '부산',
+      '대구광역시': '대구',
+      '인천광역시': '인천',
+      '광주광역시': '광주', 
+      '대전광역시': '대전',
+      '울산광역시': '울산', 
+      '세종특별자치시': '세종', 
+      '경기도': '경기',
+      '강원특별자치도': '강원', 
+      '충청북도': '충북', 
+      '충청남도': '충남',
+      '전북특별자치도': '전북', 
+      '전라남도': '전남', 
+      '경상북도': '경북',
+      '경상남도': '경남', 
+      '제주특별자치도': '제주'
+    };
+    return shortNames[fullName] || fullName;
+  };
+
+  // ============================================
+  // 데이터 로드
+  // ============================================
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchRegions = async () => {
+      setIsRegionsLoading(true);
       try {
-        setLoading(true);
-        const contenttypeid = selectedCategory === 'all' ? '12' : selectedCategory;
-        const result = await getDestinationList(contenttypeid, currentPage, pageSize);
-        
-        if (result.data) {
-          setDestinations(result.data);
-          setTotalPages(result.totalPages || 1);
-          
-          // 각 여행지별 통계 정보 조회
-          fetchDestinationStats(result.data);
-        } else {
-          setDestinations([]);
-        }
+        const data = await getRegions();
+        setRegions(data);
       } catch (error) {
-        console.error('여행지 조회 실패:', error);
-        setDestinations([]);
+        console.error('시도 목록 조회 오류:', error);
       } finally {
-        setLoading(false);
+        setIsRegionsLoading(false);
       }
     };
+    fetchRegions();
+  }, []);
 
-    fetchData();
-  }, [currentPage, selectedCategory]);
-
-  /** 여행지별 통계 정보 조회 (찜 개수, 별점, 사용자 찜 여부) */
-  const fetchDestinationStats = async (destList: Destination[]) => {
-    const newStatsMap: { [contentid: string]: DestinationStats } = {};
-
-    // 병렬로 API 호출
-    await Promise.all(
-      destList.map(async (dest) => {
+  useEffect(() => {
+    if (selectedRegion) {
+      const fetchSigngu = async () => {
         try {
-          // 찜 개수 조회
-          const favoriteRes = await getFavoriteCount(dest.contentid);
-          const favoriteCount = favoriteRes.status === 'success' ? favoriteRes.favoriteCount : 0;
-
-          // 리뷰/별점 조회
-          const reviewRes = await getReviewsByDestination(dest.contentid);
-          const averageRating = reviewRes.status === 'success' ? reviewRes.averageRating : 0;
-          const reviewCount = reviewRes.status === 'success' ? reviewRes.totalCount : 0;
-
-          // 로그인한 경우 사용자 찜 여부 확인
-          let isFavorite = false;
-          if (isLoggedIn && currentUserId) {
-            const checkRes = await checkFavorite(currentUserId, dest.contentid);
-            isFavorite = checkRes.status === 'success' ? checkRes.isFavorite : false;
-          }
-
-          newStatsMap[dest.contentid] = {
-            favoriteCount,
-            isFavorite,
-            averageRating,
-            reviewCount
-          };
+          const data = await getSignguList(selectedRegion);
+          setSignguList(data);
         } catch (error) {
-          console.error(`통계 조회 실패 (${dest.contentid}):`, error);
-          newStatsMap[dest.contentid] = {
-            favoriteCount: 0,
-            isFavorite: false,
-            averageRating: 0,
-            reviewCount: 0
-          };
+          console.error('시군구 목록 조회 오류:', error);
+          setSignguList([]);
         }
-      })
-    );
-
-    setStatsMap(newStatsMap);
-  };
-
-  /** 찜 토글 */
-  const handleToggleFavorite = async (e: React.MouseEvent, destination: Destination) => {
-    e.stopPropagation();
-    
-    if (!isLoggedIn || !currentUserId) {
-      alert('로그인이 필요한 서비스입니다.');
-      return;
+      };
+      fetchSigngu();
+    } else {
+      setSignguList([]);
     }
+  }, [selectedRegion]);
 
+  useEffect(() => {
+    fetchDestinations();
+  }, [selectedRegion, selectedSigngu, selectedContentType, sortBy, currentPage]);
+
+  const fetchDestinations = async () => {
+    setIsLoading(true);
     try {
-      const response = await toggleFavorite(currentUserId, destination.contentid);
-      
-      if (response.status === 'success') {
-        // 해당 여행지의 통계 정보 업데이트
-        setStatsMap(prev => ({
-          ...prev,
-          [destination.contentid]: {
-            ...prev[destination.contentid],
-            isFavorite: response.isFavorite,
-            favoriteCount: response.favoriteCount
-          }
-        }));
-      }
+      // ✅ [수정] 배열을 콤마(,)로 구분된 문자열로 변환하여 API 전달 (예: "11110,11120")
+      // 만약 선택된 게 없으면(빈배열) undefined 처리
+      const signguParam = selectedSigngu.length > 0 ? selectedSigngu.join(',') : undefined;
+
+      const response = await getDestinationList(
+        selectedContentType || undefined,
+        currentPage,
+        itemsPerPage,
+        sortBy,
+        selectedRegion || undefined,
+        signguParam // 변환된 값 전달
+      );
+      setDestinations(response.data || []);
+      setTotalCount(response.totalCount || 0);
+      setTotalPages(response.totalPages || 1);
     } catch (error) {
-      console.error('찜 토글 실패:', error);
-      alert('찜 처리 중 오류가 발생했습니다.');
+      console.error('여행지 목록 조회 오류:', error);
+      setDestinations([]);
+      setTotalCount(0);
+      setTotalPages(1);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  /** 통계 정보 가져오기 */
-  const getStats = (contentid: string): DestinationStats => {
-    return statsMap[contentid] || {
-      favoriteCount: 0,
-      isFavorite: false,
-      averageRating: 0,
-      reviewCount: 0
-    };
-  };
-
-  /** 지역명 가져오기 */
-  const getRegionName = (destination: Destination) => {
-    return destination.regionName || '';
-  };
-
-  /** 썸네일 URL */
-  const getThumbnailUrl = (destination: Destination) => {
-    return `http://localhost:8080/thumbnails/${destination.contentid}.jpg`;
-  };
-
-  /** 페이지 변경 */
-  const handlePageChange = (page: number) => {
-    if (page >= 1 && page <= totalPages) {
-      setCurrentPage(page);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+  // ============================================
+  // 이벤트 핸들러
+  // ============================================
+  const handleRegionClick = (regionCd: string) => {
+    if (selectedRegion === regionCd) { 
+      setSelectedRegion(''); 
+    } else { 
+      setSelectedRegion(regionCd); 
     }
-  };
-
-  /** 카테고리 변경 */
-  const handleCategoryChange = (categoryId: string) => {
-    setSelectedCategory(categoryId);
+    // 지역 바뀌면 상세지역 선택 초기화
+    setSelectedSigngu([]); 
     setCurrentPage(1);
   };
 
-  /** 페이지네이션 번호 생성 */
-  const getPageNumbers = () => {
-    const pages = [];
-    const startPage = Math.max(1, currentPage - 2);
-    const endPage = Math.min(totalPages, startPage + 4);
-    
-    for (let i = startPage; i <= endPage; i++) {
-      pages.push(i);
+  // ✅ [수정] 상세지역 다중 선택 로직
+  const handleSignguClick = (signguCd: string) => {
+    // 1. "전체" 버튼 클릭 시 (빈 문자열)
+    if (signguCd === '') {
+      setSelectedSigngu([]); // 선택 초기화
+      setCurrentPage(1);
+      return;
     }
-    return pages;
+
+    // 2. 일반 지역 버튼 클릭 시 (토글)
+    setSelectedSigngu((prev) => {
+      if (prev.includes(signguCd)) {
+        // 이미 선택되어 있으면 제거
+        return prev.filter((code) => code !== signguCd);
+      } else {
+        // 선택 안 되어 있으면 추가
+        return [...prev, signguCd];
+      }
+    });
+    setCurrentPage(1);
   };
 
-  if (loading) {
+  const handleContentTypeClick = (typeId: string) => {
+    if (selectedContentType === typeId) { setSelectedContentType(''); } else { setSelectedContentType(typeId); }
+    setCurrentPage(1);
+  };
+  const handleToggleFavorite = (destination: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!isLoggedIn) { alert('로그인이 필요한 기능입니다.'); return; }
+    if (onToggleFavorite) { onToggleFavorite(destination); }
+  };
+  const isFavorite = (contentid: string) => {
+    return favoriteDestinations.some((fav) => fav.contentid === contentid);
+  };
+  const getContentTypeName = (typeId: string): string => {
+    return CONTENT_TYPES[typeId] || '기타';
+  };
+  const getSelectedRegionName = (): string => {
+    if (!selectedRegion) return '전체';
+    const region = regions.find(r => r.lDongRegnCd === selectedRegion);
+    return region?.regnName || '전체';
+  };
+
+  // ============================================
+  // 페이지네이션 렌더링
+  // ============================================
+  const renderPagination = () => {
+    if (totalPages <= 1) return null;
+    const pageNumbers: number[] = [];
+    const maxVisiblePages = 5;
+    let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
+    let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+    if (endPage - startPage + 1 < maxVisiblePages) {
+      startPage = Math.max(1, endPage - maxVisiblePages + 1);
+    }
+    for (let i = startPage; i <= endPage; i++) {
+      pageNumbers.push(i);
+    }
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">여행지를 불러오는 중...</p>
-        </div>
+      <div className="flex justify-center items-center gap-2 mt-8">
+        <Button variant="outline" size="sm" disabled={currentPage === 1} onClick={() => setCurrentPage(1)}>처음</Button>
+        <Button variant="outline" size="sm" disabled={currentPage === 1} onClick={() => setCurrentPage(currentPage - 1)}><ChevronLeft className="h-4 w-4" /></Button>
+        {pageNumbers.map((page) => (
+          <Button key={page} variant={currentPage === page ? "default" : "outline"} size="sm" onClick={() => setCurrentPage(page)} className="min-w-[40px]">{page}</Button>
+        ))}
+        <Button variant="outline" size="sm" disabled={currentPage === totalPages} onClick={() => setCurrentPage(currentPage + 1)}><ChevronRight className="h-4 w-4" /></Button>
+        <Button variant="outline" size="sm" disabled={currentPage === totalPages} onClick={() => setCurrentPage(totalPages)}>마지막</Button>
+        <span className="ml-4 text-sm text-gray-600">({currentPage} / {totalPages} 페이지)</span>
       </div>
     );
-  }
+  };
 
+  // ============================================
+  // 렌더링
+  // ============================================
   return (
     <div className="container mx-auto px-4 py-8">
-      {/* 카테고리 필터 */}
-      <div className="mb-6">
-        <h2 className="text-lg font-semibold mb-3">#전체</h2>
-        <div className="flex flex-wrap gap-2">
-          {categories.map((category) => (
-            <button
-              key={category.id}
-              onClick={() => handleCategoryChange(category.id)}
-              className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
-                selectedCategory === category.id
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              #{category.name}
-            </button>
-          ))}
-        </div>
-      </div>
+      <div className="flex gap-8">
+        
+        {/* 왼쪽: 여행지 리스트 */}
+        <div className="flex-1">
+          <div className="mb-6">
+            <p className="text-sm text-gray-500 mb-1">여행지</p>
+            <h1 className="text-3xl font-bold">#{getSelectedRegionName()}</h1>
+          </div>
 
-      {/* 결과 개수 및 정렬 */}
-      <div className="flex items-center justify-between mb-4">
-        <p className="text-gray-600">총 <span className="font-semibold text-blue-600">{destinations.length}개</span></p>
-        <div className="flex gap-2 text-sm">
-          <button className="text-blue-600 font-medium">최신순</button>
-          <span className="text-gray-300">|</span>
-          <button className="text-gray-500 hover:text-blue-600">인기순</button>
-        </div>
-      </div>
-
-      {/* 여행지 리스트 */}
-      <div className="space-y-4">
-        {destinations.map((destination) => {
-          const stats = getStats(destination.contentid);
-          
-          return (
-            <div
-              key={destination.contentid}
-              onClick={() => onSelectDestination?.(destination.contentid)}
-              className="flex gap-4 p-4 bg-white border rounded-lg hover:shadow-md transition-shadow cursor-pointer"
-            >
-              {/* 썸네일 이미지 */}
-              <div className="flex-shrink-0 w-40 h-28 rounded-lg overflow-hidden bg-gray-200">
-                <img
-                  src={getThumbnailUrl(destination)}
-                  alt={destination.title}
-                  className="w-full h-full object-cover"
-                  onError={(e) => {
-                    const target = e.target as HTMLImageElement;
-                    if (destination.firstimage2) {
-                      target.src = destination.firstimage2;
-                    } else if (destination.firstimage) {
-                      target.src = destination.firstimage;
-                    } else {
-                      target.src = '/placeholder-image.jpg';
-                    }
-                  }}
-                />
-              </div>
-
-              {/* 여행지 정보 */}
-              <div className="flex-1 flex flex-col justify-between">
-                <div>
-                  {/* 제목 및 카테고리 */}
-                  <div className="flex items-center gap-2 mb-1">
-                    <h3 className="font-semibold text-lg">{destination.title}</h3>
-                    <span className="px-2 py-0.5 bg-blue-100 text-blue-600 text-xs rounded">
-                      {contentTypeMap[destination.contenttypeid] || '기타'}
-                    </span>
-                  </div>
-                  
-                  {/* 지역 */}
-                  <p className="text-gray-600 text-sm">
-                    {getRegionName(destination)}
-                  </p>
-                </div>
-
-                {/* 하단 정보 - API 연동 */}
-                <div className="flex items-center gap-4 text-sm text-gray-500">
-                  <span>조회 {destination.viewCount?.toLocaleString() || 0}</span>
-                  <span>좋아요 {stats.favoriteCount}</span>
-                  {stats.reviewCount > 0 && (
-                    <span className="flex items-center gap-1">
-                      <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                      {stats.averageRating.toFixed(1)} ({stats.reviewCount})
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* 우측 버튼 */}
-              <div className="flex flex-col items-end justify-between">
-                {/* 별점 표시 */}
-                <div className="flex items-center gap-1 text-gray-400">
-                  <Star className={`w-4 h-4 ${stats.reviewCount > 0 ? 'fill-yellow-400 text-yellow-400' : ''}`} />
-                  <span className="text-sm">
-                    {stats.reviewCount > 0 ? stats.averageRating.toFixed(1) : '-'}
-                  </span>
-                </div>
-
-                {/* 찜 버튼 */}
-                <button
-                  onClick={(e) => handleToggleFavorite(e, destination)}
-                  className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-                >
-                  <Heart
-                    className={`w-5 h-5 ${
-                      stats.isFavorite
-                        ? 'fill-red-500 text-red-500'
-                        : 'text-gray-400'
-                    }`}
-                  />
-                </button>
-              </div>
+          <div className="mb-6">
+            <div className="flex gap-2 flex-wrap">
+              <button onClick={() => handleContentTypeClick('')} className={`px-4 py-2 rounded-full border transition-colors ${selectedContentType === '' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:border-blue-600'}`}>#전체</button>
+              {Object.entries(CONTENT_TYPES).map(([typeId, typeName]) => (
+                <button key={typeId} onClick={() => handleContentTypeClick(typeId)} className={`px-4 py-2 rounded-full border transition-colors ${selectedContentType === typeId ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:border-blue-600'}`}>#{typeName}</button>
+              ))}
             </div>
-          );
-        })}
+          </div>
+
+          <div className="flex items-center justify-between mb-4">
+            <div className="text-gray-600">총 <span className="text-blue-600 font-semibold">{totalCount.toLocaleString()}</span>개</div>
+            <div className="flex gap-2">
+              <button onClick={() => { setSortBy('latest'); setCurrentPage(1); }} className={`px-4 py-2 text-sm ${sortBy === 'latest' ? 'text-blue-600 font-semibold underline' : 'text-gray-600 hover:text-blue-600'}`}>최신순</button>
+              <span className="text-gray-300">|</span>
+              <button onClick={() => { setSortBy('popular'); setCurrentPage(1); }} className={`px-4 py-2 text-sm ${sortBy === 'popular' ? 'text-blue-600 font-semibold underline' : 'text-gray-600 hover:text-blue-600'}`}>인기순</button>
+            </div>
+          </div>
+
+          {isLoading && <div className="flex justify-center items-center py-20"><RefreshCw className="h-8 w-8 animate-spin text-blue-600" /></div>}
+
+          {!isLoading && (
+            <div className="space-y-4">
+              {destinations.map((destination) => (
+                <div key={destination.contentid} className="bg-white rounded-lg border hover:shadow-lg transition-shadow overflow-hidden">
+                  <div className="flex p-4">
+                    <button onClick={() => onSelectDestination(destination.contentid)} className="flex flex-1 gap-4 text-left">
+                      <div className="w-32 h-24 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
+                        {destination.firstimage ? (
+                          <img src={destination.firstimage} alt={destination.title} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">이미지 없음</div>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h3 className="font-semibold text-gray-900 truncate">{destination.title}</h3>
+                          <span className="text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded flex-shrink-0">{getContentTypeName(destination.contenttypeid)}</span>
+                        </div>
+                        <p className="text-sm text-gray-600 mb-2 truncate">{destination.regionName || destination.addr1}</p>
+                        <div className="flex items-center gap-3 text-sm text-gray-500 mt-2">
+                          <div className="flex items-center gap-1 text-yellow-500 font-medium">
+                            <Star className="h-4 w-4 fill-current" />
+                            <span>{destination.averageRating ? Number(destination.averageRating).toFixed(1) : "0.0"}</span>
+                            <span className="text-gray-400 font-normal">({destination.reviewCount || 0})</span>
+                          </div>
+                          <span className="text-gray-300">|</span>
+                          <span>조회 {destination.viewCount?.toLocaleString() || 0}</span>
+                        </div>
+                      </div>
+                    </button>
+                    <div className="flex flex-col items-center justify-center gap-2 ml-4 flex-shrink-0">
+                      <Button variant="ghost" size="icon" onClick={(e) => handleToggleFavorite(destination, e)}>
+                        <Heart className={`h-6 w-6 ${isFavorite(destination.contentid) ? 'fill-red-500 text-red-500' : 'text-gray-300'}`} />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {destinations.length === 0 && <div className="text-center py-20 text-gray-500">여행지가 없습니다.</div>}
+            </div>
+          )}
+          {!isLoading && renderPagination()}
+        </div>
+
+        {/* 오른쪽: 지역 필터 사이드바 */}
+        <div className="w-72 flex-shrink-0">
+          <div className="mt-[168px]">
+            <div className="bg-white rounded-lg border p-6 sticky top-24">
+              
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-bold text-lg text-gray-900">지역 (시/도)</h3>
+              </div>
+
+              {/* 시도 목록 */}
+              <div className="mb-6">
+                {isRegionsLoading ? (
+                  <div className="flex justify-center py-4"><RefreshCw className="h-5 w-5 animate-spin text-gray-400" /></div>
+                ) : (
+                  <div className="grid grid-cols-3 gap-2">
+                    <button onClick={() => handleRegionClick('')} className={`py-2 text-sm rounded-full border transition-all ${selectedRegion === '' ? 'bg-blue-600 text-white border-blue-600 font-medium shadow-sm' : 'bg-white text-gray-600 border-gray-200 hover:border-blue-400 hover:text-blue-600'}`}>#전체</button>
+                    {regions.map((region) => (
+                      <button key={region.lDongRegnCd} onClick={() => handleRegionClick(region.lDongRegnCd)} className={`py-2 text-sm rounded-full border transition-all ${selectedRegion === region.lDongRegnCd ? 'bg-blue-600 text-white border-blue-600 font-medium shadow-sm' : 'bg-white text-gray-600 border-gray-200 hover:border-blue-400 hover:text-blue-600'}`}>#{formatRegionName(region.regnName)}</button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* 시군구 목록 (다중 선택 적용) */}
+              {selectedRegion && signguList.length > 0 && (
+                <div className="pt-6 border-t border-gray-100 animate-in fade-in slide-in-from-top-2 duration-300">
+                  <h4 className="font-semibold text-gray-900 mb-3 text-sm">상세 지역</h4>
+                  <div className="grid grid-cols-3 gap-2">
+                    <button 
+                      onClick={() => handleSignguClick('')} 
+                      // ✅ '전체'는 배열 길이가 0일 때 선택된 것으로 표시
+                      className={`py-2 text-sm rounded-full border transition-colors ${selectedSigngu.length === 0 ? 'bg-gray-800 text-white border-gray-800' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
+                    >
+                      전체
+                    </button>
+                    {signguList.map((signgu) => (
+                      <button 
+                        key={signgu.lDongSignguCd} 
+                        onClick={() => handleSignguClick(signgu.lDongSignguCd)} 
+                        // ✅ 배열에 포함(.includes)되어 있으면 선택된 스타일 적용
+                        className={`py-2 text-sm rounded-full border transition-colors ${selectedSigngu.includes(signgu.lDongSignguCd) ? 'bg-gray-800 text-white border-gray-800' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
+                      >
+                        {signgu.signguName}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
-
-      {/* 데이터 없음 */}
-      {destinations.length === 0 && (
-        <div className="text-center py-12">
-          <p className="text-gray-500">여행지 정보가 없습니다.</p>
-        </div>
-      )}
-
-      {/* 페이지네이션 */}
-      {destinations.length > 0 && (
-        <div className="flex items-center justify-center gap-2 mt-8">
-          <button
-            onClick={() => handlePageChange(currentPage - 1)}
-            disabled={currentPage === 1}
-            className="p-2 rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <ChevronLeft className="w-5 h-5" />
-          </button>
-
-          {getPageNumbers().map((page) => (
-            <button
-              key={page}
-              onClick={() => handlePageChange(page)}
-              className={`w-10 h-10 rounded-lg font-medium transition-colors ${
-                currentPage === page
-                  ? 'bg-blue-600 text-white'
-                  : 'hover:bg-gray-100 text-gray-700'
-              }`}
-            >
-              {page}
-            </button>
-          ))}
-
-          <button
-            onClick={() => handlePageChange(currentPage + 1)}
-            disabled={currentPage === totalPages}
-            className="p-2 rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <ChevronRight className="w-5 h-5" />
-          </button>
-        </div>
-      )}
     </div>
   );
-};
-
-export default TravelListPage;
+}

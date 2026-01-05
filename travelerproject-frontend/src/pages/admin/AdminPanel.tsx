@@ -1,14 +1,13 @@
 /**
  * AdminPanel.tsx - 관리자 패널
- * 
- * 회원 관리, 게시판 관리, 리뷰 관리 기능
- * 
- * @author TravelerProject
+ * * 회원 관리, 게시판 관리, 리뷰 관리, 플래너 관리 기능
+ * 수정: 플래너 제목 클릭 시 현재 창에서 페이지 이동 (window.location 사용)
+ * * @author TravelerProject
  */
 
 import { useState, useEffect } from 'react';
 import { 
-  Users, FileText, MessageSquare, BarChart3,
+  Users, FileText, MessageSquare, BarChart3, Calendar,
   Search, Trash2, Eye, EyeOff, UserX, UserCheck,
   ChevronLeft, ChevronRight, RefreshCw
 } from 'lucide-react';
@@ -19,16 +18,20 @@ import {
   type AdminMember,
   type AdminBoard,
   type AdminReview,
+  type AdminPlanner,
   type DashboardStats
 } from '../../api/adminApi';
 
-type AdminTab = 'dashboard' | 'members' | 'boards' | 'reviews';
+type AdminTab = 'dashboard' | 'members' | 'boards' | 'reviews' | 'planners';
 
 interface AdminPanelProps {
   onClose?: () => void;
+  onNavigateToDestination?: (contentid: string) => void;
+  onNavigateToBoard?: (bdId: number) => void;
+  onNavigateToPlanner?: (plnId: number) => void;
 }
 
-export function AdminPanel({ onClose }: AdminPanelProps) {
+export function AdminPanel({ onClose, onNavigateToDestination, onNavigateToBoard, onNavigateToPlanner }: AdminPanelProps) {
   // ============================================
   // 상태 관리
   // ============================================
@@ -58,6 +61,13 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
   const [reviewTotalPages, setReviewTotalPages] = useState(1);
   const [reviewSearch, setReviewSearch] = useState('');
 
+  // 플래너 관리 상태
+  const [planners, setPlanners] = useState<AdminPlanner[]>([]);
+  const [plannerPage, setPlannerPage] = useState(1);
+  const [plannerTotalPages, setPlannerTotalPages] = useState(1);
+  const [plannerSearch, setPlannerSearch] = useState('');
+  const [plannerStatusFilter, setPlannerStatusFilter] = useState('');
+
   // ============================================
   // 데이터 로드
   // ============================================
@@ -71,6 +81,8 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
       fetchBoards();
     } else if (activeTab === 'reviews') {
       fetchReviews();
+    } else if (activeTab === 'planners') {
+      fetchPlanners();
     }
   }, [activeTab]);
 
@@ -96,7 +108,7 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
     try {
       const response = await adminApi.getMembers(
         page, 
-        10, 
+        20, 
         memberSearch || undefined, 
         memberStatusFilter || undefined
       );
@@ -119,7 +131,7 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
     try {
       const response = await adminApi.getBoards(
         page, 
-        10, 
+        20, 
         boardSearch || undefined, 
         boardStatusFilter || undefined
       );
@@ -142,7 +154,7 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
     try {
       const response = await adminApi.getReviews(
         page, 
-        10, 
+        20, 
         reviewSearch || undefined
       );
       if (response.status === 'success') {
@@ -271,6 +283,67 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
   };
 
   // ============================================
+  // 플래너 관리 함수
+  // ============================================
+
+  /** 플래너 목록 조회 */
+  const fetchPlanners = async (page: number = 1) => {
+    setIsLoading(true);
+    try {
+      const response = await adminApi.getPlanners(page, 10, plannerSearch, plannerStatusFilter);
+      if (response.status === 'success') {
+        setPlanners(response.data);
+        setPlannerPage(response.currentPage);
+        setPlannerTotalPages(response.totalPages);
+      }
+    } catch (error) {
+      console.error('플래너 목록 조회 오류:', error);
+      alert('플래너 목록 조회에 실패했습니다.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  /** 플래너 상태 변경 (공개/비공개) */
+  const handlePlannerStatusChange = async (plnId: number, currentStatus: number) => {
+    const newStatus = currentStatus === 1 ? 'PRIVATE' : 'PUBLIC';
+    const confirmMsg = currentStatus === 1 ? '비공개로 변경하시겠습니까?' : '공개로 변경하시겠습니까?';
+    
+    if (!confirm(confirmMsg)) return;
+
+    try {
+      const response = await adminApi.updatePlannerStatus(plnId, newStatus);
+      if (response.status === 'success') {
+        alert(response.message);
+        fetchPlanners(plannerPage);
+      } else {
+        alert(response.message || '상태 변경에 실패했습니다.');
+      }
+    } catch (error) {
+      console.error('플래너 상태 변경 오류:', error);
+      alert('상태 변경 중 오류가 발생했습니다.');
+    }
+  };
+
+  /** 플래너 삭제 */
+  const handleDeletePlanner = async (plnId: number, plnTitle: string) => {
+    if (!confirm(`"${plnTitle}" 플래너를 삭제하시겠습니까?\n플래너의 모든 일정이 함께 삭제됩니다.`)) return;
+
+    try {
+      const response = await adminApi.deletePlanner(plnId);
+      if (response.status === 'success') {
+        alert(response.message);
+        fetchPlanners(plannerPage);
+      } else {
+        alert(response.message || '삭제에 실패했습니다.');
+      }
+    } catch (error) {
+      console.error('플래너 삭제 오류:', error);
+      alert('삭제 중 오류가 발생했습니다.');
+    }
+  };
+
+  // ============================================
   // 유틸리티 함수
   // ============================================
 
@@ -353,6 +426,17 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
                 <MessageSquare className="h-5 w-5" />
                 리뷰 관리
               </button>
+              <button
+                onClick={() => setActiveTab('planners')}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                  activeTab === 'planners'
+                    ? 'bg-blue-600 text-white'
+                    : 'text-gray-700 hover:bg-gray-100'
+                }`}
+              >
+                <Calendar className="h-5 w-5" />
+                플래너 관리
+              </button>
             </nav>
           </div>
 
@@ -420,7 +504,12 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
                         <p className="text-gray-500 text-sm">전체 플래너</p>
                         <p className="text-3xl font-bold">{stats.totalPlanners}</p>
                       </div>
-                      <BarChart3 className="h-12 w-12 text-purple-500 opacity-50" />
+                      <Calendar className="h-12 w-12 text-purple-500 opacity-50" />
+                    </div>
+                    <div className="mt-2 text-sm">
+                      <span className="text-green-600">공개: {stats.publicPlanners || 0}</span>
+                      <span className="mx-2">|</span>
+                      <span className="text-gray-600">비공개: {stats.privatePlanners || 0}</span>
                     </div>
                   </div>
                 </div>
@@ -428,10 +517,14 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
                 {/* 오늘 통계 */}
                 <div className="bg-white rounded-lg shadow p-6">
                   <h3 className="text-lg font-semibold mb-4">오늘의 활동</h3>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-3 gap-4">
                     <div className="text-center p-4 bg-blue-50 rounded-lg">
                       <p className="text-3xl font-bold text-blue-600">{stats.todayNewMembers}</p>
                       <p className="text-gray-600">신규 가입</p>
+                    </div>
+                    <div className="text-center p-4 bg-purple-50 rounded-lg">
+                      <p className="text-3xl font-bold text-purple-600">{stats.todayNewPlanners || 0}</p>
+                      <p className="text-gray-600">새 플래너</p>
                     </div>
                     <div className="text-center p-4 bg-green-50 rounded-lg">
                       <p className="text-3xl font-bold text-green-600">{stats.todayNewBoards}</p>
@@ -681,7 +774,13 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
                         <tr key={board.bdId} className="hover:bg-gray-50">
                           <td className="px-4 py-3 text-sm">{board.bdId}</td>
                           <td className="px-4 py-3 text-sm font-medium max-w-xs truncate">
-                            {board.bdTitle}
+                            <button
+                              onClick={() => onNavigateToBoard?.(board.bdId)}
+                              className="text-blue-600 hover:text-blue-800 hover:underline text-left"
+                              title="게시글 상세 페이지로 이동"
+                            >
+                              {board.bdTitle}
+                            </button>
                           </td>
                           <td className="px-4 py-3 text-sm">{board.authorNickname}</td>
                           <td className="px-4 py-3 text-sm">{board.bdCategory}</td>
@@ -844,7 +943,15 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
                       {reviews.map((review) => (
                         <tr key={review.rvId} className="hover:bg-gray-50">
                           <td className="px-4 py-3 text-sm">{review.rvId}</td>
-                          <td className="px-4 py-3 text-sm text-blue-600">{review.contentid}</td>
+                          <td className="px-4 py-3 text-sm">
+                            <button
+                              onClick={() => onNavigateToDestination?.(review.contentid)}
+                              className="text-blue-600 hover:text-blue-800 hover:underline"
+                              title="여행지 상세 페이지로 이동"
+                            >
+                              {review.contentid}
+                            </button>
+                          </td>
                           <td className="px-4 py-3 text-sm">{review.authorNickname}</td>
                           <td className="px-4 py-3 text-sm max-w-xs truncate">
                             {review.rvContent}
@@ -942,6 +1049,191 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
                   </Button>
                   <span className="ml-4 text-sm text-gray-600">
                     ({reviewPage} / {reviewTotalPages || 1} 페이지)
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* ============================================ */}
+            {/* 플래너 관리 */}
+            {/* ============================================ */}
+            {!isLoading && activeTab === 'planners' && (
+              <div className="space-y-4">
+                <h2 className="text-xl font-semibold">플래너 관리</h2>
+                
+                {/* 검색 & 필터 */}
+                <div className="bg-white rounded-lg shadow p-4">
+                  <div className="flex gap-4">
+                    <div className="flex-1 relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                      <Input
+                        placeholder="제목, 설명, 작성자 검색..."
+                        value={plannerSearch}
+                        onChange={(e) => setPlannerSearch(e.target.value)}
+                        className="pl-10"
+                        onKeyDown={(e) => e.key === 'Enter' && fetchPlanners(1)}
+                      />
+                    </div>
+                    <select
+                      value={plannerStatusFilter}
+                      onChange={(e) => {
+                        setPlannerStatusFilter(e.target.value);
+                        setTimeout(() => fetchPlanners(1), 0);
+                      }}
+                      className="border rounded-md px-3 py-2"
+                    >
+                      <option value="">전체 상태</option>
+                      <option value="PUBLIC">공개</option>
+                      <option value="PRIVATE">비공개</option>
+                    </select>
+                    <Button onClick={() => fetchPlanners(1)}>검색</Button>
+                  </div>
+                </div>
+
+                {/* 플래너 목록 테이블 */}
+                <div className="bg-white rounded-lg shadow overflow-hidden">
+                  <table className="w-full">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">ID</th>
+                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">제목</th>
+                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">작성자</th>
+                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">기간</th>
+                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">상태</th>
+                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">작성일</th>
+                        <th className="px-4 py-3 text-center text-sm font-medium text-gray-600">관리</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {planners.map((planner) => (
+                        <tr key={planner.plnId} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 text-sm">{planner.plnId}</td>
+                          {/* ✅ 제목 클릭 시 현재 창에서 이동하도록 수정 */}
+                          <td className="px-4 py-3 text-sm font-medium max-w-xs truncate">
+                            <span
+                              onClick={() => window.location.href = `/?page=planner-detail&plnId=${planner.plnId}`}
+                              className="text-blue-600 hover:text-blue-800 hover:underline cursor-pointer block truncate"
+                            title="플래너 상세 보기"
+                            >
+                              {planner.plnTitle}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-sm">{planner.authorNickname}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600">
+                            {formatDate(planner.startDate)} ~ {formatDate(planner.endDate)}
+                            <span className="ml-1 text-xs text-gray-400">({planner.totalDays}일)</span>
+                          </td>
+                          <td className="px-4 py-3 text-sm">
+                            <span className={`px-2 py-1 rounded text-xs ${
+                              planner.isPublic === 1
+                                ? 'bg-green-100 text-green-700' 
+                                : 'bg-gray-100 text-gray-700'
+                            }`}>
+                              {planner.isPublic === 1 ? '공개' : '비공개'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-600">
+                            {formatDate(planner.createdAt)}
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex justify-center gap-2">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handlePlannerStatusChange(planner.plnId, planner.isPublic)}
+                                title={planner.isPublic === 1 ? '비공개로 변경' : '공개로 변경'}
+                              >
+                                {planner.isPublic === 1 ? (
+                                  <EyeOff className="h-4 w-4 text-gray-500" />
+                                ) : (
+                                  <Eye className="h-4 w-4 text-green-500" />
+                                )}
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleDeletePlanner(planner.plnId, planner.plnTitle)}
+                                title="삭제"
+                              >
+                                <Trash2 className="h-4 w-4 text-red-500" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                      {planners.length === 0 && (
+                        <tr>
+                          <td colSpan={7} className="px-4 py-8 text-center text-gray-500">
+                            플래너가 없습니다.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* 페이지네이션 */}
+                <div className="flex justify-center items-center gap-2 mt-4">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={plannerPage === 1}
+                    onClick={() => fetchPlanners(1)}
+                  >
+                    처음
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={plannerPage === 1}
+                    onClick={() => fetchPlanners(plannerPage - 1)}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  
+                  {/* 페이지 번호 */}
+                  {Array.from({ length: Math.min(5, plannerTotalPages) }, (_, i) => {
+                    let pageNum;
+                    if (plannerTotalPages <= 5) {
+                      pageNum = i + 1;
+                    } else if (plannerPage <= 3) {
+                      pageNum = i + 1;
+                    } else if (plannerPage >= plannerTotalPages - 2) {
+                      pageNum = plannerTotalPages - 4 + i;
+                    } else {
+                      pageNum = plannerPage - 2 + i;
+                    }
+                    return (
+                      <Button
+                        key={pageNum}
+                        variant={plannerPage === pageNum ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => fetchPlanners(pageNum)}
+                        className="min-w-[40px]"
+                      >
+                        {pageNum}
+                      </Button>
+                    );
+                  })}
+                  
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={plannerPage === plannerTotalPages || plannerTotalPages === 0}
+                    onClick={() => fetchPlanners(plannerPage + 1)}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={plannerPage === plannerTotalPages || plannerTotalPages === 0}
+                    onClick={() => fetchPlanners(plannerTotalPages)}
+                  >
+                    마지막
+                  </Button>
+                  <span className="ml-4 text-sm text-gray-600">
+                    ({plannerPage} / {plannerTotalPages || 1} 페이지)
                   </span>
                 </div>
               </div>
