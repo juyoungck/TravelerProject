@@ -18,14 +18,11 @@ import lombok.extern.slf4j.Slf4j;
  * 축제/공연/행사 컨트롤러
  * 
  * API 엔드포인트:
- * GET /api/festival?type=all&page=1&size=12
- * GET /api/festival/images/{contentId}
+ * GET /api/festival?type=all&page=1&size=12 - 축제/공연/행사 목록 (OpenAPI)
+ * GET /api/festival/images/{contentId} - 이미지 목록 (OpenAPI)
+ * GET /api/festival/course/{contentId} - 코스 경유지 (OpenAPI)
  * 
- * type 파라미터:
- * - all: 전체
- * - festival: 축제 (EV01)
- * - performance: 공연 (EV02)
- * - event: 행사 (EV03)
+ * 여행코스 목록은 /api/destination/search?contenttypeid=25 사용 (DB)
  */
 @RestController
 @RequestMapping("/api/festival")
@@ -37,17 +34,12 @@ public class FestivalController {
 
     /**
      * 축제/공연/행사 목록 조회
-     * 
-     * @param type 타입 (all, festival, performance, event)
-     * @param page 페이지 번호 (기본값: 1)
-     * @param size 페이지 크기 (기본값: 12)
-     * @return 축제/공연/행사 목록
      */
     @GetMapping
     public ResponseEntity<Map<String, Object>> getFestivalList(
-            @RequestParam(defaultValue = "all") String type,
-            @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "12") int size) {
+            @RequestParam(name = "type", defaultValue = "all") String type,
+            @RequestParam(name = "page", defaultValue = "1") int page,
+            @RequestParam(name = "size", defaultValue = "12") int size) {
         
         log.info("축제/공연/행사 목록 조회: type={}, page={}, size={}", type, page, size);
         
@@ -58,9 +50,6 @@ public class FestivalController {
 
     /**
      * 콘텐츠 이미지 목록 조회
-     * 
-     * @param contentId 콘텐츠 ID
-     * @return 이미지 URL 목록
      */
     @GetMapping("/images/{contentId}")
     public ResponseEntity<Map<String, Object>> getImages(@PathVariable("contentId") String contentId) {
@@ -68,6 +57,19 @@ public class FestivalController {
         log.info("이미지 목록 조회: contentId={}", contentId);
         
         Map<String, Object> result = festivalService.getImages(contentId);
+        
+        return ResponseEntity.ok(result);
+    }
+
+    /**
+     * 코스 경유지(상세정보) 조회
+     */
+    @GetMapping("/course/{contentId}")
+    public ResponseEntity<Map<String, Object>> getCourseDetail(@PathVariable("contentId") String contentId) {
+        
+        log.info("코스 경유지 조회: contentId={}", contentId);
+        
+        Map<String, Object> result = festivalService.getCourseDetail(contentId);
         
         return ResponseEntity.ok(result);
     }
