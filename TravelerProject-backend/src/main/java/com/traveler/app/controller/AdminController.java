@@ -72,7 +72,7 @@ public class AdminController {
     public ResponseEntity<Map<String, Object>> getAllMembers(
             @RequestHeader("Authorization") String authHeader,
             @RequestParam(value = "page", defaultValue = "1") int page,
-            @RequestParam(value = "size", defaultValue = "10") int size,
+            @RequestParam(value = "size", defaultValue = "20") int size,
             @RequestParam(value = "search", required = false) String search,
             @RequestParam(value = "status", required = false) String status) {
         
@@ -138,7 +138,7 @@ public class AdminController {
             adminService.updateMemberStatus(mId, newStatus);
             
             response.put("status", "success");
-            response.put("message", newStatus.equals("ACTIVE") ? "회원이 활성화되었습니다." : "회원이 비활성화되었습니다.");
+            response.put("message", newStatus.equals("ACTIVE") ? "회원이 복원되었습니다." : "회원이 탈퇴 처리되었습니다.");
             
             return ResponseEntity.ok(response);
         } catch (Exception e) {
@@ -195,7 +195,7 @@ public class AdminController {
     public ResponseEntity<Map<String, Object>> getAllBoards(
             @RequestHeader("Authorization") String authHeader,
             @RequestParam(value = "page", defaultValue = "1") int page,
-            @RequestParam(value = "size", defaultValue = "10") int size,
+            @RequestParam(value = "size", defaultValue = "20") int size,
             @RequestParam(value = "search", required = false) String search,
             @RequestParam(value = "status", required = false) String status) {
         
@@ -317,7 +317,7 @@ public class AdminController {
     public ResponseEntity<Map<String, Object>> getAllReviews(
             @RequestHeader("Authorization") String authHeader,
             @RequestParam(value = "page", defaultValue = "1") int page,
-            @RequestParam(value = "size", defaultValue = "10") int size,
+            @RequestParam(value = "size", defaultValue = "20") int size,
             @RequestParam(value = "search", required = false) String search) {
         
         Map<String, Object> response = new HashMap<>();
@@ -416,6 +416,118 @@ public class AdminController {
             log.error("대시보드 통계 조회 오류", e);
             response.put("status", "error");
             response.put("message", "통계 조회 중 오류가 발생했습니다.");
+            return ResponseEntity.status(500).body(response);
+        }
+    }
+
+    // ============================================
+    // 플래너 관리
+    // ============================================
+
+    /**
+     * 플래너 목록 조회
+     * GET /api/admin/planners
+     */
+    @GetMapping("/planners")
+    public ResponseEntity<Map<String, Object>> getPlanners(
+            @RequestHeader("Authorization") String authHeader,
+            @RequestParam(value = "page", defaultValue = "1") int page,
+            @RequestParam(value = "size", defaultValue = "10") int size,
+            @RequestParam(value = "search", required = false) String search,
+            @RequestParam(value = "status", required = false) String status) {
+        
+        Map<String, Object> response = new HashMap<>();
+        
+        if (!isAdmin(authHeader)) {
+            response.put("status", "error");
+            response.put("message", "관리자 권한이 필요합니다.");
+            return ResponseEntity.status(403).body(response);
+        }
+
+        try {
+            log.info("플래너 목록 조회 - page: {}, size: {}, search: {}, status: {}", 
+                    page, size, search, status);
+            
+            Map<String, Object> result = adminService.getPlanners(page, size, search, status);
+            
+            response.put("status", "success");
+            response.putAll(result);
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("플래너 목록 조회 오류", e);
+            response.put("status", "error");
+            response.put("message", "플래너 목록 조회 중 오류가 발생했습니다.");
+            return ResponseEntity.status(500).body(response);
+        }
+    }
+
+    /**
+     * 플래너 상태 변경 (공개/비공개)
+     * PUT /api/admin/planners/{plnId}/status
+     */
+    @PutMapping("/planners/{plnId}/status")
+    public ResponseEntity<Map<String, Object>> updatePlannerStatus(
+            @RequestHeader("Authorization") String authHeader,
+            @PathVariable("plnId") Long plnId,
+            @RequestBody Map<String, String> request) {
+        
+        Map<String, Object> response = new HashMap<>();
+        
+        if (!isAdmin(authHeader)) {
+            response.put("status", "error");
+            response.put("message", "관리자 권한이 필요합니다.");
+            return ResponseEntity.status(403).body(response);
+        }
+
+        try {
+            String status = request.get("status");
+            log.info("플래너 상태 변경 - ID: {}, status: {}", plnId, status);
+            
+            adminService.updatePlannerStatus(plnId, status);
+            
+            response.put("status", "success");
+            response.put("message", "플래너 상태가 변경되었습니다.");
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("플래너 상태 변경 오류", e);
+            response.put("status", "error");
+            response.put("message", "플래너 상태 변경 중 오류가 발생했습니다.");
+            return ResponseEntity.status(500).body(response);
+        }
+    }
+
+    /**
+     * 플래너 삭제
+     * DELETE /api/admin/planners/{plnId}
+     */
+    @DeleteMapping("/planners/{plnId}")
+    public ResponseEntity<Map<String, Object>> deletePlanner(
+            @RequestHeader("Authorization") String authHeader,
+            @PathVariable("plnId") Long plnId) {
+        
+        Map<String, Object> response = new HashMap<>();
+        
+        if (!isAdmin(authHeader)) {
+            response.put("status", "error");
+            response.put("message", "관리자 권한이 필요합니다.");
+            return ResponseEntity.status(403).body(response);
+        }
+
+        try {
+            log.info("플래너 삭제 - ID: {}", plnId);
+            
+            adminService.deletePlanner(plnId);
+            
+            response.put("status", "success");
+            response.put("message", "플래너가 삭제되었습니다.");
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("플래너 삭제 오류", e);
+            response.put("status", "error");
+            response.put("message", "플래너 삭제 중 오류가 발생했습니다.");
             return ResponseEntity.status(500).body(response);
         }
     }

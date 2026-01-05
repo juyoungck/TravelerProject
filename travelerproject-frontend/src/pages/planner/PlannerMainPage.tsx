@@ -1,8 +1,6 @@
 /**
  * PlannerMainPage.tsx - 플래너 메인 홈 페이지
- * 인기 플래너 캐러셀 및 나만의 플래너 목록 표시
- * 
- * 수정: 나의 플래너 - 백엔드 API 연동하여 본인 작성 플래너만 표시
+ * * 수정: 로그인 상태 확인 후 API 호출 (400 Bad Request 에러 방지)
  */
 
 import { useState, useEffect } from 'react';
@@ -25,7 +23,7 @@ interface Planner {
   endDate?: string;
 }
 
-// 인기 플래너 (목업 데이터 - 추후 API 연동 가능)
+// 인기 플래너 (목업 데이터)
 const mockPopularPlanners: Planner[] = [
   {
     id: 1,
@@ -63,42 +61,6 @@ const mockPopularPlanners: Planner[] = [
     image: 'https://images.unsplash.com/photo-1583417319070-4a69db38a482?w=400',
     likes: 156,
   },
-  {
-    id: 5,
-    title: '강릉 바다 여행',
-    author: '동해바다',
-    region: '강릉',
-    days: 2,
-    image: 'https://images.unsplash.com/photo-1590735213920-68192a487bc2?w=400',
-    likes: 201,
-  },
-  {
-    id: 6,
-    title: '전주 한옥마을 투어',
-    author: '전통미',
-    region: '전주',
-    days: 2,
-    image: 'https://images.unsplash.com/photo-1583417319070-4a69db38a482?w=400',
-    likes: 178,
-  },
-  {
-    id: 7,
-    title: '여수 낭만 포차 투어',
-    author: '야경러버',
-    region: '여수',
-    days: 3,
-    image: 'https://images.unsplash.com/photo-1590735213920-68192a487bc2?w=400',
-    likes: 234,
-  },
-  {
-    id: 8,
-    title: '속초 설악산 힐링',
-    author: '등산마니아',
-    region: '속초',
-    days: 2,
-    image: 'https://images.unsplash.com/photo-1559827260-dc66d52bef19?w=400',
-    likes: 167,
-  },
 ];
 
 interface PlannerMainPageProps {
@@ -120,59 +82,74 @@ export function PlannerMainPage({ onCreatePlanner, onViewMore, onSelectPlanner }
     (currentPage + 1) * itemsPerPage
   );
 
-  // 현재 로그인한 사용자 ID 가져오기
+  // 현재 로그인한 사용자 ID 가져오기 (localStorage 파싱)
   const getCurrentUserId = (): number | null => {
     const memberInfo = localStorage.getItem('memberInfo');
     if (memberInfo) {
-      const member = JSON.parse(memberInfo);
-      return member.mId || null;
+      try {
+        const member = JSON.parse(memberInfo);
+        // mId가 있는지 확인
+        return member.mId ? Number(member.mId) : null;
+      } catch (e) {
+        console.error("회원정보 파싱 실패", e);
+        return null;
+      }
     }
     return null;
   };
 
   // 나의 플래너 목록 불러오기
   useEffect(() => {
-    fetchMyPlanners();
-  }, []);
-
-  const fetchMyPlanners = async () => {
-    const userId = getCurrentUserId();
-    
-    if (!userId) {
-      setIsLoading(false);
-      return;
-    }
-
-    try {
-      setIsLoading(true);
-      // 본인 플래너만 조회하는 API 호출 (쿼리 파라미터 방식)
-      const response = await axios.get(`${API_BASE_URL}/planner/my`, {
-        params: { mId: userId, page: 1, size: 20 }
-      });
+    const fetchMyPlanners = async () => {
+      const userId = getCurrentUserId();
       
-      if (response.data.status === 'success' && response.data.planners) {
-        const planners = response.data.planners.map((p: any) => ({
-          id: p.plnId,
-          title: p.plnTitle,
-          author: p.authorNickname || '나',
-          region: p.regionName || '전국',
-          days: p.totalDays || calculateDays(p.startDate, p.endDate),
-          image: p.thumbnailImage || 'https://images.unsplash.com/photo-1583417319070-4a69db38a482?w=400',
-          likes: p.favoriteCount || 0,
-          isOwn: true,
-          startDate: p.startDate,
-          endDate: p.endDate,
-        }));
-        setMyPlanners(planners);
-      }
-    } catch (error) {
-      console.error('나의 플래너 목록 로드 실패:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+      console.log("현재 로그인한 사용자 ID (mId):", userId); // 디버깅용 로그
 
-  // 여행 일수 계산
+      // ✅ [핵심] 로그인 정보가 없으면 API 호출 중단 (400 에러 원천 차단)
+      if (!userId) {
+        console.log("로그인 정보 없음 -> API 호출 건너뜀");
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        setIsLoading(true);
+        // 본인 플래너만 조회하는 API 호출
+        // 백엔드: @RequestParam(name = "mId") Long mId
+        const response = await axios.get(`${API_BASE_URL}/planner/my`, {
+          params: { 
+            mId: userId,  // ✅ 백엔드가 원하는 파라미터 이름 'mId'
+            page: 1, 
+            size: 20 
+          }
+        });
+        
+        if (response.data.status === 'success' && response.data.planners) {
+          const planners = response.data.planners.map((p: any) => ({
+            id: p.plnId,
+            title: p.plnTitle,
+            author: p.authorNickname || '나',
+            region: p.regionName || '전국',
+            days: p.totalDays || calculateDays(p.startDate, p.endDate),
+            image: p.thumbnailImage || 'https://images.unsplash.com/photo-1583417319070-4a69db38a482?w=400',
+            likes: p.favoriteCount || 0,
+            isOwn: true,
+            startDate: p.startDate,
+            endDate: p.endDate,
+          }));
+          setMyPlanners(planners);
+        }
+      } catch (error) {
+        console.error('나의 플래너 목록 로드 실패:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchMyPlanners();
+  }, []); // 컴포넌트 마운트 시 한 번만 실행
+
+  // 여행 일수 계산 유틸리티
   const calculateDays = (startDate: string, endDate: string): number => {
     if (!startDate || !endDate) return 1;
     const start = new Date(startDate);

@@ -3,8 +3,8 @@
  */
 
 import { useState, useEffect } from 'react';
-import TravelListPage from './TravelListPage';
-import TravelDetailPage from './TravelDetailPage';
+import {TravelListPage} from './TravelListPage';
+import {TravelDetailPage} from './TravelDetailPage';
 
 interface TravelPageProps {
   onNavigate?: (page: string) => void;

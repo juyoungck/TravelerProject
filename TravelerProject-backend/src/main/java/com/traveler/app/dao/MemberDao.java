@@ -83,4 +83,53 @@ public interface MemberDao {
      * 회원 로그인 타입 변경 (소셜 연동 시 LOCAL → BOTH)
      */
     int updateMemberLoginType(@Param("mId") Long mId, @Param("loginType") String loginType);
+    
+    // ============================================
+    // 회원 탈퇴 (Hard Delete) 관련 메서드
+    // ============================================
+    
+    /**
+     * 회원 삭제
+     */
+    int deleteMember(@Param("mId") Long mId);
+    
+    /**
+     * 회원의 리뷰 삭제
+     */
+    int deleteReviewsByMemberId(@Param("mId") Long mId);
+    
+    /**
+     * 회원의 여행지 찜 삭제
+     */
+    int deleteFavoriteDestinationsByMemberId(@Param("mId") Long mId);
+    
+    /**
+     * 회원의 플래너 찜 삭제
+     */
+    int deleteFavoritePlannersByMemberId(@Param("mId") Long mId);
+    
+    /**
+     * 회원의 댓글 삭제
+     */
+    int deleteCommentsByMemberId(@Param("mId") Long mId);
+    
+    /**
+     * 회원의 게시글 삭제
+     */
+    int deleteBoardsByMemberId(@Param("mId") Long mId);
+    
+    /**
+     * 회원의 플래너 삭제
+     */
+    int deletePlannersByMemberId(@Param("mId") Long mId);
+    
+    /**
+     * 회원의 소셜 계정 삭제
+     */
+    int deleteSocialAccountsByMemberId(@Param("mId") Long mId);
+    
+    /**
+     * 회원의 리프레시 토큰 삭제
+     */
+    int deleteRefreshTokensByMemberId(@Param("mId") Long mId);
 }

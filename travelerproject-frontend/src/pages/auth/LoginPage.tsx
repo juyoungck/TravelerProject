@@ -70,7 +70,14 @@ export function LoginPage({ onNavigate, onLoginSuccess }: LoginPageProps) {
       }
     } catch (error: any) {
       console.error('로그인 오류:', error);
-      setErrorMessage(error.response?.data?.message || '아이디 또는 비밀번호가 일치하지 않습니다.');
+      const serverMessage = error.response?.data?.message || '';
+      
+      // 비활성화 계정 메시지 처리
+      if (serverMessage.includes('비활성화') || serverMessage.includes('DELETED') || serverMessage.includes('탈퇴')) {
+        setErrorMessage('관리자에 의해 비활성화된 계정입니다.\n자세한 사항은 문의 바랍니다.');
+      } else {
+        setErrorMessage(serverMessage || '아이디 또는 비밀번호가 일치하지 않습니다.');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -155,7 +162,7 @@ export function LoginPage({ onNavigate, onLoginSuccess }: LoginPageProps) {
 
           {/* 에러 메시지 */}
           {errorMessage && (
-            <p className="text-sm text-red-500">{errorMessage}</p>
+            <p className="text-sm text-red-500 whitespace-pre-line">{errorMessage}</p>
           )}
 
           {/* 로그인 버튼 */}

@@ -43,7 +43,7 @@ export default function App() {
   // 공유 링크 상태
   const [shareLink, setShareLink] = useState<string | null>(null);
 
-  // 소셜 연동 모달 상태 (추가!)
+  // 소셜 연동 모달 상태
   const [isSocialLinkModalOpen, setIsSocialLinkModalOpen] = useState(false);
   const [socialLinkInfo, setSocialLinkInfo] = useState<{
     provider: string;
@@ -52,9 +52,11 @@ export default function App() {
     nickname: string;
   } | null>(null);
 
+  // 게시글 상세 이동용 상태
+  const [selectedBoardId, setSelectedBoardId] = useState<number | null>(null);
+
   /**
    * 페이지 로드 시 로그인 상태 확인
-   * localStorage에 토큰과 회원정보가 있으면 로그인 상태로 설정
    */
   useEffect(() => {
     const checkLoginStatus = () => {
@@ -62,7 +64,6 @@ export default function App() {
       const memberInfo = localStorage.getItem('memberInfo');
       
       if (accessToken && memberInfo) {
-        // 토큰 + 회원정보 둘 다 있으면 로그인 상태
         setIsLoggedIn(true);
         try {
           const member = JSON.parse(memberInfo);
@@ -70,7 +71,6 @@ export default function App() {
           console.log('로그인 상태 복원:', member.nickname);
         } catch (e) {
           console.error('회원정보 파싱 오류:', e);
-          // 파싱 오류 시 로그아웃 처리
           localStorage.removeItem('accessToken');
           localStorage.removeItem('refreshToken');
           localStorage.removeItem('memberInfo');
@@ -78,7 +78,6 @@ export default function App() {
           setCurrentUser(null);
         }
       } else {
-        // 하나라도 없으면 로그아웃 상태
         setIsLoggedIn(false);
         setCurrentUser(null);
       }
@@ -89,52 +88,38 @@ export default function App() {
 
   /**
    * 소셜 로그인 콜백 처리
-   * URL에서 토큰을 추출하여 로그인 처리
    */
   useEffect(() => {
-    // URL 파라미터 확인
     const urlParams = new URLSearchParams(window.location.search);
     const accessToken = urlParams.get('accessToken');
     const refreshToken = urlParams.get('refreshToken');
     const error = urlParams.get('error');
     const isNewUser = urlParams.get('isNewUser');
     
-    // 소셜 로그인 콜백인 경우
     if (window.location.pathname === '/oauth2/callback' || accessToken || error) {
       if (error) {
-        // 에러 처리
         setOauthStatus('error');
         setOauthError(decodeURIComponent(error));
-        
-        // 3초 후 로그인 페이지로 이동
         setTimeout(() => {
           setOauthStatus(null);
           setCurrentPage('login');
-          // URL 정리
           window.history.replaceState({}, '', '/');
         }, 3000);
       } else if (accessToken && refreshToken) {
-        // 토큰 저장
         localStorage.setItem('accessToken', accessToken);
         localStorage.setItem('refreshToken', refreshToken);
-        
-        // 로그인 상태 변경
         setIsLoggedIn(true);
         
-        // 신규 회원이면 회원가입 페이지로 (추가정보 입력)
         if (isNewUser === 'true') {
           setOauthStatus('success');
           localStorage.setItem('socialSignupMode', 'true');
-          
           setTimeout(() => {
             setOauthStatus(null);
             setCurrentPage('signup');
             window.history.replaceState({}, '', '/');
           }, 1500);
         } else {
-          // 기존 회원이면 홈으로
           setOauthStatus('success');
-          
           setTimeout(() => {
             setOauthStatus(null);
             setCurrentPage('home');
@@ -146,12 +131,11 @@ export default function App() {
   }, []);
 
   /**
-   * 소셜 연동 콜백 처리 (추가!)
+   * 소셜 연동 콜백 처리
    */
   useEffect(() => {
     if (window.location.pathname === '/oauth2/link/callback') {
       const urlParams = new URLSearchParams(window.location.search);
-      
       const provider = urlParams.get('provider');
       const providerId = urlParams.get('providerId');
       const email = urlParams.get('email') || '';
@@ -160,38 +144,28 @@ export default function App() {
       const isAlreadyLinked = urlParams.get('isAlreadyLinked') === 'true';
       const error = urlParams.get('error');
       
-      // URL 파라미터 제거
       window.history.replaceState({}, document.title, '/mypage');
       
-      // 에러 처리
       if (error) {
         alert(decodeURIComponent(error));
         setCurrentPage('mypage');
         return;
       }
       
-      // 이미 가입된 계정인지 확인
       if (isAlreadyRegistered) {
         alert('이미 가입된 소셜 계정입니다.');
         setCurrentPage('mypage');
         return;
       }
       
-      // 이미 연동된 계정인지 확인
       if (isAlreadyLinked) {
         alert('이미 다른 계정에 연동된 소셜 계정입니다.');
         setCurrentPage('mypage');
         return;
       }
       
-      // 닉네임 선택 모달 표시
       if (provider && providerId) {
-        setSocialLinkInfo({
-          provider,
-          providerId,
-          email,
-          nickname
-        });
+        setSocialLinkInfo({ provider, providerId, email, nickname });
         setIsSocialLinkModalOpen(true);
         setCurrentPage('mypage');
       }
@@ -212,10 +186,7 @@ export default function App() {
       }
     };
 
-    // 초기 로드 시 확인
     checkShareLink();
-
-    // popstate 이벤트 (브라우저 뒤로가기/앞으로가기)
     window.addEventListener('popstate', checkShareLink);
     
     return () => {
@@ -224,22 +195,30 @@ export default function App() {
   }, []);
 
   /**
-   * URL 파라미터 파싱 - 새 탭에서 열릴 때 처리
-   * 예: http://localhost:5173/?page=travel-detail&contentid=126508
+   * URL 파라미터 파싱 - 페이지 이동 처리 (관리자 페이지 등에서 링크 클릭 시)
+   * 예: /?page=planner-detail&plnId=105
    */
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const page = urlParams.get('page');
     const contentid = urlParams.get('contentid');
+    const plnId = urlParams.get('plnId'); // ✅ 플래너 ID 파싱
 
-    console.log('URL 파라미터:', { page, contentid });
+    console.log('URL 파라미터 확인:', { page, contentid, plnId });
 
-    // 여행지 상세 페이지로 이동
+    // 1. 여행지 상세 페이지로 이동
     if (page === 'travel-detail' && contentid) {
-      setSelectedDestinationId(Number(contentid));
+      setSelectedDestinationId(contentid);
       setCurrentPage('travel');
     }
-    // 다른 페이지들
+    // 2. ✅ 플래너 상세 페이지로 이동 (관리자 페이지 연동)
+    else if (page === 'planner-detail' && plnId) {
+      // PlannerPage는 selectedPlanner 객체(id 속성 포함)를 받으면 상세 페이지를 렌더링함
+      // id와 plnId 둘 다 넣어두어 호환성 확보
+      setSelectedPlanner({ id: Number(plnId), plnId: Number(plnId) });
+      setCurrentPage('planner');
+    }
+    // 3. 일반 페이지 이동
     else if (page === 'travel') {
       setCurrentPage('travel');
     }
@@ -264,81 +243,58 @@ export default function App() {
     setCurrentPage(page);
     setShareLink(null);
 
-    // ★ 여행지 페이지로 이동할 때 상세 ID 초기화
-  if (page === "travel") {
-    setSelectedDestinationId(null);
-  }
-    // URL 변경 (공유 링크가 아닌 경우 기본 경로로)
+    // 여행지 페이지로 이동할 때 상세 ID 초기화
+    if (page === "travel") {
+      setSelectedDestinationId(null);
+    }
+    
+    // 플래너 페이지로 이동할 때 선택된 플래너 초기화 (목록으로 가기 위해)
+    if (page === "planner") {
+      setSelectedPlanner(null);
+    }
+
+    // URL 변경 (홈으로 갈 때만 URL 정리)
     if (page === "home") {
       window.history.pushState({}, '', '/');
     }
     window.scrollTo(0, 0);
   };
 
-  /**
-   * 로그인 성공 핸들러
-   */
+  /** 로그인/로그아웃 관련 핸들러 */
   const handleLogin = (userData?: { mId: number; nickname: string }) => {
     setIsLoggedIn(true);
     if (userData) {
       setCurrentUser(userData);
     } else {
-      // userData가 없으면 localStorage에서 가져오기
       const memberInfo = localStorage.getItem('memberInfo');
       if (memberInfo) {
         try {
           const member = JSON.parse(memberInfo);
           setCurrentUser({ mId: member.mId, nickname: member.nickname });
-        } catch (e) {
-          console.error('회원정보 파싱 오류:', e);
-        }
+        } catch (e) { console.error(e); }
       }
     }
     setCurrentPage("home");
   };
 
-  /**
-   * 로그아웃 핸들러
-   */
   const handleLogout = () => {
-    // 토큰 삭제
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
     localStorage.removeItem('memberInfo');
     localStorage.removeItem('user');
-    
-    // 상태 초기화
     setIsLoggedIn(false);
     setCurrentUser(null);
     setCurrentPage("home");
-    
-    console.log('로그아웃 완료');
   };
 
-  /**
-   * 회원탈퇴 핸들러
-   */
   const handleWithdraw = () => {
-    // 토큰 삭제
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('refreshToken');
-    localStorage.removeItem('memberInfo');
-    localStorage.removeItem('user');
-    
-    // 상태 초기화
-    setIsLoggedIn(false);
-    setCurrentUser(null);
-    setCurrentPage("home");
-    
+    handleLogout();
     alert("회원탈퇴가 완료되었습니다.");
   };
 
-  /**
-   * 소셜 연동 확정 핸들러 (추가!)
-   */
+  /** 소셜 연동 확정 */
   const handleSocialLinkConfirm = async (useSocialNickname: boolean) => {
     if (!socialLinkInfo) return;
-    
     try {
       const response = await socialApi.confirmSocialLink({
         provider: socialLinkInfo.provider,
@@ -347,12 +303,10 @@ export default function App() {
         nickname: socialLinkInfo.nickname,
         useSocialNickname
       });
-      
       if (response.status === 'success') {
         alert('소셜 계정이 연동되었습니다!');
         setIsSocialLinkModalOpen(false);
         setSocialLinkInfo(null);
-        // 페이지 새로고침으로 연동 상태 갱신
         window.location.reload();
       } else {
         alert(response.message || '연동에 실패했습니다.');
@@ -363,9 +317,7 @@ export default function App() {
     }
   };
 
-  /**
-   * 여행지 찜 토글
-   */
+  /** 찜/리뷰 핸들러들 */
   const handleToggleFavorite = (destination: any) => {
     const isAlreadyFavorite = favoriteDestinations.some((fav) => fav.id === destination.id);
     if (isAlreadyFavorite) {
@@ -375,16 +327,10 @@ export default function App() {
     }
   };
 
-  /**
-   * 여행지 찜 삭제
-   */
   const handleRemoveFavorite = (id: number) => {
     setFavoriteDestinations(favoriteDestinations.filter((fav) => fav.id !== id));
   };
 
-  /**
-   * 플래너 찜 토글
-   */
   const handleToggleFavoritePlanner = (planner: any) => {
     const isAlreadyFavorite = favoritePlanners.some((fav) => fav.id === planner.id);
     if (isAlreadyFavorite) {
@@ -394,30 +340,19 @@ export default function App() {
     }
   };
 
-  /**
-   * 플래너 찜 삭제
-   */
   const handleRemoveFavoritePlanner = (id: number) => {
     setFavoritePlanners(favoritePlanners.filter((fav) => fav.id !== id));
   };
 
-  /**
-   * 리뷰 추가
-   */
   const handleAddReview = (review: any) => {
     setReviews([review, ...reviews]);
   };
 
-  /**
-   * 리뷰 삭제
-   */
   const handleDeleteReview = (reviewId: number) => {
     setReviews(reviews.filter((review) => review.id !== reviewId));
   };
 
-  /**
-   * 소셜 로그인 콜백 화면 렌더링
-   */
+  /** 소셜 로그인 콜백 UI */
   const renderOAuthCallback = () => {
     if (oauthStatus === 'loading') {
       return (
@@ -429,7 +364,6 @@ export default function App() {
         </div>
       );
     }
-    
     if (oauthStatus === 'success') {
       return (
         <div className="flex items-center justify-center min-h-[60vh]">
@@ -445,7 +379,6 @@ export default function App() {
         </div>
       );
     }
-    
     if (oauthStatus === 'error') {
       return (
         <div className="flex items-center justify-center min-h-[60vh]">
@@ -462,20 +395,13 @@ export default function App() {
         </div>
       );
     }
-    
     return null;
   };
 
-  /**
-   * 페이지 렌더링
-   */
+  /** 페이지 렌더링 */
   const renderPage = () => {
-    // 소셜 로그인 콜백 처리 중이면 콜백 화면 표시
-    if (oauthStatus) {
-      return renderOAuthCallback();
-    }
+    if (oauthStatus) return renderOAuthCallback();
     
-    // 공유 링크 페이지
     if (currentPage === "shared-planner" && shareLink) {
       return (
         <SharedPlannerPage
@@ -542,46 +468,38 @@ export default function App() {
           isLoggedIn={isLoggedIn}
           currentUserId={currentUser?.mId}
           onOpenSearch={() => setIsSearchModalOpen(true)}
+          initialBoardId={selectedBoardId}
         />
       );
     }
 
-    if (currentPage === "login") {
-      return <LoginPage onNavigate={handleNavigate} onLoginSuccess={handleLogin} />;
-    }
-
-    if (currentPage === "signup") {
-      return <SignupPage onNavigate={handleNavigate} />;
-    }
-
-    if (currentPage === "find-id") {
-      return <FindIdPage onNavigate={handleNavigate} />;
-    }
-
-    if (currentPage === "find-password") {
-      return <FindPasswordPage onNavigate={handleNavigate} />;
-    }
+    if (currentPage === "login") return <LoginPage onNavigate={handleNavigate} onLoginSuccess={handleLogin} />;
+    if (currentPage === "signup") return <SignupPage onNavigate={handleNavigate} />;
+    if (currentPage === "find-id") return <FindIdPage onNavigate={handleNavigate} />;
+    if (currentPage === "find-password") return <FindPasswordPage onNavigate={handleNavigate} />;
 
     if (currentPage === "mypage") {
-  return (
-    <MyPage
-      onLogout={handleLogout}
-      onWithdraw={handleWithdraw}
-      onNavigateToPlanner={(planner) => {
-        setSelectedPlanner(planner);
-        setCurrentPage("planner");
-      }}
-      onNavigateToDestination={(contentid) => {
-        setSelectedDestinationId(contentid);
-        setCurrentPage("travel");
-      }}
-    />
-  );
-}
-
-    if (currentPage === "notice") {
-      return <NoticePage />;
+      return (
+        <MyPage
+          onLogout={handleLogout}
+          onWithdraw={handleWithdraw}
+          onNavigateToPlanner={(planner) => {
+            setSelectedPlanner(planner);
+            setCurrentPage("planner");
+          }}
+          onNavigateToDestination={(contentid) => {
+            setSelectedDestinationId(contentid);
+            setCurrentPage("travel");
+          }}
+          onNavigateToBoard={(bdId) => {
+            setSelectedBoardId(bdId);
+            setCurrentPage("board");
+          }}
+        />
+      );
     }
+
+    if (currentPage === "notice") return <NoticePage />;
     
     // 홈 페이지
     return (
@@ -602,13 +520,8 @@ export default function App() {
     );
   };
 
-  // 공유 링크 페이지는 헤더/푸터 없이 전체 화면
   if (currentPage === "shared-planner" && shareLink) {
-    return (
-      <div className="min-h-screen bg-white">
-        {renderPage()}
-      </div>
-    );
+    return <div className="min-h-screen bg-white">{renderPage()}</div>;
   }
 
   return (
@@ -644,7 +557,6 @@ export default function App() {
         />
       )}
 
-      {/* 소셜 연동 모달 (추가!) */}
       {isSocialLinkModalOpen && socialLinkInfo && (
         <SocialLinkModal
           isOpen={isSocialLinkModalOpen}

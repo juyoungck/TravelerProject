@@ -21,16 +21,13 @@ import lombok.extern.slf4j.Slf4j;
 /**
  * 여행지 관리 서비스
  * API에서 가져온 여행지 데이터를 DB에 저장/조회
- * 
- * 수정: 지역 필터 기능 추가
+ * * 수정: 지역 필터 기능 추가
+ * 수정: 정렬 기능 추가 (latest, popular)
  */
 @Service
 @Slf4j
 public class DestinationService {
-	public List<DestinationImage> getImagesByContentId(String contentid) {
-	    return destinationImageDao.selectImagesByContentId(contentid);
-	}
-
+    
     private final TourApiService tourApiService;
     private final DestinationDao destinationDao;
     private final DestinationImageDao destinationImageDao;
@@ -42,8 +39,8 @@ public class DestinationService {
     static {
         CONTENT_TYPES.put("12", "관광지");
         CONTENT_TYPES.put("14", "문화시설");
-        CONTENT_TYPES.put("15", "축제공연행사");
-        CONTENT_TYPES.put("25", "여행코스");
+        //CONTENT_TYPES.put("15", "축제공연행사");
+        //CONTENT_TYPES.put("25", "여행코스");
         CONTENT_TYPES.put("28", "레포츠");
         CONTENT_TYPES.put("32", "숙박");
         CONTENT_TYPES.put("38", "쇼핑");
@@ -56,6 +53,32 @@ public class DestinationService {
         this.destinationDao = destinationDao;
         this.destinationImageDao = destinationImageDao;
         this.restTemplate = restTemplate;
+    }
+
+    // ============================================
+    // 지역 코드 조회
+    // ============================================
+
+    /**
+     * 시도 목록 조회
+     */
+    public List<Map<String, Object>> getRegions() {
+        return destinationDao.selectRegions();
+    }
+
+    /**
+     * 시군구 목록 조회 (시도 코드로)
+     */
+    public List<Map<String, Object>> getSignguList(String lDongRegnCd) {
+        return destinationDao.selectSignguList(lDongRegnCd);
+    }
+
+    // ============================================
+    // 여행지 조회
+    // ============================================
+    
+    public List<DestinationImage> getImagesByContentId(String contentid) {
+        return destinationImageDao.selectImagesByContentId(contentid);
     }
     
     public int getApiTotalCount(String contenttypeid) {
@@ -294,16 +317,18 @@ public class DestinationService {
     
     /**
      * 여행지 목록 조회 (페이징, 시군구 이름 포함) - 기존 메서드
+     * ✅ sort 파라미터 추가
      */
-    public Map<String, Object> getDestinationsWithPaging(String contenttypeid, int page, int size) {
-        return getDestinationsWithPagingAndRegion(contenttypeid, page, size, null, null);
+    public Map<String, Object> getDestinationsWithPaging(String contenttypeid, int page, int size, String sort) {
+        return getDestinationsWithPagingAndRegion(contenttypeid, page, size, sort, null, null);
     }
 
     /**
      * 여행지 목록 조회 (페이징 + 지역 필터)
+     * ✅ sort 파라미터 추가
      */
     public Map<String, Object> getDestinationsWithPagingAndRegion(
-            String contenttypeid, int page, int size, 
+            String contenttypeid, int page, int size, String sort, // 👈 sort 추가
             String lDongRegnCd, String lDongSignguCd) {
         
         Map<String, Object> result = new HashMap<>();
@@ -314,12 +339,14 @@ public class DestinationService {
 
         // 지역 필터 적용
         if (lDongRegnCd != null && !lDongRegnCd.isEmpty()) {
+            // DAO 메서드에 sort 전달
             list = destinationDao.selectDestinationsByTypeAndRegion(
-                    contenttypeid, lDongRegnCd, lDongSignguCd, offset, size);
+                    contenttypeid, lDongRegnCd, lDongSignguCd, offset, size, sort);
             totalCount = destinationDao.countDestinationByTypeAndRegion(
                     contenttypeid, lDongRegnCd, lDongSignguCd);
         } else {
-            list = destinationDao.selectDestinationsByTypeWithPaging(contenttypeid, offset, size);
+            // DAO 메서드에 sort 전달
+            list = destinationDao.selectDestinationsByTypeWithPaging(contenttypeid, offset, size, sort);
             totalCount = destinationDao.countDestinationByType(contenttypeid);
         }
 

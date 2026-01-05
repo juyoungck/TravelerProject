@@ -19,8 +19,8 @@ import com.traveler.app.service.DestinationService;
 /**
  * 여행지 API 컨트롤러
  * 여행지 조회 및 동기화 기능 제공
- * 
- * 수정: 지역 필터(lDongRegnCd, lDongSignguCd) 파라미터 추가
+ * * 수정: 전체 조회(/list)와 타입별 조회(/list/{id}) 통합 지원
+ * * 수정: 정렬 옵션(sort) 추가 (latest, popular)
  */
 @RestController
 @RequestMapping("/api/destination")
@@ -61,6 +61,52 @@ public class DestinationController {
         
         return response;
     }
+
+    // ============================================
+    // 지역 코드 조회 API
+    // ============================================
+
+    /**
+     * 시도 목록 조회
+     * URL: GET /api/destination/regions
+     */
+    @GetMapping("/regions")
+    public Map<String, Object> getRegions() {
+        Map<String, Object> response = new HashMap<>();
+        
+        try {
+            List<Map<String, Object>> regions = destinationService.getRegions();
+            
+            response.put("status", "success");
+            response.put("data", regions);
+        } catch (Exception e) {
+            response.put("status", "fail");
+            response.put("message", "시도 목록 조회 실패: " + e.getMessage());
+        }
+        
+        return response;
+    }
+
+    /**
+     * 시군구 목록 조회 (시도 코드로)
+     * URL: GET /api/destination/regions/{lDongRegnCd}/signgu
+     */
+    @GetMapping("/regions/{lDongRegnCd}/signgu")
+    public Map<String, Object> getSignguList(@PathVariable("lDongRegnCd") String lDongRegnCd) {
+        Map<String, Object> response = new HashMap<>();
+        
+        try {
+            List<Map<String, Object>> signguList = destinationService.getSignguList(lDongRegnCd);
+            
+            response.put("status", "success");
+            response.put("data", signguList);
+        } catch (Exception e) {
+            response.put("status", "fail");
+            response.put("message", "시군구 목록 조회 실패: " + e.getMessage());
+        }
+        
+        return response;
+    }
     
     /**
      * 관광타입별 API 총 데이터 개수 조회
@@ -90,8 +136,6 @@ public class DestinationController {
     /**
      * 특정 관광타입 여행지 동기화
      * URL: GET /api/destination/sync/{contenttypeid}?startPage=1&endPage=10
-     * 예시: /api/destination/sync/12?startPage=1&endPage=10 (관광지 1~1000건)
-     * 예시: /api/destination/sync/12?startPage=11&endPage=20 (관광지 1001~2000건)
      */
     @GetMapping("/sync/{contenttypeid}")
     public Map<String, Object> syncByType(
@@ -120,7 +164,6 @@ public class DestinationController {
     /**
      * 전체 관광타입 여행지 동기화
      * URL: GET /api/destination/sync-all?maxCountPerType=100
-     * 주의: API 호출 제한이 있으므로 maxCountPerType을 적절히 설정
      */
     @GetMapping("/sync-all")
     public Map<String, Object> syncAll(
@@ -207,20 +250,22 @@ public class DestinationController {
     }
 
     /**
-     * 여행지 목록 조회 (관광타입별, 페이징, 지역 필터 지원)
-     * URL: GET /api/destination/list/{contenttypeid}?page=1&size=10&lDongRegnCd=11&lDongSignguCd=11110
-     * 
-     * @param contenttypeid 관광타입 ID (12: 관광지, 14: 문화시설, ...)
+     * 여행지 목록 조회 (관광타입별, 페이징, 지역 필터, 정렬 지원)
+     * URL 1: GET /api/destination/list (전체 조회)
+     * URL 2: GET /api/destination/list/{contenttypeid} (타입별 조회)
+     * * @param contenttypeid 관광타입 ID (선택, 없으면 전체)
      * @param page 페이지 번호 (1부터 시작)
      * @param size 페이지 크기
+     * @param sort 정렬 기준 (latest: 최신순, popular: 인기순) - 추가됨
      * @param lDongRegnCd 법정동 시도 코드 (선택)
      * @param lDongSignguCd 법정동 시군구 코드 (선택)
      */
-    @GetMapping("/list/{contenttypeid}")
+    @GetMapping({"/list", "/list/{contenttypeid}"})
     public Map<String, Object> getDestinationsByType(
-            @PathVariable("contenttypeid") String contenttypeid,
+            @PathVariable(value = "contenttypeid", required = false) String contenttypeid,
             @RequestParam(value = "page", defaultValue = "1") int page,
             @RequestParam(value = "size", defaultValue = "10") int size,
+            @RequestParam(value = "sort", defaultValue = "latest") String sort, // ✅ 정렬 파라미터 추가
             @RequestParam(value = "lDongRegnCd", required = false) String lDongRegnCd,
             @RequestParam(value = "lDongSignguCd", required = false) String lDongSignguCd) {
         
@@ -231,11 +276,13 @@ public class DestinationController {
             
             // 지역 필터가 있으면 지역별 조회
             if (lDongRegnCd != null && !lDongRegnCd.isEmpty()) {
+                // Service 메서드에 sort 파라미터 전달
                 result = destinationService.getDestinationsWithPagingAndRegion(
-                    contenttypeid, page, size, lDongRegnCd, lDongSignguCd);
+                    contenttypeid, page, size, sort, lDongRegnCd, lDongSignguCd);
             } else {
                 // 지역 필터 없으면 전체 조회
-                result = destinationService.getDestinationsWithPaging(contenttypeid, page, size);
+                // Service 메서드에 sort 파라미터 전달
+                result = destinationService.getDestinationsWithPaging(contenttypeid, page, size, sort);
             }
             
             response.put("status", "success");
@@ -252,12 +299,6 @@ public class DestinationController {
     /**
      * 여행지 검색 (키워드 + 지역 필터 지원)
      * URL: GET /api/destination/search?keyword=서울&page=1&size=10&lDongRegnCd=11
-     * 
-     * @param keyword 검색 키워드
-     * @param page 페이지 번호
-     * @param size 페이지 크기
-     * @param lDongRegnCd 법정동 시도 코드 (선택)
-     * @param lDongSignguCd 법정동 시군구 코드 (선택)
      */
     @GetMapping("/search")
     public Map<String, Object> searchDestinations(
@@ -362,8 +403,6 @@ public class DestinationController {
     /**
      * 상세정보 수집 (overview, homepage)
      * URL: GET /api/destination/sync-detail?startIndex=1&endIndex=1000
-     * 예시: 1~1000번째: startIndex=1&endIndex=1000
-     *       1001~2000번째: startIndex=1001&endIndex=2000
      */
     @GetMapping("/sync-detail")
     public Map<String, Object> syncDetail(
@@ -391,8 +430,6 @@ public class DestinationController {
     /**
      * 이미지 목록 수집
      * URL: GET /api/destination/sync-image?startIndex=1&endIndex=1000
-     * 예시: 1~1000번째: startIndex=1&endIndex=1000
-     *       1001~2000번째: startIndex=1001&endIndex=2000
      */
     @GetMapping("/sync-image")
     public Map<String, Object> syncImage(

@@ -3,7 +3,7 @@
  * 게시판 목록/상세/작성 페이지 간 라우팅 관리
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { BoardListPage } from './BoardListPage';
 import { BoardDetailPage } from './BoardDetailPage';
 import { BoardCreatePage } from './BoardCreatePage';
@@ -13,12 +13,20 @@ interface BoardPageProps {
   isLoggedIn?: boolean;
   currentUserId?: number;
   onOpenSearch?: () => void;
+  initialBoardId?: number | null;
 }
 
-export function BoardPage({ onNavigate, isLoggedIn, currentUserId, onOpenSearch }: BoardPageProps) {
+export function BoardPage({ onNavigate, isLoggedIn, currentUserId, onOpenSearch, initialBoardId }: BoardPageProps) {
   const [selectedBdId, setSelectedBdId] = useState<number | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+
+  // 초기 게시글 ID가 있으면 해당 게시글로 이동
+  useEffect(() => {
+    if (initialBoardId) {
+      setSelectedBdId(initialBoardId);
+    }
+  }, [initialBoardId]);
 
   /** 글 작성 완료 후 */
   const handleCreateComplete = () => {

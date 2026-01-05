@@ -1,6 +1,7 @@
 package com.traveler.app.dao;
 
 import java.util.List;
+import java.util.Map;
 
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -56,9 +57,14 @@ public interface AdminDao {
     void deleteReviewsByMemberId(@Param("mId") Long mId);
 
     /**
-     * 회원의 찜 삭제 (여행지 + 플래너)
+     * 회원의 찜 삭제 (여행지)
      */
     void deleteFavoritesByMemberId(@Param("mId") Long mId);
+
+    /**
+     * 회원의 플래너 찜 삭제
+     */
+    void deleteFavoritePlannersByMemberId(@Param("mId") Long mId);
 
     /**
      * 회원의 게시글 삭제
@@ -157,4 +163,51 @@ public interface AdminDao {
      * 오늘 작성된 게시글 수
      */
     int countTodayNewBoards();
+
+    /**
+     * 오늘 생성된 플래너 수
+     */
+    int countTodayNewPlanners();
+
+    // ============================================
+    // 플래너 관리
+    // ============================================
+
+    /**
+     * 플래너 목록 조회 (페이징 + 검색)
+     */
+    List<Map<String, Object>> selectPlanners(
+        @Param("offset") int offset,
+        @Param("limit") int limit,
+        @Param("search") String search,
+        @Param("status") String status
+    );
+
+    /**
+     * 플래너 총 개수 (필터 적용)
+     */
+    int countPlannersWithFilter(
+        @Param("search") String search,
+        @Param("status") String status
+    );
+
+    /**
+     * 플래너 공개/비공개 변경
+     */
+    void updatePlannerStatus(@Param("plnId") Long plnId, @Param("isPublic") int isPublic);
+
+    /**
+     * 플래너 삭제
+     */
+    void deletePlanner(@Param("plnId") Long plnId);
+
+    /**
+     * 공개 플래너 수
+     */
+    int countPublicPlanners();
+
+    /**
+     * 비공개 플래너 수
+     */
+    int countPrivatePlanners();
 }
