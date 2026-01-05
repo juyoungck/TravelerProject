@@ -307,4 +307,25 @@
         WHERE rn >= #{startIndex}
     </select>
 
+	<!-- 이미지가 있는 여행지 중 랜덤 N개 조회 -->
+<select id="selectRandomDestinationsWithImage" resultType="com.traveler.app.entity.Destination">
+    <![CDATA[
+    SELECT * FROM (
+        SELECT 
+            d.CONTENTID AS contentid,
+            d.TITLE AS title,
+            d.ADDR1 AS addr1,
+            d.ADDR2 AS addr2,
+            d.MAPX AS mapx,
+            d.MAPY AS mapy,
+            d.CONTENTTYPEID AS contenttypeid,
+            d.FIRSTIMAGE AS firstimage,
+            d.OVERVIEW AS overview
+        FROM DESTINATION d
+        WHERE d.FIRSTIMAGE IS NOT NULL 
+          AND d.FIRSTIMAGE != ' '
+        ORDER BY DBMS_RANDOM.VALUE
+    ) WHERE ROWNUM <= #{size}
+    ]]>
+</select>
 </mapper>

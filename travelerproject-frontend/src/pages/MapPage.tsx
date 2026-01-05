@@ -19,19 +19,25 @@ import {
   NearbyDestination, 
   CONTENT_TYPE_NAME 
 } from '../api/mapApi';
+import { getDestinationDetail } from '../api/destinationApi';
 import { getWeather } from '../api/weatherApi';
 import { MARKER_COLORS, MARKER_EMOJI } from '../utils/markerIcons';
+
+/** 여행지 선택 상태 */
+interface MapPageProps {
+  initialContentId?: string;  
+}
 
 /** 카테고리 목록 */
 const categories = [
   { id: 'all', name: '전체', icon: '🗺️', contenttypeid: null },
-  { id: '12', name: '관광지', icon: '🏛️', contenttypeid: '12' },
-  { id: '14', name: '문화시설', icon: '🎭', contenttypeid: '14' },
-  { id: '15', name: '축제/공연', icon: '🎉', contenttypeid: '15' },
-  { id: '28', name: '레포츠', icon: '⛷️', contenttypeid: '28' },
+  { id: '12', name: '관광', icon: '🏛️', contenttypeid: '12' },
+  { id: '14', name: '문화', icon: '🎭', contenttypeid: '14' },
+  { id: '15,25', name: '이벤트', icon: '🎉', contenttypeid: '15,25' },
+  { id: '28', name: '레저', icon: '⛷️', contenttypeid: '28' },
   { id: '32', name: '숙박', icon: '🏨', contenttypeid: '32' },
   { id: '38', name: '쇼핑', icon: '🛍️', contenttypeid: '38' },
-  { id: '39', name: '음식점', icon: '🍽️', contenttypeid: '39' },
+  { id: '39', name: '음식', icon: '🍽️', contenttypeid: '39' },
 ];
 
 /** 검색 반경 옵션 */
@@ -54,7 +60,7 @@ const weatherEmoji: { [key: string]: string } = {
 
 const DEFAULT_CENTER = { lat: 37.5665, lng: 126.9780 };
 
-export function MapPage() {
+export function MapPage({ initialContentId }: MapPageProps) {
   const mapRef = useRef<KakaoMapRef>(null);
   
   // 상태 관리
@@ -63,6 +69,7 @@ export function MapPage() {
   const [mapCenter, setMapCenter] = useState(DEFAULT_CENTER);
   const [destinations, setDestinations] = useState<NearbyDestination[]>([]);
   const [selectedDestination, setSelectedDestination] = useState<NearbyDestination | null>(null);
+  const [pendingSelectContentId, setPendingSelectContentId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isLocationLoading, setIsLocationLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -146,12 +153,36 @@ export function MapPage() {
     const limit = radiusOption?.limit || 100;
     
     try {
-      const response = await getNearbyDestinations(lat, lng, searchRadius, contenttypeid || undefined, limit);
-      
-      if (response.status === 'success') {
-        setDestinations(response.data);
+      if (contenttypeid && contenttypeid.includes(',')) {
+        const typeIds = contenttypeid.split(',');
+        const promises = typeIds.map(typeId => 
+          getNearbyDestinations(lat, lng, searchRadius, typeId.trim(), Math.floor(limit / typeIds.length))
+        );
+
+        const responses = await Promise.all(promises);
+
+        let allDestinations: NearbyDestination[] = [];
+        responses.forEach(response => {
+          if (response.status === 'success') {
+            allDestinations = [...allDestinations, ...response.data];
+          }
+        });
+
+        const uniqueDestinations = allDestinations
+          .filter((dest, index, self) => 
+            index === self.findIndex(d => d.contentid === dest.contentid)
+          )
+          .sort((a, b) => (a.distance || 0) - (b.distance || 0));
+        
+        setDestinations(uniqueDestinations);
       } else {
-        setError(response.message || '데이터를 불러오는데 실패했습니다.');
+        const response = await getNearbyDestinations(lat, lng, searchRadius, contenttypeid || undefined, limit);
+      
+        if (response.status === 'success') {
+          setDestinations(response.data);
+        } else {
+          setError(response.message || '데이터를 불러오는데 실패했습니다.');
+        }
       }
     } catch (err) {
       setError('서버 연결에 실패했습니다.');
@@ -175,21 +206,50 @@ export function MapPage() {
     setLastSearchKeyword(keyword.trim());
     
     try {
-      const response = await searchDestinationsForMap(keyword.trim(), contenttypeid, 100);
-      
-      if (response.status === 'success') {
-        setDestinations(response.data);
+      if (contenttypeid && contenttypeid.includes(',')) {
+        const typeIds = contenttypeid.split(',');
+        const promises = typeIds.map(typeId => 
+          searchDestinationsForMap(keyword.trim(), typeId.trim(), 50)
+        );
         
-        if (response.data.length > 0) {
-          const first = response.data[0];
+        const responses = await Promise.all(promises);
+        
+        let allDestinations: NearbyDestination[] = [];
+        responses.forEach(response => {
+          if (response.status === 'success') {
+            allDestinations = [...allDestinations, ...response.data];
+          }
+        });
+        
+        const uniqueDestinations = allDestinations.filter((dest, index, self) => 
+          index === self.findIndex(d => d.contentid === dest.contentid)
+        );
+        
+        setDestinations(uniqueDestinations);
+        
+        if (uniqueDestinations.length > 0) {
+          const first = uniqueDestinations[0];
           if (mapRef.current && first.mapx && first.mapy) {
             mapRef.current.setCenter(first.mapy, first.mapx, 7);
-            // 검색 결과 첫 번째 위치로 날씨 조회
             fetchWeather(first.mapy, first.mapx);
           }
         }
       } else {
-        setError(response.message || '검색에 실패했습니다.');
+        const response = await searchDestinationsForMap(keyword.trim(), contenttypeid, 100);
+        
+        if (response.status === 'success') {
+          setDestinations(response.data);
+          
+          if (response.data.length > 0) {
+            const first = response.data[0];
+            if (mapRef.current && first.mapx && first.mapy) {
+              mapRef.current.setCenter(first.mapy, first.mapx, 7);
+              fetchWeather(first.mapy, first.mapx);
+            }
+          }
+        } else {
+          setError(response.message || '검색에 실패했습니다.');
+        }
       }
     } catch (err) {
       setError('서버 연결에 실패했습니다.');
@@ -225,6 +285,63 @@ export function MapPage() {
     getCurrentLocation();
   }, [getCurrentLocation]);
 
+  /** 
+   * 초기 로드 (contentid 있을 시)
+   */
+  useEffect(() => {
+    if (!initialContentId || isLocationLoading) return;
+    
+    const fetchAndSelectDestination = async () => {
+      const existing = destinations.find(d => d.contentid === initialContentId);
+      if (existing && mapRef.current) {
+        // 해당 위치로 지도 이동 + 마커 선택
+        mapRef.current.setCenter(existing.mapy, existing.mapx, 3);
+        setPendingSelectContentId(initialContentId);
+        return;
+      }
+
+      try {
+        const detail = await getDestinationDetail(initialContentId);
+        
+        if (detail && detail.mapx && detail.mapy) {
+          // NearbyDestination 형태로 변환
+          const targetDestination: NearbyDestination = {
+            contentid: detail.contentid,
+            contenttypeid: detail.contenttypeid,
+            title: detail.title,
+            addr1: detail.addr1,
+            addr2: detail.addr2 || null,
+            tel: detail.tel || null,
+            firstimage: detail.firstimage || null,
+            firstimage2: detail.firstimage2 || null,
+            mapx: Number(detail.mapx),
+            mapy: Number(detail.mapy),
+            distance: null,
+            typeName: CONTENT_TYPE_NAME[detail.contenttypeid] || '기타',
+            regnName: null,
+            signguName: null,
+          };
+          
+          // destinations에 추가
+          setDestinations(prev => {
+            const exists = prev.some(d => d.contentid === initialContentId);
+            return exists ? prev : [targetDestination, ...prev];
+          });
+          
+          // 지도 이동 + 마커 선택
+          if (mapRef.current) {
+            setMapCenter({ lat: targetDestination.mapy, lng: targetDestination.mapx });
+            mapRef.current.setCenter(targetDestination.mapy, targetDestination.mapx, 3);
+            setPendingSelectContentId(initialContentId);
+          }
+        }
+      } catch (err) {
+        console.error('여행지 검색 실패:', err);
+      }
+    };
+    fetchAndSelectDestination();
+  }, [initialContentId, isLocationLoading]);
+
   /**
    * 위치/카테고리/반경 변경 시 (검색 모드가 아닐 때만)
    */
@@ -252,6 +369,22 @@ export function MapPage() {
       performSearch(lastSearchKeyword, contenttypeid);
     }
   };
+
+  /**
+ * ★ 로딩 완료 후 대기 중인 마커 선택
+ */
+  useEffect(() => {
+    if (!isLoading && pendingSelectContentId && mapRef.current) {
+      const target = destinations.find(d => d.contentid === pendingSelectContentId);
+      if (target) {
+        setTimeout(() => {
+          mapRef.current?.selectMarker(pendingSelectContentId);
+          setSelectedDestination(target);
+          setPendingSelectContentId(null);  // 대기 상태 해제
+        }, 300);
+      }
+    }
+  }, [isLoading, pendingSelectContentId, destinations]);
 
   /**
    * 지역 재검색
@@ -565,7 +698,7 @@ export function MapPage() {
                               color: MARKER_COLORS[destination.contenttypeid]
                             }}
                           >
-                            {destination.typeName || CONTENT_TYPE_NAME[destination.contenttypeid]}
+                            {CONTENT_TYPE_NAME[destination.contenttypeid] || destination.typeName || '기타'}
                           </span>
                           {destination.distance !== null && !isSearchMode && (
                             <span className="text-xs text-gray-400">
@@ -593,7 +726,12 @@ export function MapPage() {
 
       {/* 사이드바 토글 버튼 */}
       <button
-        onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+        onClick={() => {
+          setIsSidebarOpen(!isSidebarOpen)
+          setTimeout(() => {
+            mapRef.current?.relayout();
+          }, 350);
+        }}
         className={`
           absolute top-1/2 -translate-y-1/2 z-20
           ${isSidebarOpen ? 'left-96' : 'left-0'}

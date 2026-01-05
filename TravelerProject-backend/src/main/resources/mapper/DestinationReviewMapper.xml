@@ -4,12 +4,6 @@
 
 <mapper namespace="com.traveler.app.dao.DestinationReviewDao">
 
-    <!-- 리뷰 등록 -->
-    <insert id="insertReview" parameterType="com.traveler.app.entity.DestinationReview">
-        INSERT INTO review (rv_id, m_id, contentid, rv_content, rv_rating, created_at, updated_at)
-        VALUES (seq_review.NEXTVAL, #{mId}, #{contentid}, #{rvContent}, #{rvRating}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-    </insert>
-
     <!-- 리뷰 단건 조회 -->
     <select id="selectReviewById" parameterType="Long" resultType="com.traveler.app.entity.DestinationReview">
         SELECT 
@@ -90,5 +84,38 @@
         FROM review 
         WHERE contentid = #{contentid}
     </select>
+    
+    <!-- 리뷰 등록 (rvId 반환) -->
+	<insert id="insertReview" parameterType="com.traveler.app.entity.DestinationReview">
+	    <selectKey keyProperty="rvId" resultType="Long" order="BEFORE">
+	        SELECT seq_review.NEXTVAL FROM DUAL
+	    </selectKey>
+	    INSERT INTO review (rv_id, m_id, contentid, rv_content, rv_rating, created_at, updated_at)
+	    VALUES (#{rvId}, #{mId}, #{contentid}, #{rvContent}, #{rvRating}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+	</insert>
+	
+	<!-- 리뷰 이미지 등록 -->
+	<insert id="insertReviewImage">
+	    INSERT INTO review_image (rvi_id, rv_id, image_url, sort_order)
+	    VALUES (seq_review_image.NEXTVAL, #{rvId}, #{imageUrl}, #{sortOrder})
+	</insert>
+	
+	<!-- 리뷰 이미지 조회 -->
+	<select id="selectReviewImages" parameterType="Long" resultType="String">
+	    SELECT image_url
+	    FROM review_image
+	    WHERE rv_id = #{rvId}
+	    ORDER BY sort_order ASC
+	</select>
 
+	<!-- 리뷰 이미지 삭제 (단일) -->
+	<delete id="deleteReviewImage" parameterType="Long">
+	    DELETE FROM review_image WHERE rvi_id = #{rviId}
+	</delete>
+	
+	<!-- 리뷰 이미지 전체 삭제 -->
+	<delete id="deleteReviewImagesByReviewId" parameterType="Long">
+	    DELETE FROM review_image WHERE rv_id = #{rvId}
+	</delete>
+	
 </mapper>

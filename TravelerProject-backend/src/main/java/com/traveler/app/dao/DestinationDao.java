@@ -127,4 +127,9 @@ public interface DestinationDao {
     );
     
     void increaseViewCount(@Param("contentid") String contentid);
+    /**
+     * 이미지가 있는 여행지 중 랜덤 N개 조회
+     */
+    List<Destination> selectRandomDestinationsWithImage(@Param("size") int size);
 }
+

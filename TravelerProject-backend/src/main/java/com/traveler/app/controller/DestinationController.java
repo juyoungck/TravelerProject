@@ -4,17 +4,16 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
 
 import com.traveler.app.entity.Destination;
 import com.traveler.app.entity.DestinationImage;
 import com.traveler.app.scheduler.DestinationScheduler;
 import com.traveler.app.service.DestinationService;
+
+import lombok.extern.slf4j.Slf4j;  
+
 
 /**
  * 여행지 API 컨트롤러
@@ -22,6 +21,7 @@ import com.traveler.app.service.DestinationService;
  * * 수정: 전체 조회(/list)와 타입별 조회(/list/{id}) 통합 지원
  * * 수정: 정렬 옵션(sort) 추가 (latest, popular)
  */
+@Slf4j 
 @RestController
 @RequestMapping("/api/destination")
 public class DestinationController {
@@ -510,5 +510,32 @@ public class DestinationController {
         response.put("data", destinationService.getThumbnailStatus());
         
         return response;
+    }
+    
+    /**
+     * 이미지가 있는 여행지 중 랜덤 N개 조회
+     * GET /api/destination/random?size=4
+     */
+    @GetMapping("/random")
+    public ResponseEntity<Map<String, Object>> getRandomDestinations(
+            @RequestParam(value = "size", defaultValue = "4") int size) {
+        
+        log.info("랜덤 여행지 조회: size={}", size);
+        
+        Map<String, Object> response = new HashMap<>();
+        try {
+            List<Destination> destinations = destinationService.getRandomDestinationsWithImage(size);
+            
+            response.put("status", "success");
+            response.put("data", destinations);
+            response.put("count", destinations.size());
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("랜덤 여행지 조회 실패", e);
+            response.put("status", "error");
+            response.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(response);
+        }
     }
 }

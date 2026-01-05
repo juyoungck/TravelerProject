@@ -37,4 +37,16 @@ public interface DestinationReviewDao {
     
     /** 여행지별 평균 별점 조회 */
     Double selectAverageRatingByContentId(@Param("contentid") String contentid);
+    
+    /** 리뷰 이미지 등록 */
+    void insertReviewImage(@Param("rvId") Long rvId, @Param("imageUrl") String imageUrl, @Param("sortOrder") int sortOrder);
+
+    /** 리뷰 이미지 조회 */
+    List<String> selectReviewImages(@Param("rvId") Long rvId);
+    
+    /** 리뷰 이미지 삭제 (단일) */
+    void deleteReviewImage(@Param("rviId") Long rviId);
+
+    /** 리뷰 이미지 전체 삭제 */
+    void deleteReviewImagesByReviewId(@Param("rvId") Long rvId);
 }

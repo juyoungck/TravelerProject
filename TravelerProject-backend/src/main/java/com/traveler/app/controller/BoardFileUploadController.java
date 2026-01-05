@@ -61,4 +61,35 @@ public class BoardFileUploadController {
             return ResponseEntity.internalServerError().body(response);
         }
     }
+    
+    /**
+     * 리뷰 이미지 업로드
+     * POST /api/upload/review
+     */
+    @PostMapping("/review")
+    public ResponseEntity<Map<String, Object>> uploadReviewImage(
+            @RequestParam("file") MultipartFile file) {
+        
+        Map<String, Object> response = new HashMap<>();
+        
+        try {
+            // "review" 폴더에 저장
+            String imageUrl = fileUploadService.uploadImage(file, "review");
+            
+            response.put("success", true);
+            response.put("url", imageUrl);
+            
+            return ResponseEntity.ok(response);
+            
+        } catch (IllegalArgumentException e) {
+            response.put("success", false);
+            response.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(response);
+            
+        } catch (IOException e) {
+            response.put("success", false);
+            response.put("message", "파일 저장 중 오류가 발생했습니다.");
+            return ResponseEntity.internalServerError().body(response);
+        }
+    }
 }

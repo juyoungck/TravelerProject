@@ -22,6 +22,8 @@ import { socialApi } from "./api/socialApi";
 /**
  * App.tsx - 메인 애플리케이션
  * 라우팅 및 전역 상태 관리
+ * ★ plnId URL 파라미터 처리 추가
+ * ★ BoardPage에 onViewPlanner 전달
  */
 export default function App() {
   const [currentPage, setCurrentPage] = useState("home");
@@ -32,6 +34,7 @@ export default function App() {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [selectedDestinationId, setSelectedDestinationId] = useState<string | null>(null);
   const [selectedPlanner, setSelectedPlanner] = useState<any>(null);
+  const [selectedMapContentId, setSelectedMapContentId] = useState<string | null>(null);
   const [favoriteDestinations, setFavoriteDestinations] = useState<any[]>([]);
   const [favoritePlanners, setFavoritePlanners] = useState<any[]>([]);
   const [reviews, setReviews] = useState<any[]>([]);
@@ -100,6 +103,7 @@ export default function App() {
       if (error) {
         setOauthStatus('error');
         setOauthError(decodeURIComponent(error));
+        
         setTimeout(() => {
           setOauthStatus(null);
           setCurrentPage('login');
@@ -202,7 +206,7 @@ export default function App() {
     const urlParams = new URLSearchParams(window.location.search);
     const page = urlParams.get('page');
     const contentid = urlParams.get('contentid');
-    const plnId = urlParams.get('plnId'); // ✅ 플래너 ID 파싱
+    const plnId = urlParams.get('plnId');  // ★ 플래너 ID 추가
 
     console.log('URL 파라미터 확인:', { page, contentid, plnId });
 
@@ -211,22 +215,21 @@ export default function App() {
       setSelectedDestinationId(contentid);
       setCurrentPage('travel');
     }
-    // 2. ✅ 플래너 상세 페이지로 이동 (관리자 페이지 연동)
-    else if (page === 'planner-detail' && plnId) {
-      // PlannerPage는 selectedPlanner 객체(id 속성 포함)를 받으면 상세 페이지를 렌더링함
-      // id와 plnId 둘 다 넣어두어 호환성 확보
-      setSelectedPlanner({ id: Number(plnId), plnId: Number(plnId) });
+    // ★ 플래너 미리보기 페이지로 이동
+    else if (page === 'planner' && plnId) {
+      setSelectedPlanner({ plnId: Number(plnId) });
       setCurrentPage('planner');
     }
-    // 3. 일반 페이지 이동
+    // 다른 페이지들
     else if (page === 'travel') {
       setCurrentPage('travel');
     }
     else if (page === 'planner') {
       setCurrentPage('planner');
     }
-    else if (page === 'map') {
+    else if (page === 'map' && contentid) {
       setCurrentPage('map');
+      setSelectedMapContentId(contentid);
     }
     else if (page === 'event') {
       setCurrentPage('event');
@@ -240,27 +243,50 @@ export default function App() {
    * 페이지 이동 핸들러
    */
   const handleNavigate = (page: string) => {
+    // ★ 여행지 상세정보 지도로 이동할 때 상세 ID 설정
+    if (page.startsWith('map?contentid=')) {
+      const contentid = page.split('=')[1];
+      setSelectedMapContentId(contentid);
+      setCurrentPage('map');
+      window.scrollTo(0, 0);
+      return;
+    }
+
     setCurrentPage(page);
     setShareLink(null);
 
-    // 여행지 페이지로 이동할 때 상세 ID 초기화
-    if (page === "travel") {
-      setSelectedDestinationId(null);
-    }
-    
-    // 플래너 페이지로 이동할 때 선택된 플래너 초기화 (목록으로 가기 위해)
-    if (page === "planner") {
+    // ★ 여행지 페이지로 이동할 때 상세 ID 초기화
+  if (page === "travel") {
+    setSelectedDestinationId(null);
+  }
+        
+  // ★ 플래너 페이지로 이동할 때 상세 ID 초기화
+  if (page === "planner") {
       setSelectedPlanner(null);
     }
 
-    // URL 변경 (홈으로 갈 때만 URL 정리)
+  // ★ 지도 페이지로 이동할 때 상세 ID 초기화
+  if (page === "map") {
+    setSelectedMapContentId(null);
+  }
+    // URL 변경 (공유 링크가 아닌 경우 기본 경로로)
     if (page === "home") {
       window.history.pushState({}, '', '/');
     }
     window.scrollTo(0, 0);
   };
 
-  /** 로그인/로그아웃 관련 핸들러 */
+  /**
+   * ★ 플래너 미리보기 이동 핸들러 (게시판에서 호출)
+   */
+  const handleViewPlannerFromBoard = (plnId: number) => {
+    setSelectedPlanner({ id: plnId });
+    setCurrentPage('planner');
+  };
+
+  /**
+   * 로그인 성공 핸들러
+   */
   const handleLogin = (userData?: { mId: number; nickname: string }) => {
     setIsLoggedIn(true);
     if (userData) {
@@ -282,6 +308,7 @@ export default function App() {
     localStorage.removeItem('refreshToken');
     localStorage.removeItem('memberInfo');
     localStorage.removeItem('user');
+    
     setIsLoggedIn(false);
     setCurrentUser(null);
     setCurrentPage("home");
@@ -451,6 +478,7 @@ export default function App() {
     if (currentPage === "map") {
       return (
         <MapPage 
+          initialContentId={selectedMapContentId}
           onNavigate={(page, params) => {
             if (page === 'travel-detail' && params?.contentid) {
               setSelectedDestinationId(params.contentid);
@@ -461,6 +489,7 @@ export default function App() {
       );
     }
 
+    {/* ★ BoardPage에 onViewPlanner 전달 */}
     if (currentPage === "board") {
       return (
         <BoardPage
@@ -469,6 +498,7 @@ export default function App() {
           currentUserId={currentUser?.mId}
           onOpenSearch={() => setIsSearchModalOpen(true)}
           initialBoardId={selectedBoardId}
+          onViewPlanner={handleViewPlannerFromBoard}
         />
       );
     }
@@ -557,6 +587,7 @@ export default function App() {
         />
       )}
 
+      {/* 소셜 연동 모달 */}
       {isSocialLinkModalOpen && socialLinkInfo && (
         <SocialLinkModal
           isOpen={isSocialLinkModalOpen}

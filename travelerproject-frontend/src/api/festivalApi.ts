@@ -1,6 +1,8 @@
 /**
  * festivalApi.ts - 축제/공연/행사 API
- * 한국관광공사 searchFestival2 데이터 조회
+ * 한국관광공사 OpenAPI 데이터 조회
+ * 
+ * 여행코스는 DB에서 조회 (contenttypeid=25)
  */
 
 import api from './api';
@@ -37,7 +39,21 @@ export interface FestivalItem {
   lclsSystm1: string;
   lclsSystm2: string;
   lclsSystm3: string;
-  category: '축제' | '공연' | '행사';
+  category: '축제' | '공연' | '행사' | '여행코스';
+}
+
+/**
+ * 코스 경유지 인터페이스
+ */
+export interface CourseSpot {
+  subnum: string;
+  subname: string;
+  subdetailoverview: string;
+  subdetailimg: string;
+  subdetailalt: string;
+  subcontentid: string;
+  mapx: string;
+  mapy: string;
 }
 
 /**
@@ -67,5 +83,17 @@ export const getFestivalList = async (
  */
 export const getFestivalImages = async (contentId: string) => {
   const response = await api.get(`/festival/images/${contentId}`);
+  return response.data;
+};
+
+/**
+ * 코스 경유지(상세정보) 조회
+ * OpenAPI detailInfo2 사용
+ * 
+ * @param contentId 코스 콘텐츠 ID
+ * @returns 경유지 목록
+ */
+export const getCourseDetail = async (contentId: string) => {
+  const response = await api.get(`/festival/course/${contentId}`);
   return response.data;
 };

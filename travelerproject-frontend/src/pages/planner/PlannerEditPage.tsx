@@ -26,6 +26,7 @@ import {
   Globe,
   Lock,
   Loader2,
+  Heart,
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -134,6 +135,10 @@ export function PlannerEditPage({ onBack, initialData }: PlannerEditPageProps) {
   // 로딩 상태
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  
+  // 찜 상태
+  const [isLiked, setIsLiked] = useState(false);
+  const [likeCount, setLikeCount] = useState(0);
 
   // 현재 로그인한 사용자 ID 가져오기
   const getCurrentUserId = (): number => {
@@ -151,6 +156,13 @@ export function PlannerEditPage({ onBack, initialData }: PlannerEditPageProps) {
   useEffect(() => {
     fetchRegnCodes();
   }, []);
+
+  // 플래너 찜 여부 확인 (수정 모드일 때)
+  useEffect(() => {
+    if (plannerId) {
+      checkFavoriteStatus();
+    }
+  }, [plannerId]);
 
   // 시도 선택 시 시군구 목록 로드
   useEffect(() => {
@@ -192,6 +204,50 @@ export function PlannerEditPage({ onBack, initialData }: PlannerEditPageProps) {
       }
     } catch (error) {
       console.error('시도 목록 로드 실패:', error);
+    }
+  };
+
+  /**
+   * 찜 여부 확인 API
+   */
+  const checkFavoriteStatus = async () => {
+    if (!plannerId) return;
+    
+    try {
+      const response = await axios.get(`${API_BASE_URL}/planner/${plannerId}/favorite`, {
+        params: { mId: currentUserId }
+      });
+      
+      if (response.data.status === 'success') {
+        setIsLiked(response.data.isFavorite);
+        setLikeCount(response.data.favoriteCount);
+      }
+    } catch (error) {
+      console.error('찜 상태 확인 실패:', error);
+    }
+  };
+
+  /**
+   * 찜 토글 핸들러
+   */
+  const handleToggleFavorite = async () => {
+    if (!plannerId) {
+      alert('먼저 플래너를 저장해주세요.');
+      return;
+    }
+
+    try {
+      const response = await axios.post(`${API_BASE_URL}/planner/${plannerId}/favorite`, null, {
+        params: { mId: currentUserId }
+      });
+      
+      if (response.data.status === 'success') {
+        setIsLiked(response.data.isFavorite);
+        setLikeCount(response.data.favoriteCount);
+      }
+    } catch (error) {
+      console.error('찜 토글 실패:', error);
+      alert('찜 기능 처리 중 오류가 발생했습니다.');
     }
   };
 
@@ -559,10 +615,21 @@ export function PlannerEditPage({ onBack, initialData }: PlannerEditPageProps) {
           {isLeftSidebarOpen && (
             <div className="w-80 bg-white border-r overflow-y-auto">
               <div className="p-4">
-                {/* 삭제/공유/저장 버튼 */}
+                {/* 찜/삭제/공유/저장 버튼 */}
                 <div className="flex justify-end gap-2 mb-3">
                   {plannerId && (
                     <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleToggleFavorite}
+                        className={`${
+                          isLiked ? 'text-red-500 border-red-500' : ''
+                        }`}
+                      >
+                        <Heart className={`h-4 w-4 mr-1 ${isLiked ? 'fill-current' : ''}`} />
+                        {likeCount}
+                      </Button>
                       <Button 
                         variant="outline" 
                         size="sm" 
@@ -797,7 +864,12 @@ export function PlannerEditPage({ onBack, initialData }: PlannerEditPageProps) {
 
           {/* 토글 버튼 (왼쪽) */}
           <button
-            onClick={() => setIsLeftSidebarOpen(!isLeftSidebarOpen)}
+            onClick={() => {
+              setIsLeftSidebarOpen(!isLeftSidebarOpen)
+              setTimeout(() => {
+                mapRef.current?.relayout();
+              }, 350);
+            }}
             className="w-6 bg-gray-200 hover:bg-gray-300 flex items-center justify-center"
           >
             {isLeftSidebarOpen ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
@@ -817,7 +889,12 @@ export function PlannerEditPage({ onBack, initialData }: PlannerEditPageProps) {
 
           {/* 토글 버튼 (오른쪽) */}
           <button
-            onClick={() => setIsRightSidebarOpen(!isRightSidebarOpen)}
+            onClick={() => {
+              setIsRightSidebarOpen(!isRightSidebarOpen)
+              setTimeout(() => {
+                mapRef.current?.relayout();
+              }, 350);
+            }}
             className="w-6 bg-gray-200 hover:bg-gray-300 flex items-center justify-center"
           >
             {isRightSidebarOpen ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}

@@ -1,50 +1,83 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" 
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
     "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 
 <mapper namespace="com.traveler.app.dao.SearchDao">
 
-    <!-- 여행지 검색 (이름, 주소) -->
+    <!-- 여행지 검색 (제목만, ID 작은 순) -->
     <select id="searchDestinations" resultType="map">
         SELECT * FROM (
-            SELECT 
+            SELECT
                 d.contentid,
+                d.contenttypeid,
                 d.title,
                 d.addr1,
                 d.firstimage2,
-                s.SIGNGU_NAME AS regionName,
+                NVL(d.addr1, s.SIGNGU_NAME) AS regionName,
                 ROWNUM AS rn
             FROM (
                 SELECT * FROM destination
                 WHERE LOWER(title) LIKE '%' || LOWER(#{keyword}) || '%'
-                   OR LOWER(addr1) LIKE '%' || LOWER(#{keyword}) || '%'
-                ORDER BY contentid asc
+                  AND contenttypeid != 15
+                  AND contenttypeid != 25
+                ORDER BY TO_NUMBER(contentid) ASC
             ) d
-            LEFT JOIN ldong_signgu_code s 
-                ON d.lDongRegnCd = s.LDONGREGNCD 
+            LEFT JOIN ldong_signgu_code s
+                ON d.lDongRegnCd = s.LDONGREGNCD
                AND d.lDongSignguCd = s.LDONGSIGNGUCD
             WHERE ROWNUM &lt;= #{offset} + #{limit}
         )
         WHERE rn > #{offset}
     </select>
 
-    <!-- 여행지 검색 개수 -->
+    <!-- 여행지 검색 개수 (제목만) -->
     <select id="countSearchDestinations" resultType="int">
         SELECT COUNT(*) FROM destination
         WHERE LOWER(title) LIKE '%' || LOWER(#{keyword}) || '%'
-           OR LOWER(addr1) LIKE '%' || LOWER(#{keyword}) || '%'
+          AND contenttypeid != 15
+          AND contenttypeid != 25
     </select>
 
-    <!-- 플래너 검색 (이름) -->
+    <!-- 플래너 검색 (제목, 작성자, 지역, 날짜 포함) -->
     <select id="searchPlanners" resultType="map">
         SELECT * FROM (
-            SELECT 
+            SELECT
                 p.pln_id AS plnId,
                 p.pln_title AS plnTitle,
                 p.start_date AS startDate,
                 p.end_date AS endDate,
                 p.total_days AS totalDays,
-                s.SIGNGU_NAME AS regionName,
+                p.m_id AS mId,
+                m.m_nickname AS memberNickname,
+                p.lDongRegnCd,
+                p.lDongSignguCd,
+                CASE 
+                    WHEN p.lDongRegnCd IS NOT NULL THEN
+                        CASE p.lDongRegnCd
+                            WHEN '11' THEN '서울'
+                            WHEN '26' THEN '부산'
+                            WHEN '27' THEN '대구'
+                            WHEN '28' THEN '인천'
+                            WHEN '29' THEN '광주'
+                            WHEN '30' THEN '대전'
+                            WHEN '31' THEN '울산'
+                            WHEN '36' THEN '세종'
+                            WHEN '41' THEN '경기'
+                            WHEN '42' THEN '강원'
+                            WHEN '43' THEN '충북'
+                            WHEN '44' THEN '충남'
+                            WHEN '45' THEN '전북'
+                            WHEN '46' THEN '전남'
+                            WHEN '47' THEN '경북'
+                            WHEN '48' THEN '경남'
+                            WHEN '50' THEN '제주'
+                            WHEN '51' THEN '강원'
+                            WHEN '52' THEN '전북'
+                            ELSE ''
+                        END
+                    ELSE ''
+                END AS sidoName,
+                NVL(s.SIGNGU_NAME, '') AS signguName,
                 ROWNUM AS rn
             FROM (
                 SELECT * FROM planner
@@ -52,15 +85,16 @@
                   AND is_public = 1
                 ORDER BY created_at DESC
             ) p
-            LEFT JOIN ldong_signgu_code s 
-                ON p.lDongRegnCd = s.LDONGREGNCD 
+            LEFT JOIN member m ON p.m_id = m.m_id
+            LEFT JOIN ldong_signgu_code s
+                ON p.lDongRegnCd = s.LDONGREGNCD
                AND p.lDongSignguCd = s.LDONGSIGNGUCD
             WHERE ROWNUM &lt;= #{offset} + #{limit}
         )
         WHERE rn > #{offset}
     </select>
 
-    <!-- 플래너 검색 개수 -->
+    <!-- 플래너 검색 개수 (제목만) -->
     <select id="countSearchPlanners" resultType="int">
         SELECT COUNT(*) FROM planner
         WHERE LOWER(pln_title) LIKE '%' || LOWER(#{keyword}) || '%'
