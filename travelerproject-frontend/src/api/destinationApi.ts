@@ -57,14 +57,34 @@ export const increaseViewCount = async (contentid: string) => {
 // 리뷰 API
 // ============================================
 
-/** 리뷰 등록 */
+/** 리뷰 등록 (이미지 포함) */
 export const createReview = async (reviewData: {
   mId: number;
   contentid: string;
   rvRating: number;
   rvContent: string;
-}) => {
-  const response = await api.post('/review', reviewData);
+}, images?: File[]) => {
+  const formData = new FormData();
+  
+  // JSON을 Blob으로 변환해서 추가
+  formData.append('review', new Blob([JSON.stringify(reviewData)], { type: 'application/json' }));
+  
+  // 이미지 추가 (최대 3장)
+  if (images && images.length > 0) {
+    images.slice(0, 3).forEach((file) => {
+      formData.append('images', file);
+    });
+  }
+  
+  const response = await api.post('/review', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
+  return response.data;
+};
+
+/** 리뷰 이미지 조회 */
+export const getReviewImages = async (reviewId: number) => {
+  const response = await api.get(`/review/${reviewId}/images`);
   return response.data;
 };
 
@@ -81,11 +101,34 @@ export const getReviewsByMember = async (memberId: number) => {
 };
 
 /** 리뷰 수정 */
-export const updateReview = async (reviewId: number, reviewData: {
-  rvRating: number;
-  rvContent: string;
-}) => {
-  const response = await api.put(`/review/${reviewId}`, reviewData);
+export const updateReview = async (
+  reviewId: number, 
+  reviewData: { rvRating: number; rvContent: string },
+  keepImages?: string[],
+  newImages?: File[]
+) => {
+  const formData = new FormData();
+  
+  // 리뷰 데이터 (JSON)
+  formData.append('review', new Blob([JSON.stringify(reviewData)], { type: 'application/json' }));
+  
+  // 유지할 이미지 URLs - 각각 개별로 추가
+  if (keepImages && keepImages.length > 0) {
+    keepImages.forEach((url) => {
+      formData.append('keepImages', url);
+    });
+  }
+  
+  // 새 이미지 파일
+  if (newImages && newImages.length > 0) {
+    newImages.forEach((file) => {
+      formData.append('newImages', file);
+    });
+  }
+  
+  const response = await api.put(`/review/${reviewId}`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
   return response.data;
 };
 
@@ -132,4 +175,6 @@ export const getFavoritesByMember = async (memberId: number) => {
 export const getDestinationImages = async (contentid: string) => {
   const response = await api.get(`/destination/detail/${contentid}/images`);
   return response.data;
+
+  
 };
