@@ -797,7 +797,12 @@ export function PlannerEditPage({ onBack, initialData }: PlannerEditPageProps) {
 
           {/* 토글 버튼 (왼쪽) */}
           <button
-            onClick={() => setIsLeftSidebarOpen(!isLeftSidebarOpen)}
+            onClick={() => {
+              setIsLeftSidebarOpen(!isLeftSidebarOpen)
+              setTimeout(() => {
+                mapRef.current?.relayout();
+              }, 350);
+            }}
             className="w-6 bg-gray-200 hover:bg-gray-300 flex items-center justify-center"
           >
             {isLeftSidebarOpen ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
@@ -817,7 +822,12 @@ export function PlannerEditPage({ onBack, initialData }: PlannerEditPageProps) {
 
           {/* 토글 버튼 (오른쪽) */}
           <button
-            onClick={() => setIsRightSidebarOpen(!isRightSidebarOpen)}
+            onClick={() => {
+              setIsRightSidebarOpen(!isRightSidebarOpen)
+              setTimeout(() => {
+                mapRef.current?.relayout();
+              }, 350);
+            }}
             className="w-6 bg-gray-200 hover:bg-gray-300 flex items-center justify-center"
           >
             {isRightSidebarOpen ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}

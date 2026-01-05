@@ -152,6 +152,8 @@ export function PlannerPreviewPage({
             mapy: place.mapy,
             dayNumber: dayPlan.day,
             orderNumber: index + 1,
+            addr1: place.region,
+            firstimage: place.image,
           });
         }
       });
@@ -255,9 +257,14 @@ export function PlannerPreviewPage({
   /**
    * 장소 클릭 시 지도 이동
    */
-  const handlePlaceClick = (place: Place) => {
+  const handlePlaceClick = (place: Place, dayNumber: number, orderNumber: number) => {
     if (place.mapx && place.mapy && mapRef.current) {
       mapRef.current.setCenter(place.mapy, place.mapx, 5);
+
+      // ★ 마커 선택 (인포윈도우 열기)
+      setTimeout(() => {
+        mapRef.current?.selectPlannerMarker(place.contentid || place.id);
+      }, 300);
     }
   };
 
@@ -384,7 +391,7 @@ export function PlannerPreviewPage({
                             dayPlan.places.map((place, index) => (
                               <button
                                 key={place.id}
-                                onClick={() => handlePlaceClick(place)}
+                                onClick={() => handlePlaceClick(place, dayPlan.day, index + 1)}
                                 className="w-full flex items-center gap-2 p-2 bg-gray-50 rounded border hover:bg-blue-50 hover:border-blue-300 transition-colors text-left"
                               >
                                 <div className="flex-shrink-0 w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs font-bold">
@@ -429,7 +436,12 @@ export function PlannerPreviewPage({
 
         {/* 토글 버튼 (왼쪽) */}
         <button
-          onClick={() => setIsLeftSidebarOpen(!isLeftSidebarOpen)}
+          onClick={() => {
+            setIsLeftSidebarOpen(!isLeftSidebarOpen)
+            setTimeout(() => {
+              mapRef.current?.relayout();
+            }, 350);
+        }}
           className="w-6 bg-gray-200 hover:bg-gray-300 flex items-center justify-center"
         >
           {isLeftSidebarOpen ? (
