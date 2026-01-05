@@ -129,8 +129,8 @@
         SET 
             bd_title = #{bdTitle},
             bd_content = #{bdContent},
-            pln_id = #{plnId},
-            bd_rating = #{bdRating},
+            pln_id = #{plnId, jdbcType=INTEGER},
+       		bd_rating = #{bdRating, jdbcType=INTEGER},
             updated_at = SYSDATE
         WHERE bd_id = #{bdId}
     </update>
@@ -160,4 +160,5 @@
         WHERE bd_id = #{bdId}
     </update>
 
+	
 </mapper>
