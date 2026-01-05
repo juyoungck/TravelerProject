@@ -158,6 +158,8 @@ export function PlannerPreviewPage({
             mapy: place.mapy,
             dayNumber: dayPlan.day,
             orderNumber: index + 1,
+            addr1: place.region,
+            firstimage: place.image,
           });
         }
       });
@@ -333,9 +335,14 @@ export function PlannerPreviewPage({
   /**
    * 장소 클릭 시 지도 이동
    */
-  const handlePlaceClick = (place: Place) => {
+  const handlePlaceClick = (place: Place, dayNumber: number, orderNumber: number) => {
     if (place.mapx && place.mapy && mapRef.current) {
       mapRef.current.setCenter(place.mapy, place.mapx, 5);
+
+      // ★ 마커 선택 (인포윈도우 열기)
+      setTimeout(() => {
+        mapRef.current?.selectPlannerMarker(place.contentid || place.id);
+      }, 300);
     }
   };
 
@@ -567,7 +574,12 @@ export function PlannerPreviewPage({
 
         {/* 토글 버튼 */}
         <button
-          onClick={() => setIsLeftSidebarOpen(!isLeftSidebarOpen)}
+          onClick={() => {
+            setIsLeftSidebarOpen(!isLeftSidebarOpen)
+            setTimeout(() => {
+              mapRef.current?.relayout();
+            }, 350);
+        }}
           className="w-6 bg-gray-200 hover:bg-gray-300 flex items-center justify-center"
         >
           {isLeftSidebarOpen ? (
