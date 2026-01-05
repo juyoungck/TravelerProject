@@ -4,7 +4,7 @@
  * 수정: 지도 로딩, 1인1리뷰, 내 리뷰 최상단, 수정/삭제 기능, 리뷰 이미지
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Heart, Eye, MapPin, X, Star, ArrowUp, Edit2, Trash2 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Header } from '../../components/layout/Header';
@@ -112,6 +112,9 @@ export function TravelDetailPage({
   
   // 이미지 목록 상태
   const [images, setImages] = useState<string[]>([]);
+
+  // 지도 상태
+  const mapRef = useRef<any>(null);
 
   // 리뷰 관련 상태
   const [reviews, setReviews] = useState<Review[]>([]);
@@ -592,19 +595,32 @@ export function TravelDetailPage({
     return date.toLocaleDateString('ko-KR');
   };
 
-  // 지도용 마커 데이터 생성
-  const mapDestination = destination.mapx && destination.mapy ? [{
+  /** 지도용 마커 데이터 생성 */
+  const mapDestination = destination.mapx != null && destination.mapy != null ? [{
     contentid: destination.contentid,
     contenttypeid: destination.contenttypeid,
     title: destination.title,
     addr1: destination.addr1,
-    mapx: parseFloat(String(destination.mapx)),
-    mapy: parseFloat(String(destination.mapy)),
+    mapx: Number(destination.mapx),
+    mapy: Number(destination.mapy),
     firstimage: destination.firstimage,
     firstimage2: destination.firstimage2,
     distance: null,
-    typeName: getContentTypeName(destination.contenttypeid),
   }] : [];
+
+  /** 마커 클릭 핸들러 */
+  const handleMarkerClick = () => {
+    if (mapRef.current && destination?.mapx && destination?.mapy) {
+      mapRef.current.setCenter(Number(destination.mapy), Number(destination.mapx), 3);
+    }
+  };
+
+  /** 지도에서 보기 클릭 핸들러 */
+  const handleViewInMap = () => {
+    if (onNavigate && destination) {
+      onNavigate(`map?contentid=${destination.contentid}`);
+    }
+  };
 
   return (
     <div 
@@ -732,14 +748,31 @@ export function TravelDetailPage({
           <div className="mb-6">
             <h4 className="font-semibold mb-3">위치</h4>
             {destination.mapx && destination.mapy ? (
-              <div className="w-full h-64 rounded-lg overflow-hidden border">
-                <KakaoMap
-                  centerLat={parseFloat(String(destination.mapy))}
-                  centerLng={parseFloat(String(destination.mapx))}
-                  level={3}
-                  destinations={mapDestination}
-                  height="256px"
-                />
+              <div className="relative w-full h-64 rounded-lg overflow-hidden border">
+                {mapDestination.length > 0 ? (
+                  <>
+                  <KakaoMap
+                    ref={mapRef}
+                    centerLat={Number(destination.mapy)}
+                    centerLng={Number(destination.mapx)}
+                    level={3}
+                    destinations={mapDestination}
+                    onMarkerClick={handleMarkerClick}
+                    height="256px"
+                  />
+                  <button
+                    onClick={handleViewInMap}
+                    className="absolute bottom-3 right-3 bg-white px-3 py-2 rounded-lg shadow-md text-sm font-medium text-blue-600 hover:bg-blue-50 transition-colors flex items-center gap-1 z-10"
+                  >
+                    <MapPin className="h-4 w-4" />
+                    지도에서 보기
+                  </button>
+                  </>
+                ) : (
+                  <div className="w-full h-64 bg-gray-200 rounded-lg flex items-center justify-center">
+                    <p className="text-gray-500">위치 정보가 없습니다.</p>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="w-full h-64 bg-gray-200 rounded-lg flex items-center justify-center">

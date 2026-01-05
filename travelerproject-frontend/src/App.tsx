@@ -34,6 +34,7 @@ export default function App() {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [selectedDestinationId, setSelectedDestinationId] = useState<string | null>(null);
   const [selectedPlanner, setSelectedPlanner] = useState<any>(null);
+  const [selectedMapContentId, setSelectedMapContentId] = useState<string | null>(null);
   const [favoriteDestinations, setFavoriteDestinations] = useState<any[]>([]);
   const [favoritePlanners, setFavoritePlanners] = useState<any[]>([]);
   const [reviews, setReviews] = useState<any[]>([]);
@@ -234,8 +235,9 @@ export default function App() {
     else if (page === 'planner') {
       setCurrentPage('planner');
     }
-    else if (page === 'map') {
+    else if (page === 'map' && contentid) {
       setCurrentPage('map');
+      setSelectedMapContentId(contentid);
     }
     else if (page === 'event') {
       setCurrentPage('event');
@@ -249,12 +251,28 @@ export default function App() {
    * 페이지 이동 핸들러
    */
   const handleNavigate = (page: string) => {
+    // ★ 여행지 상세정보 지도로 이동할 때 상세 ID 설정
+    if (page.startsWith('map?contentid=')) {
+      const contentid = page.split('=')[1];
+      setSelectedMapContentId(contentid);
+      setCurrentPage('map');
+      window.scrollTo(0, 0);
+      return;
+    }
+
     setCurrentPage(page);
     setShareLink(null);
 
-    if (page === "travel") {
-      setSelectedDestinationId(null);
-    }
+    // ★ 여행지 페이지로 이동할 때 상세 ID 초기화
+  if (page === "travel") {
+    setSelectedDestinationId(null);
+  }
+
+  // ★ 지도 페이지로 이동할 때 상세 ID 초기화
+  if (page === "map") {
+    setSelectedMapContentId(null);
+  }
+    // URL 변경 (공유 링크가 아닌 경우 기본 경로로)
     if (page === "home") {
       window.history.pushState({}, '', '/');
     }
@@ -511,6 +529,7 @@ export default function App() {
     if (currentPage === "map") {
       return (
         <MapPage 
+          initialContentId={selectedMapContentId}
           onNavigate={(page, params) => {
             if (page === 'travel-detail' && params?.contentid) {
               setSelectedDestinationId(params.contentid);
