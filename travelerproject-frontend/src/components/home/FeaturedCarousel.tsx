@@ -1,65 +1,82 @@
 /**
  * FeaturedCarousel.tsx - 추천 여행지 캐러셀
  * 메인 페이지 상단 캐러셀
+ * 
+ * 수정: API 연동 - destination에서 firstimage가 있는 여행지 랜덤 4개 가져오기
  */
 
 import { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, MapPin } from 'lucide-react';
+import { ChevronLeft, ChevronRight, MapPin, Loader2 } from 'lucide-react';
+import axios from 'axios';
+
+const API_BASE_URL = 'http://localhost:8080/api';
 
 interface Destination {
-  id: number;
+  id: string;
   name: string;
   region: string;
   image: string;
   description: string;
 }
 
-const destinations: Destination[] = [
-  {
-    id: 1,
-    name: '경복궁',
-    region: '서울 종로구',
-    image: 'https://images.unsplash.com/photo-1583417319070-4a69db38a482?w=800',
-    description: '조선왕조의 법궁으로 600년의 역사를 간직한 궁궐',
-  },
-  {
-    id: 2,
-    name: 'N서울타워',
-    region: '서울 용산구',
-    image: 'https://images.unsplash.com/photo-1583417319070-4a69db38a482?w=800',
-    description: '서울의 상징적인 랜드마크',
-  },
-  {
-    id: 3,
-    name: '해운대 해수욕장',
-    region: '부산 해운대구',
-    image: 'https://images.unsplash.com/photo-1590735213920-68192a487bc2?w=800',
-    description: '대한민국 최고의 해수욕장',
-  },
-  {
-    id: 4,
-    name: '성산일출봉',
-    region: '제주 서귀포시',
-    image: 'https://images.unsplash.com/photo-1559827260-dc66d52bef19?w=800',
-    description: '제주의 아름다운 일출 명소',
-  },
-];
-
 interface FeaturedCarouselProps {
-  onSelectDestination: (destinationId: number) => void;
+  onSelectDestination: (destinationId: string) => void;
 }
 
 export function FeaturedCarousel({ onSelectDestination }: FeaturedCarouselProps) {
+  const [destinations, setDestinations] = useState<Destination[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
+
+  /** 이미지가 있는 여행지 랜덤 4개 가져오기 */
+  const fetchRandomDestinations = async () => {
+    try {
+      setIsLoading(true);
+      const response = await axios.get(`${API_BASE_URL}/destination/random`, {
+        params: { size: 4 }
+      });
+
+      if (response.data.status === 'success' && response.data.data) {
+        const data = response.data.data.map((d: any) => ({
+          id: d.contentid,
+          name: d.title,
+          region: d.addr1 || '대한민국',
+          image: d.firstimage || 'https://images.unsplash.com/photo-1583417319070-4a69db38a482?w=800',
+          description: d.overview || d.title,
+        }));
+        setDestinations(data);
+      }
+    } catch (error) {
+      console.error('추천 여행지 로드 실패:', error);
+      // API 실패 시 기본 데이터
+      setDestinations([
+        {
+          id: '1',
+          name: '추천 여행지를 불러오는 중...',
+          region: '대한민국',
+          image: 'https://images.unsplash.com/photo-1583417319070-4a69db38a482?w=800',
+          description: '잠시만 기다려주세요',
+        }
+      ]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchRandomDestinations();
+  }, []);
 
   // 5초마다 자동으로 다음 슬라이드로 이동
   useEffect(() => {
+    if (destinations.length === 0) return;
+    
     const interval = setInterval(() => {
       setCurrentIndex((prev) => (prev === destinations.length - 1 ? 0 : prev + 1));
     }, 5000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [destinations.length]);
 
   const handlePrev = () => {
     setCurrentIndex((prev) => (prev === 0 ? destinations.length - 1 : prev - 1));
@@ -76,6 +93,35 @@ export function FeaturedCarousel({ onSelectDestination }: FeaturedCarouselProps)
   const getNextIndex = () => {
     return currentIndex === destinations.length - 1 ? 0 : currentIndex + 1;
   };
+
+  // 로딩 중
+  if (isLoading) {
+    return (
+      <section className="py-16 bg-gradient-to-b from-white to-gray-50">
+        <div className="container mx-auto px-4">
+          <h2 className="mb-8 text-center">추천 여행지</h2>
+          <div className="flex justify-center items-center py-24">
+            <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+            <span className="ml-2 text-gray-500">여행지를 불러오는 중...</span>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  // 데이터 없음
+  if (destinations.length === 0) {
+    return (
+      <section className="py-16 bg-gradient-to-b from-white to-gray-50">
+        <div className="container mx-auto px-4">
+          <h2 className="mb-8 text-center">추천 여행지</h2>
+          <div className="text-center py-24">
+            <p className="text-gray-500">추천 여행지가 없습니다</p>
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="py-16 bg-gradient-to-b from-white to-gray-50">
@@ -126,7 +172,7 @@ export function FeaturedCarousel({ onSelectDestination }: FeaturedCarouselProps)
                     <h3 className="text-4xl font-bold mb-3">
                       {destinations[currentIndex].name}
                     </h3>
-                    <p className="text-lg text-gray-200">
+                    <p className="text-lg text-gray-200 line-clamp-2">
                       {destinations[currentIndex].description}
                     </p>
                   </div>

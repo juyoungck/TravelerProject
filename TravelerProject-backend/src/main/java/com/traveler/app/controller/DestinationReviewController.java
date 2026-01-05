@@ -4,6 +4,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -11,7 +12,10 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.traveler.app.dto.DestinationReviewDto;
 import com.traveler.app.entity.DestinationReview;
@@ -19,7 +23,7 @@ import com.traveler.app.service.DestinationReviewService;
 
 /**
  * 여행지 리뷰 API 컨트롤러
- * 리뷰 CRUD 기능 제공
+ * 리뷰 CRUD + 이미지 업로드 기능 제공
  */
 @RestController
 @RequestMapping("/api/review")
@@ -31,12 +35,44 @@ public class DestinationReviewController {
         this.reviewService = reviewService;
     }
 
-    /**
-     * 리뷰 등록
+    /**s
+     * 리뷰 등록 (이미지 포함)
      * POST /api/review
      */
-    @PostMapping
-    public Map<String, Object> createReview(@RequestBody DestinationReviewDto dto) {
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public Map<String, Object> createReview(
+            @RequestPart("review") DestinationReviewDto dto,
+            @RequestPart(value = "images", required = false) List<MultipartFile> images) {
+        
+        Map<String, Object> response = new HashMap<>();
+        
+        try {
+            // 이미지 3장 제한
+            if (images != null && images.size() > 3) {
+                response.put("status", "fail");
+                response.put("message", "이미지는 최대 3장까지 등록 가능합니다.");
+                return response;
+            }
+            
+            Long rvId = reviewService.createReviewWithImages(dto, images);
+            
+            response.put("status", "success");
+            response.put("message", "리뷰가 등록되었습니다.");
+            response.put("rvId", rvId);
+        } catch (Exception e) {
+            response.put("status", "fail");
+            response.put("message", e.getMessage());
+        }
+        
+        return response;
+    }
+
+    /**
+     * 리뷰 등록 (텍스트만 - 기존 호환용)
+     * POST /api/review/text
+     */
+    @PostMapping("/text")
+    public Map<String, Object> createReviewText(@RequestBody DestinationReviewDto dto) {
         Map<String, Object> response = new HashMap<>();
         
         try {
@@ -66,8 +102,28 @@ public class DestinationReviewController {
             
             response.put("status", "success");
             response.put("data", reviews);
-            response.put("averageRating", Math.round(averageRating * 10) / 10.0);  // 소수점 1자리
+            response.put("averageRating", Math.round(averageRating * 10) / 10.0);
             response.put("totalCount", totalCount);
+        } catch (Exception e) {
+            response.put("status", "fail");
+            response.put("message", e.getMessage());
+        }
+        
+        return response;
+    }
+
+    /**
+     * 리뷰 이미지 조회
+     * GET /api/review/{reviewId}/images
+     */
+    @GetMapping("/{reviewId}/images")
+    public Map<String, Object> getReviewImages(@PathVariable("reviewId") Long reviewId) {
+        Map<String, Object> response = new HashMap<>();
+        
+        try {
+            List<String> images = reviewService.getReviewImages(reviewId);
+            response.put("status", "success");
+            response.put("data", images);
         } catch (Exception e) {
             response.put("status", "fail");
             response.put("message", e.getMessage());
@@ -128,26 +184,34 @@ public class DestinationReviewController {
      * 리뷰 수정
      * PUT /api/review/{reviewId}
      */
-    @PutMapping("/{reviewId}")
+    @PutMapping(
+    	    value = "/{reviewId}",
+    	    consumes = MediaType.MULTIPART_FORM_DATA_VALUE
+    		)
     public Map<String, Object> updateReview(
             @PathVariable("reviewId") Long reviewId,
-            @RequestBody DestinationReviewDto dto) {
+            @RequestPart("review") DestinationReviewDto dto,
+            @RequestParam(value = "keepImages", required = false) List<String> keepImages,
+            @RequestPart(value = "newImages", required = false) List<MultipartFile> newImages
+    ) {
         Map<String, Object> response = new HashMap<>();
-        
         try {
-            dto.setRvId(reviewId);
-            reviewService.updateReview(dto);
-            
+            reviewService.updateReviewWithImages(
+                reviewId,
+                dto,
+                keepImages,
+                newImages
+            );
+
             response.put("status", "success");
-            response.put("message", "리뷰가 수정되었습니다.");
         } catch (Exception e) {
+            e.printStackTrace();
             response.put("status", "fail");
             response.put("message", e.getMessage());
         }
-        
         return response;
     }
-
+    
     /**
      * 리뷰 삭제
      * DELETE /api/review/{reviewId}

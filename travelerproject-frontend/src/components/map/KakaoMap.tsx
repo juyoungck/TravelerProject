@@ -11,7 +11,7 @@
  */
 
 import { useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react';
-import { NearbyDestination } from '../../api/mapApi';
+import { NearbyDestination, CONTENT_TYPE_NAME } from '../../api/mapApi';
 import { 
   createMarkerSvg, 
   createSelectedMarkerSvg, 
@@ -68,6 +68,7 @@ interface KakaoMapProps {
   showCurrentLocation?: boolean;
   currentLocation?: { lat: number; lng: number } | null;
   onMarkerClick?: (destination: NearbyDestination) => void;
+  onPlannerMarkerClick?: (place: PlannerPlace) => void;
   onMapMoved?: (lat: number, lng: number) => void;
   onMapClick?: () => void;
   onNavigateToDetail?: (contentid: string) => void;
@@ -79,11 +80,15 @@ interface KakaoMapProps {
 
 export interface PlannerPlace {
   contentid: string;
+  contenttypeid?: string;
   title: string;
   mapx: number;
   mapy: number;
   dayNumber: number;
   orderNumber: number;
+  addr1?: string;
+  firstimage?: string;
+  firstimage2?: string;
 }
 
 export interface KakaoMapRef {
@@ -92,8 +97,10 @@ export interface KakaoMapRef {
   setLevel: (level: number) => void;
   getCenter: () => { lat: number; lng: number } | null;
   selectMarker: (contentid: string) => void;
+  selectPlannerMarker: (contentid: string) => void;
   closeInfoWindow: () => void;
   fitBounds: () => void;
+  relayout: () => void;
 }
 
 const DEFAULT_CENTER = { lat: 37.5665, lng: 126.9780 };
@@ -108,6 +115,7 @@ const KakaoMap = forwardRef<KakaoMapRef, KakaoMapProps>(({
   showCurrentLocation = false,
   currentLocation = null,
   onMarkerClick,
+  onPlannerMarkerClick,
   onMapMoved,
   onMapClick,
   onNavigateToDetail,
@@ -123,10 +131,13 @@ const KakaoMap = forwardRef<KakaoMapRef, KakaoMapProps>(({
   const plannerMarkersRef = useRef<kakao.maps.Marker[]>([]);  // ★ 플래너 마커 분리
   const polylinesRef = useRef<kakao.maps.Polyline[]>([]);  // ★ 경로 선
   const infoWindowRef = useRef<kakao.maps.CustomOverlay | null>(null);
+  const plannerInfoWindowRef = useRef<kakao.maps.CustomOverlay | null>(null);
   const currentLocationMarkerRef = useRef<kakao.maps.Marker | null>(null);
   const destinationsMapRef = useRef<Map<string, NearbyDestination>>(new Map());
   const markerDestMapRef = useRef<Map<kakao.maps.Marker, NearbyDestination>>(new Map());
   const selectedMarkerRef = useRef<kakao.maps.Marker | null>(null);
+  const plannerMarkerMapRef = useRef<Map<string, kakao.maps.Marker>>(new Map());
+  const plannerPlacesMapRef = useRef<Map<string, PlannerPlace>>(new Map());
   
   // 콜백을 ref로 저장 (클로저 문제 해결)
   const onNavigateToDetailRef = useRef(onNavigateToDetail);
@@ -167,235 +178,405 @@ const KakaoMap = forwardRef<KakaoMapRef, KakaoMapProps>(({
     }
   }, [resetMarkerImage]);
 
+  /** 플래너 인포윈도우 닫기 함수 */
+  const closePlannerInfoWindow = useCallback(() => {
+    if (plannerInfoWindowRef.current) {
+      plannerInfoWindowRef.current.setMap(null);
+      plannerInfoWindowRef.current = null;
+    }
+  }, []);
+
   /** ★ 인포윈도우 DOM 요소 생성 (찜 버튼 추가) */
   const createInfoWindowElement = useCallback((destination: NearbyDestination): HTMLElement => {
-  const emoji = MARKER_EMOJI[destination.contenttypeid] || '📍';
-  const color = MARKER_COLORS[destination.contenttypeid] || '#6B7280';
-  const imageUrl = destination.firstimage2 || destination.firstimage;
+    const emoji = MARKER_EMOJI[destination.contenttypeid] || '📍';
+    const color = MARKER_COLORS[destination.contenttypeid] || '#6B7280';
+    const imageUrl = destination.firstimage2 || destination.firstimage;
 
-  const favorited = isFavoriteRef.current
-    ? isFavoriteRef.current(destination.contentid)
-    : false;
+    const favorited = isFavoriteRef.current
+      ? isFavoriteRef.current(destination.contentid)
+      : false;
 
-  let distanceText = '';
-  if (destination.distance !== null && destination.distance !== undefined) {
-    distanceText =
-      destination.distance < 1
-        ? `${Math.round(destination.distance * 1000)}m`
-        : `${destination.distance}km`;
-  }
-
-  /** 공통 컨테이너 */
-  const container = document.createElement('div');
-  container.style.cssText = `
-    position: relative;
-    width: 280px;
-    padding: 12px;
-    background: white;
-    border-radius: 12px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    cursor: default;
-  `;
-
-  container.addEventListener('mousedown', e => e.stopPropagation());
-  container.addEventListener('touchstart', e => e.stopPropagation());
-
-  /** 닫기 버튼 */
-  const closeBtn = document.createElement('button');
-  closeBtn.innerHTML = '✕';
-  closeBtn.style.cssText = `
-    position: absolute;
-    top: 8px;
-    right: 8px;
-    width: 24px;
-    height: 24px;
-    border: none;
-    background: rgba(243,244,246,0.9);
-    border-radius: 50%;
-    cursor: pointer;
-    font-size: 14px;
-    color: #6b7280;
-    z-index: 10;
-  `;
-  closeBtn.addEventListener('click', e => {
-    e.stopPropagation();
-    closeInfoWindow();
-  });
-
-  /** 찜 버튼 */
-  const favoriteBtn = document.createElement('button');
-  favoriteBtn.textContent = favorited ? '♥' : '♡';
-  favoriteBtn.style.cssText = `
-    position: absolute;
-    top: 40px;
-    right: 8px;
-    border: none;
-    background: rgba(255,255,255,0.9);
-    cursor: pointer;
-    font-size: 22px;
-    color: ${favorited ? '#EF4444' : '#374151'};
-    padding: 0 4px;
-    line-height: 1;
-    z-index: 10;
-    transition: transform 0.1s;
-  `;
-
-  favoriteBtn.addEventListener('mouseenter', () => {
-    favoriteBtn.style.transform = 'scale(1.2)';
-  });
-  favoriteBtn.addEventListener('mouseleave', () => {
-    favoriteBtn.style.transform = 'scale(1)';
-  });
-  favoriteBtn.addEventListener('mousedown', e => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    if (onToggleFavoriteRef.current) {
-      onToggleFavoriteRef.current(destination);
-      const active = favoriteBtn.textContent === '♥';
-      favoriteBtn.textContent = active ? '♡' : '♥';
-      favoriteBtn.style.color = active ? '#9ca3af' : '#EF4444';
-    } else {
-      alert('로그인이 필요한 기능입니다.');
+    let distanceText = '';
+    if (destination.distance !== null && destination.distance !== undefined) {
+      distanceText =
+        destination.distance < 1
+          ? `${Math.round(destination.distance * 1000)}m`
+          : `${destination.distance}km`;
     }
-  });
 
-  /** 이미지 영역 */
-  if (imageUrl) {
-    const imgContainer = document.createElement('div');
-    imgContainer.style.cssText = `
-      width: 100%;
-      height: 120px;
-      border-radius: 8px;
-      overflow: hidden;
-      margin-bottom: 10px;
+    /** 공통 컨테이너 */
+    const container = document.createElement('div');
+    container.style.cssText = `
       position: relative;
+      width: 280px;
+      padding: 12px;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      cursor: default;
     `;
 
-    // 👉 버튼을 이미지 위로
-    imgContainer.appendChild(closeBtn);
-    imgContainer.appendChild(favoriteBtn);
+    container.addEventListener('mousedown', e => e.stopPropagation());
+    container.addEventListener('touchstart', e => e.stopPropagation());
 
-    const img = document.createElement('img');
-    img.src = imageUrl;
-    img.alt = destination.title;
-    img.style.cssText = `
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
+    /** 닫기 버튼 */
+    const closeBtn = document.createElement('button');
+    closeBtn.innerHTML = '✕';
+    closeBtn.style.cssText = `
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      width: 24px;
+      height: 24px;
+      border: none;
+      background: rgba(243,244,246,0.9);
+      border-radius: 50%;
+      cursor: pointer;
+      font-size: 14px;
+      color: #6b7280;
+      z-index: 10;
     `;
-    img.onerror = () => {
-      imgContainer.style.display = 'none';
-      // 이미지 없어진 경우 → 버튼을 컨테이너로 이동
-      container.appendChild(closeBtn);
-      container.appendChild(favoriteBtn);
-    };
-
-    imgContainer.appendChild(img);
-    container.appendChild(imgContainer);
-  } else {
-    // 👉 이미지 없을 때는 컨테이너 우상단
+    closeBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      closeInfoWindow();
+    });
     container.appendChild(closeBtn);
-    container.appendChild(favoriteBtn);
-  }
 
-  /** 타입 + 거리 */
-  const badgeContainer = document.createElement('div');
-  badgeContainer.style.cssText = `
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 6px;
-  `;
+    /** 이미지 영역 */
+    if (imageUrl) {
+      const imgContainer = document.createElement('div');
+      imgContainer.style.cssText = `
+        width: 100%;
+        height: 120px;
+        border-radius: 8px;
+        overflow: hidden;
+        margin-bottom: 10px;
+      `;
 
-  const badge = document.createElement('span');
-  badge.innerHTML = `${emoji} ${destination.typeName || '여행지'}`;
-  badge.style.cssText = `
-    background: ${color}20;
-    color: ${color};
-    padding: 2px 8px;
-    border-radius: 4px;
-    font-size: 12px;
-    font-weight: 500;
-  `;
-  badgeContainer.appendChild(badge);
+      const img = document.createElement('img');
+      img.src = imageUrl;
+      img.alt = destination.title;
+      img.style.cssText = `
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      `;
+      img.onerror = () => {
+        imgContainer.style.display = 'none';
+      };
 
-  if (distanceText) {
-    const distance = document.createElement('span');
-    distance.textContent = distanceText;
-    distance.style.cssText = `font-size: 11px; color: #9ca3af;`;
-    badgeContainer.appendChild(distance);
-  }
+      imgContainer.appendChild(img);
+      container.appendChild(imgContainer);
+    }
 
-  container.appendChild(badgeContainer);
+    /** 타입 + 거리 + 찜 버튼 */
+    const badgeContainer = document.createElement('div');
+    badgeContainer.style.cssText = `
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+      padding-right: ${imageUrl ? '0' : '30px'};
+    `;
 
-  /** 제목 */
-  const title = document.createElement('h3');
-  title.textContent = destination.title;
-  title.style.cssText = `
-    margin: 0 0 6px 0;
-    font-size: 16px;
-    font-weight: 600;
-    color: #1f2937;
-    padding-right: 50px;
-  `;
-  container.appendChild(title);
+    const badge = document.createElement('span');
+    badge.innerHTML = `${CONTENT_TYPE_NAME[destination.contenttypeid] || destination.typeName || '기타'}`;
+    badge.style.cssText = `
+      background: ${color}20;
+      color: ${color};
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 500;
+    `;
+    badgeContainer.appendChild(badge);
 
-  /** 주소 */
-  const addr = document.createElement('p');
-  addr.textContent = destination.addr1 || '주소 정보 없음';
-  addr.style.cssText = `
-    margin: 0 0 10px 0;
-    font-size: 13px;
-    color: #6b7280;
-  `;
-  container.appendChild(addr);
+    if (distanceText) {
+      const distance = document.createElement('span');
+      distance.textContent = distanceText;
+      distance.style.cssText = `font-size: 11px; color: #9ca3af;`;
+      badgeContainer.appendChild(distance);
+    }
 
-  /** 상세 버튼 */
-  const detailBtn = document.createElement('button');
-  detailBtn.textContent = '상세정보 보기 ↗';
-  detailBtn.style.cssText = `
-    width: 100%;
-    padding: 10px;
-    background: ${color};
-    color: white;
-    border: none;
-    border-radius: 8px;
-    font-size: 14px;
-    cursor: pointer;
-  `;
+    /** ★ 찜 버튼 (오른쪽 정렬) */
+    const favoriteBtn = document.createElement('button');
+    favoriteBtn.textContent = favorited ? '♥' : '♡';
+    favoriteBtn.style.cssText = `
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      font-size: 22px;
+      color: ${favorited ? '#EF4444' : '#374151'};
+      padding: 0 4px;
+      line-height: 1;
+      margin-left: auto;
+      transition: transform 0.1s;
+    `;
 
-  detailBtn.addEventListener('mousedown', e => {
-    e.preventDefault();
-    e.stopPropagation();
-    window.open(
-      `${window.location.origin}/?page=travel-detail&contentid=${destination.contentid}`,
-      '_blank'
-    );
-    closeInfoWindow();
-  });
+    favoriteBtn.addEventListener('mouseenter', () => {
+      favoriteBtn.style.transform = 'scale(1.2)';
+    });
+    favoriteBtn.addEventListener('mouseleave', () => {
+      favoriteBtn.style.transform = 'scale(1)';
+    });
+    favoriteBtn.addEventListener('mousedown', e => {
+      e.preventDefault();
+      e.stopPropagation();
 
-  container.appendChild(detailBtn);
+      if (onToggleFavoriteRef.current) {
+        onToggleFavoriteRef.current(destination);
+        const active = favoriteBtn.textContent === '♥';
+        favoriteBtn.textContent = active ? '♡' : '♥';
+        favoriteBtn.style.color = active ? '#374151' : '#EF4444';
+      } else {
+        alert('로그인이 필요한 기능입니다.');
+      }
+    });
+    badgeContainer.appendChild(favoriteBtn);
 
-  /** 말풍선 꼬리 */
-  const tail = document.createElement('div');
-  tail.style.cssText = `
-    position: absolute;
-    bottom: -10px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 0;
-    height: 0;
-    border-left: 10px solid transparent;
-    border-right: 10px solid transparent;
-    border-top: 10px solid white;
-  `;
-  container.appendChild(tail);
+    container.appendChild(badgeContainer);
 
-  return container;
-}, [closeInfoWindow]);
+    /** 제목 */
+    const title = document.createElement('h3');
+    title.textContent = destination.title;
+    title.style.cssText = `
+      margin: 0 0 6px 0;
+      font-size: 16px;
+      font-weight: 600;
+      color: #1f2937;
+      padding-right: 30px;
+    `;
+    container.appendChild(title);
 
+    /** 주소 */
+    const addr = document.createElement('p');
+    addr.textContent = destination.addr1 || '주소 정보 없음';
+    addr.style.cssText = `
+      margin: 0 0 10px 0;
+      font-size: 13px;
+      color: #6b7280;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    `;
+    container.appendChild(addr);
+
+    /** 상세 버튼 */
+    const detailBtn = document.createElement('button');
+    detailBtn.textContent = '상세정보 보기 ↗';
+    detailBtn.style.cssText = `
+      width: 100%;
+      padding: 10px;
+      background: ${color};
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      cursor: pointer;
+    `;
+
+    detailBtn.addEventListener('mousedown', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      window.open(
+        `${window.location.origin}/?page=travel-detail&contentid=${destination.contentid}`,
+        '_blank'
+      );
+      closeInfoWindow();
+    });
+
+    container.appendChild(detailBtn);
+
+    /** 말풍선 꼬리 */
+    const tail = document.createElement('div');
+    tail.style.cssText = `
+      position: absolute;
+      bottom: -10px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 0;
+      height: 0;
+      border-left: 10px solid transparent;
+      border-right: 10px solid transparent;
+      border-top: 10px solid white;
+    `;
+    container.appendChild(tail);
+
+    return container;
+  }, [closeInfoWindow]);
+
+  /** ★ 플래너 마커용 인포윈도우 DOM 요소 생성 */
+  const createPlannerInfoWindowElement = useCallback((place: PlannerPlace): HTMLElement => {
+    const color = getPlannerDayColor(place.dayNumber);
+    const imageUrl = place.firstimage2 || place.firstimage;
+
+    const container = document.createElement('div');
+    container.style.cssText = `
+      position: relative;
+      width: 280px;
+      padding: 12px;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      cursor: default;
+    `;
+
+    container.addEventListener('mousedown', e => e.stopPropagation());
+    container.addEventListener('touchstart', e => e.stopPropagation());
+
+    /** 닫기 버튼 */
+    const closeBtn = document.createElement('button');
+    closeBtn.innerHTML = '✕';
+    closeBtn.style.cssText = `
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      width: 24px;
+      height: 24px;
+      border: none;
+      background: rgba(243,244,246,0.9);
+      border-radius: 50%;
+      cursor: pointer;
+      font-size: 14px;
+      color: #6b7280;
+      z-index: 10;
+    `;
+    closeBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      closePlannerInfoWindow();
+    });
+    container.appendChild(closeBtn);
+
+    /** 이미지 영역 */
+    if (imageUrl) {
+      const imgContainer = document.createElement('div');
+      imgContainer.style.cssText = `
+        width: 100%;
+        height: 120px;
+        border-radius: 8px;
+        overflow: hidden;
+        margin-bottom: 10px;
+      `;
+
+      const img = document.createElement('img');
+      img.src = imageUrl;
+      img.alt = place.title;
+      img.style.cssText = `
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      `;
+      img.onerror = () => {
+        imgContainer.style.display = 'none';
+      };
+
+      imgContainer.appendChild(img);
+      container.appendChild(imgContainer);
+    }
+
+    /** 일차 + 순서 배지 */
+    const badgeContainer = document.createElement('div');
+    badgeContainer.style.cssText = `
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+    `;
+
+    const dayBadge = document.createElement('span');
+    dayBadge.textContent = `Day ${place.dayNumber}`;
+    dayBadge.style.cssText = `
+      background: ${color};
+      color: white;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+    `;
+    badgeContainer.appendChild(dayBadge);
+
+    const orderBadge = document.createElement('span');
+    orderBadge.textContent = `${place.orderNumber}번째 장소`;
+    orderBadge.style.cssText = `
+      font-size: 12px;
+      color: #6b7280;
+    `;
+    badgeContainer.appendChild(orderBadge);
+
+    container.appendChild(badgeContainer);
+
+    /** 제목 */
+    const title = document.createElement('h3');
+    title.textContent = place.title;
+    title.style.cssText = `
+      margin: 0 0 6px 0;
+      font-size: 16px;
+      font-weight: 600;
+      color: #1f2937;
+      padding-right: 30px;
+    `;
+    container.appendChild(title);
+
+    /** 주소 */
+    if (place.addr1) {
+      const addr = document.createElement('p');
+      addr.textContent = place.addr1;
+      addr.style.cssText = `
+        margin: 0 0 10px 0;
+        font-size: 13px;
+        color: #6b7280;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      `;
+      container.appendChild(addr);
+    }
+
+    /** 상세 버튼 */
+    const detailBtn = document.createElement('button');
+    detailBtn.textContent = '상세정보 보기 ↗';
+    detailBtn.style.cssText = `
+      width: 100%;
+      padding: 10px;
+      background: ${color};
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      cursor: pointer;
+    `;
+
+    detailBtn.addEventListener('mousedown', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      window.open(
+        `${window.location.origin}/?page=travel-detail&contentid=${place.contentid}`,
+        '_blank'
+      );
+      closePlannerInfoWindow();
+    });
+
+    container.appendChild(detailBtn);
+
+    /** 말풍선 꼬리 */
+    const tail = document.createElement('div');
+    tail.style.cssText = `
+      position: absolute;
+      bottom: -10px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 0;
+      height: 0;
+      border-left: 10px solid transparent;
+      border-right: 10px solid transparent;
+      border-top: 10px solid white;
+    `;
+    container.appendChild(tail);
+
+    return container;
+  }, []);
 
   /** 인포윈도우 표시 */
   const showInfoWindow = useCallback((marker: kakao.maps.Marker, destination: NearbyDestination, map: kakao.maps.Map) => {
@@ -462,13 +643,43 @@ const KakaoMap = forwardRef<KakaoMapRef, KakaoMapProps>(({
     const size = new kakao.maps.Size(32, 32);
     const option = { offset: new kakao.maps.Point(16, 16) };
     
-    return new kakao.maps.Marker({
+    const marker = new kakao.maps.Marker({
       position,
       image: new kakao.maps.MarkerImage(src, size, option),
       title: `${place.dayNumber}일차 ${place.orderNumber}번: ${place.title}`,
       map,
     });
-  }, []);
+  
+    plannerMarkerMapRef.current.set(place.contentid, marker);
+    plannerPlacesMapRef.current.set(place.contentid, place);
+
+    // ★ 클릭 이벤트 추가
+    kakao.maps.event.addListener(marker, 'click', function() {
+      // 기존 인포윈도우 닫기
+      closePlannerInfoWindow();
+      
+      // 콜백 호출
+      if (onPlannerMarkerClick) {
+        onPlannerMarkerClick(place);
+      }
+      
+      map.panTo(marker.getPosition());
+      
+      // 인포윈도우 표시
+      const content = createPlannerInfoWindowElement(place);
+      const infoWindow = new kakao.maps.CustomOverlay({
+        content: content,
+        position: marker.getPosition(),
+        xAnchor: 0.5,
+        yAnchor: 1.35,
+        zIndex: 999,
+      });
+      infoWindow.setMap(map);
+      plannerInfoWindowRef.current = infoWindow;
+    });
+    
+    return marker;
+  }, [onPlannerMarkerClick, createPlannerInfoWindowElement, closePlannerInfoWindow]);
 
   /** ★ 플래너 경로 선 그리기 */
   const drawPlannerRoutes = useCallback((places: PlannerPlace[], map: kakao.maps.Map) => {
@@ -531,6 +742,7 @@ const KakaoMap = forwardRef<KakaoMapRef, KakaoMapProps>(({
       
       kakao.maps.event.addListener(map, 'click', function() {
         closeInfoWindow();
+        closePlannerInfoWindow();
         if (onMapClick) onMapClick();
       });
       
@@ -552,6 +764,7 @@ const KakaoMap = forwardRef<KakaoMapRef, KakaoMapProps>(({
       markerDestMapRef.current.clear();
       if (infoWindowRef.current) infoWindowRef.current.setMap(null);
       if (currentLocationMarkerRef.current) currentLocationMarkerRef.current.setMap(null);
+      if (plannerInfoWindowRef.current) plannerInfoWindowRef.current.setMap(null);
     };
   }, []);
 
@@ -603,6 +816,9 @@ const KakaoMap = forwardRef<KakaoMapRef, KakaoMapProps>(({
     // 기존 플래너 마커 제거
     plannerMarkersRef.current.forEach(m => m.setMap(null));
     plannerMarkersRef.current = [];
+
+    plannerMarkerMapRef.current.clear();
+    plannerPlacesMapRef.current.clear();
     
     // 기존 경로 선 제거
     polylinesRef.current.forEach(p => p.setMap(null));
@@ -682,7 +898,37 @@ const KakaoMap = forwardRef<KakaoMapRef, KakaoMapProps>(({
         mapRef.current.setBounds(bounds);
       }
     },
-  }), [destinations, showInfoWindow, closeInfoWindow]);
+    relayout: () => {
+      if (mapRef.current) {
+        mapRef.current.relayout();
+      }
+    },
+
+    // ★ 플래너 마커 선택 (인포윈도우 열기)
+    selectPlannerMarker: (contentid) => {
+      const marker = plannerMarkerMapRef.current.get(contentid);
+      const place = plannerPlacesMapRef.current.get(contentid);
+      
+      if (marker && place && mapRef.current) {
+        closePlannerInfoWindow();
+        
+        // 지도 중심 이동
+        mapRef.current.panTo(marker.getPosition());
+        
+        // 인포윈도우 표시
+        const content = createPlannerInfoWindowElement(place);
+        const infoWindow = new kakao.maps.CustomOverlay({
+          content: content,
+          position: marker.getPosition(),
+          xAnchor: 0.5,
+          yAnchor: 1.35,
+          zIndex: 999,
+        });
+        infoWindow.setMap(mapRef.current);
+        plannerInfoWindowRef.current = infoWindow;
+      }
+    },
+  }), [destinations, showInfoWindow, closeInfoWindow, closePlannerInfoWindow, createPlannerInfoWindowElement]);
 
   return <div ref={mapContainerRef} className={className} style={{ width: '100%', height, position: 'relative' }} />;
 });

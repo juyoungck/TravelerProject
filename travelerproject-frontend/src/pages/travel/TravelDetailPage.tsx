@@ -1,11 +1,11 @@
 /**
  * TravelDetailPage.tsx - 여행지 상세 페이지
  * 여행지 정보, 리뷰 작성/목록, 찜 기능, 조회수 증가, 고정 미니탭, 위로가기 버튼 포함
- * 수정: 지도 로딩, 1인1리뷰, 내 리뷰 최상단, 수정/삭제 기능
+ * 수정: 지도 로딩, 1인1리뷰, 내 리뷰 최상단, 수정/삭제 기능, 리뷰 이미지
  * 수정: 페이지 진입 시 스크롤 맨 위로 이동
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Heart, Eye, MapPin, X, Star, ArrowUp, Edit2, Trash2 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Header } from '../../components/layout/Header';
@@ -20,7 +20,8 @@ import {
   toggleFavorite,
   checkFavorite,
   getFavoriteCount,
-  getDestinationImages
+  getDestinationImages,
+  getReviewImages
 } from '../../api/destinationApi';
 
 declare global {
@@ -59,6 +60,40 @@ interface Destination {
   lDongSignguCd: string;
 }
 
+/** 리뷰 이미지 컴포넌트 */
+const ReviewImages = ({ reviewId }: { reviewId: number }) => {
+  const [images, setImages] = useState<string[]>([]);
+
+  useEffect(() => {
+    const fetchImages = async () => {
+      try {
+        const response = await getReviewImages(reviewId);
+        if (response.status === 'success') {
+          setImages(response.data || []);
+        }
+      } catch (err) {
+        console.error('리뷰 이미지 조회 실패:', err);
+      }
+    };
+    fetchImages();
+  }, [reviewId]);
+
+  if (images.length === 0) return null;
+
+  return (
+    <div className="flex gap-2 mt-3">
+      {images.map((url, index) => (
+        <img
+          key={index}
+          src={url}
+          alt={`리뷰 이미지 ${index + 1}`}
+          className="w-24 h-24 object-cover rounded-lg"
+        />
+      ))}
+    </div>
+  );
+};
+
 /** Props 타입 정의 */
 interface TravelDetailPageProps {
   destinationId: string;
@@ -85,6 +120,9 @@ export function TravelDetailPage({
   // 이미지 목록 상태
   const [images, setImages] = useState<string[]>([]);
 
+  // 지도 상태
+  const mapRef = useRef<any>(null);
+
   // 리뷰 관련 상태
   const [reviews, setReviews] = useState<Review[]>([]);
   const [averageRating, setAverageRating] = useState(0);
@@ -100,16 +138,24 @@ export function TravelDetailPage({
   const [editRating, setEditRating] = useState(0);
   const [editContent, setEditContent] = useState('');
   const [editHoverRating, setEditHoverRating] = useState(0);
+  // 수정 시 이미지 상태
+  const [editKeepImages, setEditKeepImages] = useState<string[]>([]);
+  const [editNewImages, setEditNewImages] = useState<File[]>([]);
+  const [editPreviewUrls, setEditPreviewUrls] = useState<string[]>([]);
 
   // 찜 관련 상태
   const [isFavorite, setIsFavorite] = useState(false);
   const [favoriteCount, setFavoriteCount] = useState(0);
   const [favoriteLoading, setFavoriteLoading] = useState(false);
 
+  // 이미지 업로드 상태 (새 리뷰 작성용)
+  const [reviewImages, setReviewImages] = useState<File[]>([]);
+  const [previewUrls, setPreviewUrls] = useState<string[]>([]);
+  
   // UI 관련 상태
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [activeTab, setActiveTab] = useState<'photos' | 'info' | 'reviews' | 'notice'>('photos');
-
+  
   /** 페이지 진입 시 스크롤 맨 위로 이동 */
   useEffect(() => {
     // 스크롤 컨테이너를 찾아서 맨 위로
@@ -123,6 +169,7 @@ export function TravelDetailPage({
     // 탭도 초기화
     setActiveTab('photos');
   }, [destinationId]);
+  
 
   /** 여행지 상세 정보 조회 */
   useEffect(() => {
@@ -131,10 +178,8 @@ export function TravelDetailPage({
         setLoading(true);
         const data = await getDestinationDetail(destinationId);
         
-        // 조회수 증가
         await increaseViewCount(destinationId);
         
-        // 조회수 +1 반영
         setDestination({
           ...data,
           viewCount: (data.viewCount || 0) + 1
@@ -160,7 +205,6 @@ export function TravelDetailPage({
         if (response.status === 'success') {
           let reviewList = response.data || [];
           
-          // 내 리뷰를 최상단으로 정렬
           if (currentUserId) {
             reviewList = reviewList.sort((a: Review, b: Review) => {
               if (a.mId === currentUserId && b.mId !== currentUserId) return -1;
@@ -183,13 +227,12 @@ export function TravelDetailPage({
     }
   }, [destinationId, currentUserId]);
 
-    /** 이미지 목록 조회 */
+  /** 이미지 목록 조회 */
   useEffect(() => {
     const fetchImages = async () => {
       try {
         const response = await getDestinationImages(destinationId);
         if (response.status === 'success' && response.data) {
-          // originimgurl만 추출
           const imageUrls = response.data.map((img: any) => img.originimgurl);
           setImages(imageUrls);
         }
@@ -228,7 +271,6 @@ export function TravelDetailPage({
     }
   }, [destinationId, isLoggedIn, currentUserId]);
 
-  // 내가 이미 리뷰를 작성했는지 확인
   const myReview = reviews.find(review => review.mId === currentUserId);
   const hasMyReview = !!myReview;
 
@@ -286,7 +328,6 @@ export function TravelDetailPage({
       return;
     }
 
-    // 이미 리뷰 작성했는지 확인
     if (hasMyReview) {
       alert('이미 이 여행지에 후기를 작성하셨습니다.');
       return;
@@ -309,14 +350,12 @@ export function TravelDetailPage({
         contentid: destination.contentid,
         rvRating: newReviewRating,
         rvContent: newReviewContent
-      });
+      }, reviewImages);
 
       if (response.status === 'success') {
-        // 리뷰 목록 새로고침
         const reviewsResponse = await getReviewsByDestination(destinationId);
         if (reviewsResponse.status === 'success') {
           let reviewList = reviewsResponse.data || [];
-          // 내 리뷰 최상단 정렬
           if (currentUserId) {
             reviewList = reviewList.sort((a: Review, b: Review) => {
               if (a.mId === currentUserId && b.mId !== currentUserId) return -1;
@@ -331,6 +370,8 @@ export function TravelDetailPage({
 
         setNewReviewRating(0);
         setNewReviewContent('');
+        setReviewImages([]);     
+        setPreviewUrls([]);  
         setIsWritingReview(false);
         alert('후기가 등록되었습니다.');
       }
@@ -343,10 +384,24 @@ export function TravelDetailPage({
   };
 
   /** 리뷰 수정 시작 */
-  const handleStartEdit = (review: Review) => {
+  const handleStartEdit = async (review: Review) => {
     setEditingReviewId(review.rvId);
     setEditRating(review.rvRating);
     setEditContent(review.rvContent);
+    
+    // 기존 이미지 불러오기
+    try {
+      const response = await getReviewImages(review.rvId);
+      if (response.status === 'success') {
+        setEditKeepImages(response.data || []);
+      }
+    } catch (err) {
+      console.error('리뷰 이미지 조회 실패:', err);
+      setEditKeepImages([]);
+    }
+    
+    setEditNewImages([]);
+    setEditPreviewUrls([]);
   };
 
   /** 리뷰 수정 취소 */
@@ -355,6 +410,40 @@ export function TravelDetailPage({
     setEditRating(0);
     setEditContent('');
     setEditHoverRating(0);
+    setEditKeepImages([]);
+    setEditNewImages([]);
+    setEditPreviewUrls([]);
+  };
+
+  /** 수정 시 기존 이미지 삭제 */
+  const handleRemoveKeepImage = (index: number) => {
+    setEditKeepImages(prev => prev.filter((_, i) => i !== index));
+  };
+
+  /** 수정 시 새 이미지 추가 */
+  const handleEditImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+
+    const currentTotal = editKeepImages.length + editNewImages.length;
+    const remaining = 3 - currentTotal;
+    
+    if (remaining <= 0) {
+      alert('이미지는 최대 3장까지 등록 가능합니다.');
+      return;
+    }
+
+    const newFiles = Array.from(files).slice(0, remaining);
+    setEditNewImages(prev => [...prev, ...newFiles]);
+    
+    const urls = newFiles.map(file => URL.createObjectURL(file));
+    setEditPreviewUrls(prev => [...prev, ...urls]);
+  };
+
+  /** 수정 시 새 이미지 삭제 */
+  const handleRemoveEditNewImage = (index: number) => {
+    setEditNewImages(prev => prev.filter((_, i) => i !== index));
+    setEditPreviewUrls(prev => prev.filter((_, i) => i !== index));
   };
 
   /** 리뷰 수정 저장 */
@@ -371,13 +460,14 @@ export function TravelDetailPage({
 
     try {
       setReviewLoading(true);
-      const response = await updateReview(reviewId, {
-        rvRating: editRating,
-        rvContent: editContent
-      });
+      const response = await updateReview(
+        reviewId, 
+        { rvRating: editRating, rvContent: editContent },
+        editKeepImages,
+        editNewImages
+      );
 
       if (response.status === 'success') {
-        // 리뷰 목록 새로고침
         const reviewsResponse = await getReviewsByDestination(destinationId);
         if (reviewsResponse.status === 'success') {
           let reviewList = reviewsResponse.data || [];
@@ -415,7 +505,6 @@ export function TravelDetailPage({
       const response = await deleteReview(reviewId);
 
       if (response.status === 'success') {
-        // 리뷰 목록 새로고침
         const reviewsResponse = await getReviewsByDestination(destinationId);
         if (reviewsResponse.status === 'success') {
           let reviewList = reviewsResponse.data || [];
@@ -439,6 +528,29 @@ export function TravelDetailPage({
     } finally {
       setReviewLoading(false);
     }
+  };
+
+  /** 리뷰 이미지 선택 (새 리뷰 작성용) */
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+
+    const newFiles = Array.from(files);
+    const totalFiles = [...reviewImages, ...newFiles].slice(0, 3);
+
+    setReviewImages(totalFiles);
+
+    const urls = totalFiles.map(file => URL.createObjectURL(file));
+    setPreviewUrls(urls);
+  };
+
+  /** 이미지 삭제 (새 리뷰 작성용) */
+  const handleRemoveImage = (index: number) => {
+    const newImages = reviewImages.filter((_, i) => i !== index);
+    const newUrls = previewUrls.filter((_, i) => i !== index);
+    
+    setReviewImages(newImages);
+    setPreviewUrls(newUrls);
   };
 
   /** 스크롤 이벤트 핸들러 */
@@ -505,19 +617,32 @@ export function TravelDetailPage({
     return date.toLocaleDateString('ko-KR');
   };
 
-  // 지도용 마커 데이터 생성
-  const mapDestination = destination.mapx && destination.mapy ? [{
+  /** 지도용 마커 데이터 생성 */
+  const mapDestination = destination.mapx != null && destination.mapy != null ? [{
     contentid: destination.contentid,
     contenttypeid: destination.contenttypeid,
     title: destination.title,
     addr1: destination.addr1,
-    mapx: parseFloat(String(destination.mapx)),
-    mapy: parseFloat(String(destination.mapy)),
+    mapx: Number(destination.mapx),
+    mapy: Number(destination.mapy),
     firstimage: destination.firstimage,
     firstimage2: destination.firstimage2,
     distance: null,
-    typeName: getContentTypeName(destination.contenttypeid),
   }] : [];
+
+  /** 마커 클릭 핸들러 */
+  const handleMarkerClick = () => {
+    if (mapRef.current && destination?.mapx && destination?.mapy) {
+      mapRef.current.setCenter(Number(destination.mapy), Number(destination.mapx), 3);
+    }
+  };
+
+  /** 지도에서 보기 클릭 핸들러 */
+  const handleViewInMap = () => {
+    if (onNavigate && destination) {
+      onNavigate(`map?contentid=${destination.contentid}`);
+    }
+  };
 
   return (
     <div 
@@ -578,7 +703,6 @@ export function TravelDetailPage({
               </span>
             </div>
             <div className="flex items-center gap-4">
-              {/* 찜 버튼 */}
               <button 
                 onClick={handleToggleFavorite}
                 disabled={favoriteLoading}
@@ -587,7 +711,6 @@ export function TravelDetailPage({
                 <Heart className={`h-5 w-5 ${isFavorite ? 'fill-red-500 text-red-500' : ''}`} />
                 <span>{favoriteCount}</span>
               </button>
-              {/* 조회수 */}
               <div className="flex items-center gap-1 text-gray-600">
                 <Eye className="h-5 w-5" />
                 <span>{destination.viewCount || 0}</span>
@@ -596,12 +719,10 @@ export function TravelDetailPage({
           </div>
         </div>
 
-        
         {/* 사진보기 섹션 */}
         <section id="section-photos" className="mb-12">
           <h3 className="text-xl font-semibold mb-4">사진보기</h3>
           <div className="flex gap-4 overflow-x-auto pb-4">
-            {/* 대표 이미지 (firstimage) */}
             {destination.firstimage && (
               <img
                 src={destination.firstimage}
@@ -612,7 +733,6 @@ export function TravelDetailPage({
                 }}
               />
             )}
-            {/* DB 이미지 목록 (destination_image 테이블) */}
             {images.map((imageUrl, index) => (
               <img
                 key={index}
@@ -624,7 +744,6 @@ export function TravelDetailPage({
                 }}
               />
             ))}
-            {/* 이미지 없을 때 */}
             {!destination.firstimage && images.length === 0 && (
               <div className="w-full h-52 bg-gray-200 rounded-lg flex items-center justify-center">
                 <span className="text-gray-500">이미지가 없습니다</span>
@@ -648,18 +767,34 @@ export function TravelDetailPage({
             </div>
           )}
 
-          {/* 지도 - 카카오맵 연동 */}
           <div className="mb-6">
             <h4 className="font-semibold mb-3">위치</h4>
             {destination.mapx && destination.mapy ? (
-              <div className="w-full h-64 rounded-lg overflow-hidden border">
-                <KakaoMap
-                  centerLat={parseFloat(String(destination.mapy))}
-                  centerLng={parseFloat(String(destination.mapx))}
-                  level={3}
-                  destinations={mapDestination}
-                  height="256px"
-                />
+              <div className="relative w-full h-64 rounded-lg overflow-hidden border">
+                {mapDestination.length > 0 ? (
+                  <>
+                  <KakaoMap
+                    ref={mapRef}
+                    centerLat={Number(destination.mapy)}
+                    centerLng={Number(destination.mapx)}
+                    level={3}
+                    destinations={mapDestination}
+                    onMarkerClick={handleMarkerClick}
+                    height="256px"
+                  />
+                  <button
+                    onClick={handleViewInMap}
+                    className="absolute bottom-3 right-3 bg-white px-3 py-2 rounded-lg shadow-md text-sm font-medium text-blue-600 hover:bg-blue-50 transition-colors flex items-center gap-1 z-10"
+                  >
+                    <MapPin className="h-4 w-4" />
+                    지도에서 보기
+                  </button>
+                  </>
+                ) : (
+                  <div className="w-full h-64 bg-gray-200 rounded-lg flex items-center justify-center">
+                    <p className="text-gray-500">위치 정보가 없습니다.</p>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="w-full h-64 bg-gray-200 rounded-lg flex items-center justify-center">
@@ -668,7 +803,6 @@ export function TravelDetailPage({
             )}
           </div>
 
-          {/* 주소 */}
           <div className="bg-white border rounded-lg p-4">
             <div className="flex gap-2">
               <MapPin className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
@@ -694,7 +828,6 @@ export function TravelDetailPage({
                 </div>
               )}
             </div>
-            {/* 후기 작성 버튼 - 이미 작성했으면 비활성화 */}
             <Button 
               onClick={() => {
                 if (!isLoggedIn) {
@@ -719,7 +852,6 @@ export function TravelDetailPage({
             <div className="bg-gray-50 p-6 rounded-lg mb-6">
               <h4 className="font-semibold mb-3">후기 작성</h4>
               
-              {/* 별점 선택 */}
               <div className="mb-4">
                 <label className="block text-sm font-medium mb-2">별점</label>
                 <div className="flex items-center gap-2">
@@ -741,7 +873,6 @@ export function TravelDetailPage({
                 </div>
               </div>
 
-              {/* 후기 내용 */}
               <div className="mb-4">
                 <label className="block text-sm font-medium mb-2">후기 내용</label>
                 <textarea
@@ -750,6 +881,54 @@ export function TravelDetailPage({
                   placeholder="방문 후기를 작성해주세요..."
                   className="w-full min-h-[120px] px-3 py-2 border rounded-md resize-vertical"
                 />
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-2">
+                  사진 첨부 (최대 3장)
+                </label>
+                
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={handleImageSelect}
+                  className="hidden"
+                  id="review-image-input"
+                  disabled={reviewImages.length >= 3}
+                />
+                
+                <div className="flex gap-2 flex-wrap">
+                  {previewUrls.map((url, index) => (
+                    <div key={index} className="relative w-20 h-20">
+                      <img
+                        src={url}
+                        alt={`미리보기 ${index + 1}`}
+                        className="w-full h-full object-cover rounded-lg"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveImage(index)}
+                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                  
+                  {reviewImages.length < 3 && (
+                    <label
+                      htmlFor="review-image-input"
+                      className="w-20 h-20 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center cursor-pointer hover:border-blue-500"
+                    >
+                      <span className="text-gray-400 text-2xl">+</span>
+                    </label>
+                  )}
+                </div>
+                
+                <p className="text-xs text-gray-500 mt-1">
+                  {reviewImages.length}/3장
+                </p>
               </div>
 
               <div className="flex gap-2">
@@ -762,6 +941,8 @@ export function TravelDetailPage({
                     setIsWritingReview(false);
                     setNewReviewRating(0);
                     setNewReviewContent('');
+                    setReviewImages([]);
+                    setPreviewUrls([]);
                   }}
                 >
                   취소
@@ -800,12 +981,79 @@ export function TravelDetailPage({
                           ))}
                         </div>
                       </div>
+                      
                       {/* 내용 수정 */}
                       <textarea
                         value={editContent}
                         onChange={(e) => setEditContent(e.target.value)}
                         className="w-full min-h-[80px] px-3 py-2 border rounded-md resize-vertical mb-3"
                       />
+                      
+                      {/* 이미지 수정 */}
+                      <div className="mb-3">
+                        <label className="block text-sm font-medium mb-2">
+                          사진 ({editKeepImages.length + editNewImages.length}/3장)
+                        </label>
+                        
+                        <input
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          onChange={handleEditImageSelect}
+                          className="hidden"
+                          id="edit-image-input"
+                          disabled={editKeepImages.length + editNewImages.length >= 3}
+                        />
+                        
+                        <div className="flex gap-2 flex-wrap">
+                          {/* 기존 이미지 */}
+                          {editKeepImages.map((url, index) => (
+                            <div key={`keep-${index}`} className="relative w-20 h-20">
+                              <img
+                                src={url}
+                                alt={`기존 이미지 ${index + 1}`}
+                                className="w-full h-full object-cover rounded-lg"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveKeepImage(index)}
+                                className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs"
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))}
+                          
+                          {/* 새 이미지 미리보기 */}
+                          {editPreviewUrls.map((url, index) => (
+                            <div key={`new-${index}`} className="relative w-20 h-20">
+                              <img
+                                src={url}
+                                alt={`새 이미지 ${index + 1}`}
+                                className="w-full h-full object-cover rounded-lg border-2 border-blue-400"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveEditNewImage(index)}
+                                className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs"
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))}
+                          
+                          {/* 추가 버튼 */}
+                          {editKeepImages.length + editNewImages.length < 3 && (
+                            <label
+                              htmlFor="edit-image-input"
+                              className="w-20 h-20 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center cursor-pointer hover:border-blue-500"
+                            >
+                              <span className="text-gray-400 text-2xl">+</span>
+                            </label>
+                          )}
+                        </div>
+                      </div>
+                      
                       <div className="flex gap-2">
                         <Button 
                           size="sm" 
@@ -835,7 +1083,6 @@ export function TravelDetailPage({
                           </span>
                         </div>
                         <div className="flex items-center gap-2">
-                          {/* 수정/삭제 버튼 - 본인 글만 */}
                           {review.mId === currentUserId && (
                             <>
                               <button
@@ -858,6 +1105,8 @@ export function TravelDetailPage({
                         </div>
                       </div>
                       <p className="text-gray-700">{review.rvContent}</p>
+                      {/* 리뷰 이미지 표시 */}
+                      <ReviewImages reviewId={review.rvId} />
                     </>
                   )}
                 </div>
