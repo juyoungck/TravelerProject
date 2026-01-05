@@ -590,4 +590,10 @@ public class DestinationService {
         status.put("remainingCount", totalWithThumbnail - downloadedCount);
         return status;
     }
+    /**
+     * 이미지가 있는 여행지 중 랜덤 N개 조회
+     */
+    public List<Destination> getRandomDestinationsWithImage(int size) {
+        return destinationDao.selectRandomDestinationsWithImage(size);
+    }
 }
