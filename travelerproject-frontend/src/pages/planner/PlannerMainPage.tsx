@@ -91,7 +91,12 @@ export function PlannerMainPage({ onCreatePlanner, onViewMore, onSelectPlanner }
         }));
         setMyPlanners(planners);
       }
-    };
+    } catch (error) {
+      console.error('나의 플래너 목록 로드 실패', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   /** 전체 플래너 목록 불러오기 (찜 많은 순) */
   const fetchAllPlanners = async (page: number = 1) => {
