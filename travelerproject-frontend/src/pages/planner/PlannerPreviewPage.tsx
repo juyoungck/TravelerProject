@@ -1,10 +1,11 @@
 /**
  * PlannerPreviewPage.tsx - 플래너 미리보기 페이지
- * 플래너 내용을 읽기 전용으로 보여주고 찜 기능 제공
- * 백엔드 API 연동 완료
- *
- * 수정: 중앙 지도 영역에 카카오맵 컴포넌트 추가
- * 수정: 본인이 작성한 플래너만 편집 가능
+ * 
+ * 레이아웃:
+ * - 나의 작성한 플래너: 버튼(찜/삭제/공유/편집) 맨 위 → 제목 → 날짜 → 일정
+ * - 전체 플래너: 제목 → 날짜 → 일정(+찜 버튼 옆)
+ * 
+ * 수정: 사이드바 스크롤 PlannerEditPage처럼 적용
  */
 
 import { useState, useEffect, useMemo, useRef } from 'react';
@@ -15,10 +16,15 @@ import {
   ChevronRight,
   Heart,
   Edit,
+  Trash2,
+  Share2,
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { getPlannerDetail, PlannerDetail, DayPlanDetail } from '../../api/plannerApi';
 import KakaoMap, { KakaoMapRef, PlannerPlace } from '../../components/map/KakaoMap';
+import axios from 'axios';
+
+const API_BASE_URL = 'http://localhost:8080/api';
 
 interface Place {
   id: string;
@@ -112,27 +118,27 @@ const getCurrentUserId = (): number | null => {
   return null;
 };
 
-export function PlannerPreviewPage({ 
-  planner, 
-  onBack, 
-  onEdit, 
-  isLoggedIn, 
-  favoritePlanners, 
-  onToggleFavoritePlanner 
+export function PlannerPreviewPage({
+  planner,
+  onBack,
+  onEdit,
+  isLoggedIn,
+  favoritePlanners,
+  onToggleFavoritePlanner
 }: PlannerPreviewPageProps) {
   const mapRef = useRef<KakaoMapRef>(null);
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
+
   const [plannerDetail, setPlannerDetail] = useState<PlannerDetail | null>(null);
   const [dayPlans, setDayPlans] = useState<DayPlan[]>([]);
 
-  // ★ isLiked 계산
-  const isLiked = favoritePlanners?.some((fav) => fav.id === planner.id) || false;
-  const likes = (plannerDetail?.favoriteCount || planner.likes);
+  // 찜 상태 관리
+  const [isLiked, setIsLiked] = useState(false);
+  const [likeCount, setLikeCount] = useState(planner.likes || 0);
 
-  // ★ 본인 플래너인지 확인
+  // 본인 플래너인지 확인
   const currentUserId = getCurrentUserId();
   const isOwner = plannerDetail ? plannerDetail.mId === currentUserId : false;
 
@@ -141,7 +147,7 @@ export function PlannerPreviewPage({
    */
   const plannerPlacesForMap = useMemo((): PlannerPlace[] => {
     const places: PlannerPlace[] = [];
-    
+
     dayPlans.forEach((dayPlan) => {
       dayPlan.places.forEach((place, index) => {
         if (place.mapx && place.mapy) {
@@ -156,7 +162,7 @@ export function PlannerPreviewPage({
         }
       });
     });
-    
+
     return places;
   }, [dayPlans]);
 
@@ -174,6 +180,27 @@ export function PlannerPreviewPage({
   }, [plannerPlacesForMap]);
 
   /**
+   * 찜 여부 확인 API
+   */
+  const checkFavoriteStatus = async () => {
+    const userId = getCurrentUserId();
+    if (!userId) return;
+
+    try {
+      const response = await axios.get(`${API_BASE_URL}/planner/${planner.id}/favorite`, {
+        params: { mId: userId }
+      });
+
+      if (response.data.status === 'success') {
+        setIsLiked(response.data.isFavorite);
+        setLikeCount(response.data.favoriteCount);
+      }
+    } catch (error) {
+      console.error('찜 상태 확인 실패:', error);
+    }
+  };
+
+  /**
    * 플래너 상세 데이터 조회
    */
   const fetchPlannerDetail = async () => {
@@ -182,7 +209,8 @@ export function PlannerPreviewPage({
     try {
       const detail = await getPlannerDetail(planner.id);
       setPlannerDetail(detail);
-      
+      setLikeCount(detail.favoriteCount || 0);
+
       if (detail.dayPlans && detail.dayPlans.length > 0) {
         const converted = detail.dayPlans.map(convertToDayPlan);
         setDayPlans(converted);
@@ -195,6 +223,9 @@ export function PlannerPreviewPage({
         }));
         setDayPlans(emptyDays);
       }
+
+      // 찜 상태 확인
+      await checkFavoriteStatus();
     } catch (err: any) {
       console.error('플래너 상세 조회 실패:', err);
       setError('플래너 정보를 불러오는데 실패했습니다.');
@@ -207,35 +238,82 @@ export function PlannerPreviewPage({
     fetchPlannerDetail();
   }, [planner.id]);
 
-  const handleLike = () => {
-    if (!isLoggedIn) {
+  /**
+   * 찜 토글 핸들러 (API 직접 호출)
+   */
+  const handleLike = async () => {
+    const userId = getCurrentUserId();
+
+    if (!userId) {
       alert('로그인이 필요한 기능입니다.');
       return;
     }
-    if (onToggleFavoritePlanner) {
-      onToggleFavoritePlanner(planner);
+
+    try {
+      const response = await axios.post(`${API_BASE_URL}/planner/${planner.id}/favorite`, null, {
+        params: { mId: userId }
+      });
+
+      if (response.data.status === 'success') {
+        setIsLiked(response.data.isFavorite);
+        setLikeCount(response.data.favoriteCount);
+      }
+    } catch (error) {
+      console.error('찜 토글 실패:', error);
+      alert('찜 기능 처리 중 오류가 발생했습니다.');
+    }
+  };
+
+  /**
+   * 삭제 버튼 클릭 핸들러
+   */
+  const handleDelete = async () => {
+    if (!window.confirm('정말 이 플래너를 삭제하시겠습니까?')) {
+      return;
+    }
+
+    try {
+      const response = await axios.delete(`${API_BASE_URL}/planner/${planner.id}`);
+
+      if (response.data.status === 'success') {
+        alert('플래너가 삭제되었습니다.');
+        onBack();
+      }
+    } catch (error) {
+      console.error('플래너 삭제 실패:', error);
+      alert('플래너 삭제 중 오류가 발생했습니다.');
+    }
+  };
+
+  /**
+   * 공유 버튼 클릭 핸들러
+   */
+  const handleShare = async () => {
+    try {
+      const shareUrl = `${window.location.origin}/planner/preview/${planner.id}`;
+      await navigator.clipboard.writeText(shareUrl);
+      alert(`공유 링크가 복사되었습니다!\n\n${shareUrl}`);
+    } catch (error) {
+      console.error('공유 링크 복사 실패:', error);
+      alert('공유 링크 복사 중 오류가 발생했습니다.');
     }
   };
 
   /**
    * 편집 버튼 클릭 핸들러
-   * - 로그인 여부 확인
-   * - 본인 플래너인지 확인
    */
   const handleEdit = () => {
-    // 로그인 확인
-    if (!isLoggedIn) {
+    const userId = getCurrentUserId();
+    if (!userId) {
       alert('로그인이 필요한 서비스입니다.');
       return;
     }
-    
-    // 본인 플래너인지 확인
+
     if (!isOwner) {
       alert('본인이 작성한 플래너만 편집할 수 있습니다.');
       return;
     }
-    
-    // 편집 페이지로 이동
+
     if (onEdit && plannerDetail) {
       onEdit({
         id: plannerDetail.plnId,
@@ -288,146 +366,206 @@ export function PlannerPreviewPage({
   // 데이터 표시용 변수
   const title = plannerDetail?.plnTitle || planner.title;
   const author = plannerDetail?.authorNickname || planner.author;
-  const region = plannerDetail?.regionName || planner.region;
   const startDate = plannerDetail?.startDate || '';
   const endDate = plannerDetail?.endDate || '';
   const totalDays = plannerDetail?.totalDays || planner.days;
 
+  /**
+   * DAY 리스트 렌더링 (공통)
+   */
+  const renderDayList = () => (
+    <div className="space-y-3">
+      {dayPlans.map((dayPlan) => (
+        <div key={dayPlan.id} className="border rounded-lg overflow-hidden bg-white shadow-sm">
+          {/* Day 헤더 */}
+          <div className="bg-blue-600 text-white p-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-sm">DAY {dayPlan.day}</span>
+                {dayPlan.memo && (
+                  <span className="text-xs opacity-90">- {dayPlan.memo}</span>
+                )}
+              </div>
+              <span className="text-xs opacity-90">
+                {dayPlan.places.length}개 장소
+              </span>
+            </div>
+          </div>
+
+          {/* Day 내용 */}
+          <div className="p-3">
+            <div className="space-y-2">
+              {dayPlan.places.length > 0 ? (
+                dayPlan.places.map((place, index) => (
+                  <button
+                    key={place.id}
+                    onClick={() => handlePlaceClick(place)}
+                    className="w-full flex items-center gap-2 p-2 bg-gray-50 rounded border hover:bg-blue-50 hover:border-blue-300 transition-colors text-left"
+                  >
+                    <div className="flex-shrink-0 w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs font-bold">
+                      {index + 1}
+                    </div>
+                    <img
+                      src={place.image}
+                      alt={place.name}
+                      className="w-12 h-12 object-cover rounded"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = DEFAULT_IMAGE;
+                      }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-sm truncate">
+                        {place.name}
+                      </div>
+                      <div className="flex items-center gap-1 text-xs text-gray-600">
+                        <span className="px-1.5 py-0.5 bg-white rounded border">
+                          {place.category}
+                        </span>
+                        <MapPinIcon className="h-3 w-3" />
+                        <span>{place.region}</span>
+                      </div>
+                    </div>
+                  </button>
+                ))
+              ) : (
+                <p className="text-center text-gray-500 text-sm py-4">
+                  등록된 장소가 없습니다
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50">
+    <div className="h-screen flex flex-col bg-gray-100">
       {/* 상단 헤더 */}
-      <div className="bg-white border-b px-4 py-3 flex items-center justify-between">
+      <header className="bg-white border-b px-4 py-2 flex items-center justify-between">
         <Button variant="ghost" size="icon" onClick={onBack}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
-        <h1 className="text-xl font-bold">{title}</h1>
-        <div className="w-10" />
-      </div>
+        <h1 className="text-lg font-semibold">{title}</h1>
+        <div className="w-10" /> {/* 중앙 정렬을 위한 빈 공간 */}
+      </header>
 
       {/* 메인 콘텐츠 */}
       <div className="flex-1 flex overflow-hidden">
-        {/* 왼쪽 사이드바 - 플래너 미리보기 */}
+        {/* 왼쪽 사이드바 */}
         {isLeftSidebarOpen && (
-          <div className="w-80 bg-white border-r overflow-y-auto">
-            <div className="p-4">
-              {/* 플래너 미리보기 제목 & 편집하기, 좋아요 버튼 */}
-              <div className="flex items-center gap-2 mb-4">
-                <h3 className="whitespace-nowrap text-sm font-semibold">플래너 미리보기</h3>
-                <div className="flex gap-1 flex-1">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleLike}
-                    className={`flex-1 text-xs px-2 py-1 h-7 ${
-                      isLiked ? 'text-red-500 border-red-500' : ''
-                    }`}
-                  >
-                    <Heart className={`h-3 w-3 mr-1 ${isLiked ? 'fill-current' : ''}`} />
-                    {likes}
-                  </Button>
-                  {/* 본인 플래너일 때만 편집 버튼 표시 */}
-                  {isOwner && (
+          <div className="w-80 bg-white border-r flex flex-col">
+            <div className="flex-1 overflow-y-auto p-4">
+
+              {/* ===== 나의 플래너 레이아웃 (isOwner === true) ===== */}
+              {isOwner ? (
+                <>
+                  {/* 1. 버튼 맨 위 (찜/삭제/공유/편집) */}
+                  <div className="grid grid-cols-4 gap-2 mb-3">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleLike}
+                      className={`${isLiked ? 'text-red-500 border-red-500' : ''}`}
+                    >
+                      <Heart className={`h-4 w-4 mr-1 ${isLiked ? 'fill-current' : ''}`} />
+                      {likeCount}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleDelete}
+                      className="text-red-500 hover:bg-red-50"
+                    >
+                      <Trash2 className="h-4 w-4 mr-1" />
+                      삭제
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleShare}
+                    >
+                      <Share2 className="h-4 w-4 mr-1" />
+                      공유
+                    </Button>
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={handleEdit}
-                      className="flex-1 text-xs px-2 py-1 h-7"
                     >
-                      <Edit className="h-3 w-3 mr-1" />
+                      <Edit className="h-4 w-4 mr-1" />
                       편집
                     </Button>
-                  )}
-                </div>
-              </div>
-
-              {/* 제목 & 작성자 통합 */}
-              <div className="mb-3">
-                <div className="px-3 py-2 border rounded bg-gray-50 text-gray-700">
-                  <span className="font-semibold text-blue-600">{author}</span>의 {title}
-                </div>
-              </div>
-
-              {/* 날짜 (읽기 전용) */}
-              <div className="mb-4">
-                <div className="flex items-center gap-2">
-                  <div className="flex-1 text-sm text-gray-600 px-3 py-2 border rounded bg-gray-50">
-                    {startDate} ~ {endDate} ({totalDays}일)
                   </div>
-                </div>
-              </div>
 
-              {/* DAY 리스트 (읽기 전용) */}
-              <div>
-                <h4 className="mb-3 text-sm font-semibold">일정</h4>
-                <div className="space-y-3">
-                  {dayPlans.map((dayPlan) => (
-                    <div key={dayPlan.id} className="border rounded-lg overflow-hidden bg-white">
-                      {/* Day 헤더 */}
-                      <div className="bg-blue-600 text-white p-3">
-                        <div className="flex items-center justify-between mb-1">
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-sm">DAY {dayPlan.day}</span>
-                            {dayPlan.memo && (
-                              <span className="text-xs opacity-90">- {dayPlan.memo}</span>
-                            )}
-                          </div>
-                          <span className="text-xs opacity-90">
-                            {dayPlan.places.length}개 장소
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Day 내용 */}
-                      <div className="p-3">
-                        <div className="space-y-2">
-                          {dayPlan.places.length > 0 ? (
-                            dayPlan.places.map((place, index) => (
-                              <button
-                                key={place.id}
-                                onClick={() => handlePlaceClick(place)}
-                                className="w-full flex items-center gap-2 p-2 bg-gray-50 rounded border hover:bg-blue-50 hover:border-blue-300 transition-colors text-left"
-                              >
-                                <div className="flex-shrink-0 w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs font-bold">
-                                  {index + 1}
-                                </div>
-                                <img
-                                  src={place.image}
-                                  alt={place.name}
-                                  className="w-12 h-12 object-cover rounded"
-                                  onError={(e) => {
-                                    (e.target as HTMLImageElement).src = DEFAULT_IMAGE;
-                                  }}
-                                />
-                                <div className="flex-1 min-w-0">
-                                  <div className="font-semibold text-sm truncate">
-                                    {place.name}
-                                  </div>
-                                  <div className="flex items-center gap-1 text-xs text-gray-600">
-                                    <span className="px-1.5 py-0.5 bg-white rounded border">
-                                      {place.category}
-                                    </span>
-                                    <MapPinIcon className="h-3 w-3" />
-                                    <span>{place.region}</span>
-                                  </div>
-                                </div>
-                              </button>
-                            ))
-                          ) : (
-                            <p className="text-center text-gray-500 text-sm py-4">
-                              등록된 장소가 없습니다
-                            </p>
-                          )}
-                        </div>
-                      </div>
+                  {/* 2. 제목 */}
+                  <div className="mb-3">
+                    <div className="px-3 py-2 border rounded bg-gray-50 text-gray-700">
+                      <span className="font-semibold text-blue-600">{author}</span>의 플래너
                     </div>
-                  ))}
-                </div>
-              </div>
+                  </div>
+
+                  {/* 3. 날짜 */}
+                  <div className="mb-4">
+                    <div className="text-sm text-gray-600 px-3 py-2 border rounded bg-gray-50">
+                      {startDate} ~ {endDate} ({totalDays}일)
+                    </div>
+                  </div>
+
+                  {/* 4. 일정 라벨 + 공개/비공개 뱃지 */}
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-sm font-semibold">일정</h4>
+                    <span className={`px-2 py-0.5 rounded text-xs ${plannerDetail?.isPublic === 1
+                        ? 'bg-green-100 text-green-600'
+                        : 'bg-gray-200 text-gray-500'
+                      }`}>
+                      {plannerDetail?.isPublic === 1 ? '공개' : '비공개'}
+                    </span>
+                  </div>
+                  {/* 5. DAY 리스트 */}
+                  {renderDayList()}
+                </>
+              ) : (
+                /* ===== 전체 플래너 레이아웃 (isOwner === false) ===== */
+                <>
+                  {/* 1. 제목 */}
+                  <div className="mb-3">
+                    <div className="px-3 py-2 border rounded bg-gray-50 text-gray-700">
+                      <span className="font-semibold text-blue-600">{author}</span>의 플래너
+                    </div>
+                  </div>
+
+                  {/* 2. 날짜 */}
+                  <div className="mb-4">
+                    <div className="text-sm text-gray-600 px-3 py-2 border rounded bg-gray-50">
+                      {startDate} ~ {endDate} ({totalDays}일)
+                    </div>
+                  </div>
+
+                  {/* 3. 일정 라벨 + 찜 버튼 */}
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-sm font-semibold">일정</h4>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleLike}
+                      className={`${isLiked ? 'text-red-500 border-red-500' : ''}`}
+                    >
+                      <Heart className={`h-4 w-4 mr-1 ${isLiked ? 'fill-current' : ''}`} />
+                      {likeCount}
+                    </Button>
+                  </div>
+
+                  {/* 4. DAY 리스트 */}
+                  {renderDayList()}
+                </>
+              )}
+
             </div>
           </div>
         )}
 
-        {/* 토글 버튼 (왼쪽) */}
+        {/* 토글 버튼 */}
         <button
           onClick={() => setIsLeftSidebarOpen(!isLeftSidebarOpen)}
           className="w-6 bg-gray-200 hover:bg-gray-300 flex items-center justify-center"
@@ -439,7 +577,7 @@ export function PlannerPreviewPage({
           )}
         </button>
 
-        {/* ★ 중앙 지도 - 카카오맵 (항상 표시) */}
+        {/* 중앙 지도 - 카카오맵 */}
         <div className="flex-1 relative">
           <KakaoMap
             ref={mapRef}

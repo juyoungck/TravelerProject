@@ -263,8 +263,8 @@ public class FavoriteController {
         try {
             String token = authHeader.replace("Bearer ", "");
             Long mId = jwtService.getMemberIdFromToken(token);
-            
-            if (mId == null) {
+                                                                                                         
+            if (mId == null) {           
                 response.put("status", "error");
                 response.put("message", "로그인이 필요합니다.");
                 return ResponseEntity.status(401).body(response);
