@@ -10,6 +10,7 @@ import { Heart, Eye, MapPin, X, Star, ArrowUp, Edit2, Trash2 } from 'lucide-reac
 import { Button } from '../../components/ui/button';
 import { Header } from '../../components/layout/Header';
 import KakaoMap from '../../components/map/KakaoMap';
+import { ImageGalleryModal } from '../../components/modals/ImageGalleryModal';
 import { 
   getDestinationDetail, 
   increaseViewCount,
@@ -119,6 +120,10 @@ export function TravelDetailPage({
   
   // 이미지 목록 상태
   const [images, setImages] = useState<string[]>([]);
+
+  // 이미지 갤러리 모달 상태
+  const [isGalleryOpen, setIsGalleryOpen] = useState(false);
+  const [galleryStartIndex, setGalleryStartIndex] = useState(0);
 
   // 지도 상태
   const mapRef = useRef<any>(null);
@@ -319,6 +324,12 @@ export function TravelDetailPage({
     } finally {
       setFavoriteLoading(false);
     }
+  };
+
+  /** 이미지 클릭 시 갤러리 모달 열기 */
+  const handleImageClick = (index: number) => {
+    setGalleryStartIndex(index);
+    setIsGalleryOpen(true);
   };
 
   /** 리뷰 등록 핸들러 */
@@ -727,7 +738,8 @@ export function TravelDetailPage({
               <img
                 src={destination.firstimage}
                 alt={destination.title}
-                className="flex-shrink-0 w-80 h-52 object-cover rounded-lg"
+                className="flex-shrink-0 w-80 h-52 object-cover rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                onClick={() => handleImageClick(0)}
                 onError={(e) => {
                   (e.target as HTMLImageElement).style.display = 'none';
                 }}
@@ -738,7 +750,8 @@ export function TravelDetailPage({
                 key={index}
                 src={imageUrl}
                 alt={`${destination.title} ${index + 1}`}
-                className="flex-shrink-0 w-80 h-52 object-cover rounded-lg"
+                className="flex-shrink-0 w-80 h-52 object-cover rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                onClick={() => handleImageClick(destination.firstimage ? index + 1 : index)}
                 onError={(e) => {
                   (e.target as HTMLImageElement).style.display = 'none';
                 }}
@@ -1163,6 +1176,14 @@ export function TravelDetailPage({
           <ArrowUp className="h-6 w-6" />
         </button>
       )}
+
+            {/* 이미지 갤러리 모달 */}
+      <ImageGalleryModal
+        images={destination.firstimage ? [destination.firstimage, ...images] : images}
+        initialIndex={galleryStartIndex}
+        isOpen={isGalleryOpen}
+        onClose={() => setIsGalleryOpen(false)}
+      />
     </div>
   );
 }

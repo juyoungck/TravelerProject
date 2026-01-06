@@ -18,6 +18,7 @@ import { FindPasswordPage } from "./pages/auth/FindPasswordPage";
 import { NoticePage } from "./pages/NoticePage";
 import { SharedPlannerPage } from "./pages/planner/SharedPlannerPage";
 import { socialApi } from "./api/socialApi";
+import { onPageChange } from './utils/translate';
 
 /**
  * App.tsx - 메인 애플리케이션
@@ -249,6 +250,7 @@ export default function App() {
       setSelectedMapContentId(contentid);
       setCurrentPage('map');
       window.scrollTo(0, 0);
+      onPageChange();
       return;
     }
 
@@ -274,6 +276,9 @@ export default function App() {
       window.history.pushState({}, '', '/');
     }
     window.scrollTo(0, 0);
+
+    // 페이지 변경 후 번역 트리거
+    onPageChange();
   };
 
   /**
