@@ -99,25 +99,89 @@ export function SearchModal({ isOpen, onClose, onSelectDestination, onSelectPlan
     setIsLoading(true);
 
     try {
-      let destinationItems: SearchResult[] = [];
-      let plannerItems: SearchResult[] = [];
-      let destTotalCount = 0;
-      let destTotalPages = 0;
-      let plannerTotalCount = 0;
-      let plannerTotalPages = 0;
+      let items: SearchResult[] = [];
+      let totalCnt = 0;
+      let totalPgs = 0;
 
-      // 탭에 따라 검색
-      if (tab === '전체' || tab === '여행지') {
+      if (tab === '전체') {
+        // 통합 검색 API 호출
+        const response = await api.get('/search', {
+          params: { keyword: query, page, size: pageSize }
+        });
+        const result = response.data;
+
+        if (result.status === 'success') {
+          totalCnt = result.totalCount || 0;
+          totalPgs = result.totalPages || 0;
+
+          items = (result.data || []).map((item: any) => {
+            const searchType = item.SEARCHTYPE || item.searchType;
+            
+            if (searchType === 'destination') {
+              // 여행지
+              const contentTypeId = String(item.CONTENTTYPEID || item.contenttypeid || '12');
+              const typeName = CONTENT_TYPE_MAP[contentTypeId] || '관광지';
+
+              return {
+                id: String(item.ID || item.id),
+                type: typeName as SearchResult['type'],
+                iconType: 'place' as const,
+                title: item.TITLE || item.title,
+                subtitle: item.REGIONNAME || item.regionName || item.ADDR1 || item.addr1 || '',
+                image: item.FIRSTIMAGE2 || item.firstimage2,
+                contenttypeid: contentTypeId,
+              };
+            } else {
+              // 플래너
+              let regionText = '';
+              const sidoName = item.SIDONAME || item.sidoName || '';
+              const signguName = item.SIGNGUNAME || item.signguName || '';
+              
+              if (sidoName) {
+                regionText = sidoName;
+                if (signguName) {
+                  regionText += ' ' + signguName;
+                }
+              }
+
+              const startDate = item.STARTDATE || item.startDate;
+              const endDate = item.ENDDATE || item.endDate;
+              let dateText = '';
+              if (startDate) {
+                const start = new Date(startDate).toLocaleDateString('ko-KR');
+                const end = endDate ? new Date(endDate).toLocaleDateString('ko-KR') : '';
+                dateText = end ? `${start} ~ ${end}` : start;
+              }
+
+              const author = item.MEMBERNICKNAME || item.memberNickname || '';
+
+              const subtitleParts = [];
+              if (author) subtitleParts.push(author);
+              if (dateText) subtitleParts.push(dateText);
+              if (regionText) subtitleParts.push(regionText);
+
+              return {
+                id: String(item.ID || item.id),
+                type: '플래너' as const,
+                iconType: 'planner' as const,
+                title: item.TITLE || item.title,
+                subtitle: subtitleParts.join(' | ') || '정보 없음',
+              };
+            }
+          });
+        }
+      } else if (tab === '여행지') {
+        // 여행지만 검색
         const response = await api.get('/search/destination', {
           params: { keyword: query, page, size: pageSize }
         });
-        const destinationResults = response.data;
+        const result = response.data;
 
-        if (destinationResults.status === 'success') {
-          destTotalCount = destinationResults.totalCount || 0;
-          destTotalPages = destinationResults.totalPages || 0;
+        if (result.status === 'success') {
+          totalCnt = result.totalCount || 0;
+          totalPgs = result.totalPages || 0;
 
-          destinationItems = (destinationResults.data || []).map((item: any) => {
+          items = (result.data || []).map((item: any) => {
             const contentTypeId = String(item.CONTENTTYPEID || item.contenttypeid || '12');
             const typeName = CONTENT_TYPE_MAP[contentTypeId] || '관광지';
 
@@ -132,88 +196,59 @@ export function SearchModal({ isOpen, onClose, onSelectDestination, onSelectPlan
             };
           });
         }
-      }
+      } else {
+        // 플래너만 검색
+        const response = await api.get('/search/planner', {
+          params: { keyword: query, page, size: pageSize }
+        });
+        const result = response.data;
 
-      if (tab === '전체' || tab === '플래너') {
-        try {
-          const response = await api.get('/search/planner', {
-            params: { keyword: query, page, size: pageSize }
+        if (result.status === 'success') {
+          totalCnt = result.totalCount || 0;
+          totalPgs = result.totalPages || 0;
+
+          items = (result.data || []).map((item: any) => {
+            let regionText = '';
+            const sidoName = item.SIDONAME || item.sidoName || '';
+            const signguName = item.SIGNGUNAME || item.signguName || '';
+            
+            if (sidoName) {
+              regionText = sidoName;
+              if (signguName) {
+                regionText += ' ' + signguName;
+              }
+            }
+
+            const startDate = item.STARTDATE || item.startDate;
+            const endDate = item.ENDDATE || item.endDate;
+            let dateText = '';
+            if (startDate) {
+              const start = new Date(startDate).toLocaleDateString('ko-KR');
+              const end = endDate ? new Date(endDate).toLocaleDateString('ko-KR') : '';
+              dateText = end ? `${start} ~ ${end}` : start;
+            }
+
+            const author = item.MEMBERNICKNAME || item.memberNickname || '';
+
+            const subtitleParts = [];
+            if (author) subtitleParts.push(author);
+            if (dateText) subtitleParts.push(dateText);
+            if (regionText) subtitleParts.push(regionText);
+
+            return {
+              id: String(item.PLNID || item.plnId),
+              type: '플래너' as const,
+              iconType: 'planner' as const,
+              title: item.PLNTITLE || item.plnTitle,
+              subtitle: subtitleParts.join(' | ') || '정보 없음',
+            };
           });
-          const plannerResults = response.data;
-
-          if (plannerResults.status === 'success') {
-            plannerTotalCount = plannerResults.totalCount || 0;
-            plannerTotalPages = plannerResults.totalPages || 0;
-
-            plannerItems = (plannerResults.data || []).map((item: any) => {
-              // 지역명 조합 (시도 + 시군구)
-              let regionText = '';
-              if (item.SIDONAME || item.sidoName) {
-                regionText = item.SIDONAME || item.sidoName;
-                if (item.SIGNGUNAME || item.signguName) {
-                  regionText += ' ' + (item.SIGNGUNAME || item.signguName);
-                }
-              }
-
-              // 날짜 포맷
-              const startDate = item.STARTDATE || item.startDate;
-              const endDate = item.ENDDATE || item.endDate;
-              let dateText = '';
-              if (startDate) {
-                const start = new Date(startDate).toLocaleDateString('ko-KR');
-                const end = endDate ? new Date(endDate).toLocaleDateString('ko-KR') : '';
-                dateText = end ? `${start} ~ ${end}` : start;
-              }
-
-              // 작성자
-              const author = item.MEMBERNICKNAME || item.memberNickname || '';
-
-              // subtitle 조합: 작성자 | 날짜 | 지역
-              const subtitleParts = [];
-              if (author) subtitleParts.push(author);
-              if (dateText) subtitleParts.push(dateText);
-              if (regionText) subtitleParts.push(regionText);
-
-              return {
-                id: String(item.PLNID || item.plnId),
-                type: '플래너' as const,
-                iconType: 'planner' as const,
-                title: item.PLNTITLE || item.plnTitle,
-                subtitle: subtitleParts.join(' | ') || '정보 없음',
-              };
-            });
-          }
-        } catch (err) {
-          console.log('플래너 검색 결과 없음');
         }
       }
 
-      if (tab === '전체') {
-        // 1️⃣ 전체 결과 합치기 (여행지 + 플래너)
-        const mergedResults = [...destinationItems, ...plannerItems];
-
-        // 2️⃣ 전체 개수
-        const total = destTotalCount + plannerTotalCount;
-
-        // 3️⃣ 전체 페이지 수 (10개 기준)
-        const pages = Math.ceil(total / pageSize);
-
-        // 4️⃣ 페이지 기준 slice
-        const startIndex = (page - 1) * pageSize;
-        const endIndex = startIndex + pageSize;
-
-        setResults(mergedResults.slice(startIndex, endIndex));
-        setTotalCount(total);
-        setTotalPages(pages);
-      } else if (tab === '여행지') {
-        setResults(destinationItems);
-        setTotalCount(destTotalCount);
-        setTotalPages(destTotalPages);
-      } else {
-        setResults(plannerItems);
-        setTotalCount(plannerTotalCount);
-        setTotalPages(plannerTotalPages);
-      }
+      setResults(items);
+      setTotalCount(totalCnt);
+      setTotalPages(totalPgs);
 
     } catch (error) {
       console.error('검색 실패:', error);
@@ -306,10 +341,11 @@ export function SearchModal({ isOpen, onClose, onSelectDestination, onSelectPlan
                   <button
                     key={tab}
                     onClick={() => handleTabChange(tab)}
-                    className={`px-3 py-1 text-sm rounded-full transition-colors ${activeTab === tab
+                    className={`px-3 py-1 text-sm rounded-full transition-colors ${
+                      activeTab === tab
                         ? 'bg-blue-500 text-white'
                         : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                      }`}
+                    }`}
                   >
                     {tab}
                   </button>

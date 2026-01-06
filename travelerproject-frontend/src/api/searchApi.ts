@@ -17,7 +17,7 @@ export const searchDestinations = async (keyword: string, page: number = 1, size
   const response = await api.get('/search/destination', {
     params: { keyword, page, size }
   });
-  return response.data.data;
+  return response.data; // 전체 응답 반환 (data, totalCount, totalPages 포함)
 };
 
 /** 플래너 검색 */
@@ -25,5 +25,5 @@ export const searchPlanners = async (keyword: string, page: number = 1, size: nu
   const response = await api.get('/search/planner', {
     params: { keyword, page, size }
   });
-  return response.data.data;
+  return response.data; // 전체 응답 반환 (data, totalCount, totalPages 포함)
 };
