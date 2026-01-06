@@ -118,22 +118,22 @@ const getCurrentUserId = (): number | null => {
   return null;
 };
 
-export function PlannerPreviewPage({
-  planner,
-  onBack,
-  onEdit,
-  isLoggedIn,
-  favoritePlanners,
-  onToggleFavoritePlanner
+export function PlannerPreviewPage({ 
+  planner, 
+  onBack, 
+  onEdit, 
+  isLoggedIn, 
+  favoritePlanners, 
+  onToggleFavoritePlanner 
 }: PlannerPreviewPageProps) {
   const mapRef = useRef<KakaoMapRef>(null);
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
+  
   const [plannerDetail, setPlannerDetail] = useState<PlannerDetail | null>(null);
   const [dayPlans, setDayPlans] = useState<DayPlan[]>([]);
-
+  
   // 찜 상태 관리
   const [isLiked, setIsLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(planner.likes || 0);
@@ -147,7 +147,7 @@ export function PlannerPreviewPage({
    */
   const plannerPlacesForMap = useMemo((): PlannerPlace[] => {
     const places: PlannerPlace[] = [];
-
+    
     dayPlans.forEach((dayPlan) => {
       dayPlan.places.forEach((place, index) => {
         if (place.mapx && place.mapy) {
@@ -158,13 +158,11 @@ export function PlannerPreviewPage({
             mapy: place.mapy,
             dayNumber: dayPlan.day,
             orderNumber: index + 1,
-            addr1: place.region,
-            firstimage: place.image,
           });
         }
       });
     });
-
+    
     return places;
   }, [dayPlans]);
 
@@ -187,12 +185,12 @@ export function PlannerPreviewPage({
   const checkFavoriteStatus = async () => {
     const userId = getCurrentUserId();
     if (!userId) return;
-
+    
     try {
       const response = await axios.get(`${API_BASE_URL}/planner/${planner.id}/favorite`, {
         params: { mId: userId }
       });
-
+      
       if (response.data.status === 'success') {
         setIsLiked(response.data.isFavorite);
         setLikeCount(response.data.favoriteCount);
@@ -212,7 +210,7 @@ export function PlannerPreviewPage({
       const detail = await getPlannerDetail(planner.id);
       setPlannerDetail(detail);
       setLikeCount(detail.favoriteCount || 0);
-
+      
       if (detail.dayPlans && detail.dayPlans.length > 0) {
         const converted = detail.dayPlans.map(convertToDayPlan);
         setDayPlans(converted);
@@ -225,7 +223,7 @@ export function PlannerPreviewPage({
         }));
         setDayPlans(emptyDays);
       }
-
+      
       // 찜 상태 확인
       await checkFavoriteStatus();
     } catch (err: any) {
@@ -245,7 +243,7 @@ export function PlannerPreviewPage({
    */
   const handleLike = async () => {
     const userId = getCurrentUserId();
-
+    
     if (!userId) {
       alert('로그인이 필요한 기능입니다.');
       return;
@@ -255,7 +253,7 @@ export function PlannerPreviewPage({
       const response = await axios.post(`${API_BASE_URL}/planner/${planner.id}/favorite`, null, {
         params: { mId: userId }
       });
-
+      
       if (response.data.status === 'success') {
         setIsLiked(response.data.isFavorite);
         setLikeCount(response.data.favoriteCount);
@@ -276,7 +274,7 @@ export function PlannerPreviewPage({
 
     try {
       const response = await axios.delete(`${API_BASE_URL}/planner/${planner.id}`);
-
+      
       if (response.data.status === 'success') {
         alert('플래너가 삭제되었습니다.');
         onBack();
@@ -310,12 +308,12 @@ export function PlannerPreviewPage({
       alert('로그인이 필요한 서비스입니다.');
       return;
     }
-
+    
     if (!isOwner) {
       alert('본인이 작성한 플래너만 편집할 수 있습니다.');
       return;
     }
-
+    
     if (onEdit && plannerDetail) {
       onEdit({
         id: plannerDetail.plnId,
@@ -335,14 +333,9 @@ export function PlannerPreviewPage({
   /**
    * 장소 클릭 시 지도 이동
    */
-  const handlePlaceClick = (place: Place, dayNumber: number, orderNumber: number) => {
+  const handlePlaceClick = (place: Place) => {
     if (place.mapx && place.mapy && mapRef.current) {
       mapRef.current.setCenter(place.mapy, place.mapx, 5);
-
-      // ★ 마커 선택 (인포윈도우 열기)
-      setTimeout(() => {
-        mapRef.current?.selectPlannerMarker(place.contentid || place.id);
-      }, 300);
     }
   };
 
@@ -424,14 +417,14 @@ export function PlannerPreviewPage({
                       <div className="font-semibold text-sm truncate">
                         {place.name}
                       </div>
-                      <div className="flex items-center gap-1 text-xs text-gray-600">
-                        <span className="px-1.5 py-0.5 bg-white rounded border">
-                          {place.category}
-                        </span>
+                      <div className="flex items-center gap-1 text-xs text-gray-500">
                         <MapPinIcon className="h-3 w-3" />
                         <span>{place.region}</span>
                       </div>
                     </div>
+                    <span className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded flex-shrink-0">
+                      {place.category}
+                    </span>
                   </button>
                 ))
               ) : (
@@ -463,12 +456,12 @@ export function PlannerPreviewPage({
         {isLeftSidebarOpen && (
           <div className="w-80 bg-white border-r flex flex-col">
             <div className="flex-1 overflow-y-auto p-4">
-
+              
               {/* ===== 나의 플래너 레이아웃 (isOwner === true) ===== */}
               {isOwner ? (
                 <>
                   {/* 1. 버튼 맨 위 (찜/삭제/공유/편집) */}
-                  <div className="grid grid-cols-4 gap-2 mb-3">
+                  <div className="flex justify-end gap-2 mb-3">
                     <Button
                       variant="outline"
                       size="sm"
@@ -482,7 +475,7 @@ export function PlannerPreviewPage({
                       variant="outline"
                       size="sm"
                       onClick={handleDelete}
-                      className="text-red-500 hover:bg-red-50"
+                      className="text-red-600 hover:bg-red-50"
                     >
                       <Trash2 className="h-4 w-4 mr-1" />
                       삭제
@@ -519,16 +512,9 @@ export function PlannerPreviewPage({
                     </div>
                   </div>
 
-                  {/* 4. 일정 라벨 + 공개/비공개 뱃지 */}
-                  <div className="flex items-center justify-between mb-3">
-                    <h4 className="text-sm font-semibold">일정</h4>
-                    <span className={`px-2 py-0.5 rounded text-xs ${plannerDetail?.isPublic === 1
-                        ? 'bg-green-100 text-green-600'
-                        : 'bg-gray-200 text-gray-500'
-                      }`}>
-                      {plannerDetail?.isPublic === 1 ? '공개' : '비공개'}
-                    </span>
-                  </div>
+                  {/* 4. 일정 라벨 */}
+                  <h4 className="text-sm font-semibold mb-3">일정</h4>
+
                   {/* 5. DAY 리스트 */}
                   {renderDayList()}
                 </>
@@ -574,12 +560,7 @@ export function PlannerPreviewPage({
 
         {/* 토글 버튼 */}
         <button
-          onClick={() => {
-            setIsLeftSidebarOpen(!isLeftSidebarOpen)
-            setTimeout(() => {
-              mapRef.current?.relayout();
-            }, 350);
-        }}
+          onClick={() => setIsLeftSidebarOpen(!isLeftSidebarOpen)}
           className="w-6 bg-gray-200 hover:bg-gray-300 flex items-center justify-center"
         >
           {isLeftSidebarOpen ? (
