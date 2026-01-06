@@ -25,6 +25,7 @@ export function BoardPage({
   isLoggedIn, 
   currentUserId, 
   onOpenSearch,
+  initialBoardId, 
   onViewPlanner 
 }: BoardPageProps) {
   const [selectedBdId, setSelectedBdId] = useState<number | null>(null);
