@@ -17,27 +17,28 @@ import com.traveler.app.service.SearchService;
 @RestController
 @RequestMapping("/api/search")
 public class SearchController {
-
+    
     private final SearchService searchService;
-
+    
     public SearchController(SearchService searchService) {
         this.searchService = searchService;
     }
-
+    
     /**
-     * 통합 검색 (여행지 + 플래너)
+     * 통합 검색 (여행지 + 플래너 합쳐서 페이징)
      * URL: GET /api/search?keyword=경복궁&page=1&size=10
+     * 여행지 먼저 → 플래너 뒤에 정렬
      */
     @GetMapping
     public Map<String, Object> search(
             @RequestParam("keyword") String keyword,
             @RequestParam(value = "page", defaultValue = "1") int page,
             @RequestParam(value = "size", defaultValue = "10") int size) {
-
+        
         Map<String, Object> response = new HashMap<>();
-
+        
         try {
-            Map<String, Object> result = searchService.search(keyword, page, size);
+            Map<String, Object> result = searchService.searchAll(keyword, page, size);
             response.put("status", "success");
             response.put("keyword", keyword);
             response.putAll(result);
@@ -45,10 +46,10 @@ public class SearchController {
             response.put("status", "fail");
             response.put("message", e.getMessage());
         }
-
+        
         return response;
     }
-
+    
     /**
      * 여행지만 검색
      * URL: GET /api/search/destination?keyword=경복궁&page=1&size=10
@@ -58,9 +59,9 @@ public class SearchController {
             @RequestParam("keyword") String keyword,
             @RequestParam(value = "page", defaultValue = "1") int page,
             @RequestParam(value = "size", defaultValue = "10") int size) {
-
+        
         Map<String, Object> response = new HashMap<>();
-
+        
         try {
             Map<String, Object> result = searchService.searchDestinations(keyword, page, size);
             response.put("status", "success");
@@ -70,10 +71,10 @@ public class SearchController {
             response.put("status", "fail");
             response.put("message", e.getMessage());
         }
-
+        
         return response;
     }
-
+    
     /**
      * 플래너만 검색
      * URL: GET /api/search/planner?keyword=제주여행&page=1&size=10
@@ -83,9 +84,9 @@ public class SearchController {
             @RequestParam("keyword") String keyword,
             @RequestParam(value = "page", defaultValue = "1") int page,
             @RequestParam(value = "size", defaultValue = "10") int size) {
-
+        
         Map<String, Object> response = new HashMap<>();
-
+        
         try {
             Map<String, Object> result = searchService.searchPlanners(keyword, page, size);
             response.put("status", "success");
@@ -95,7 +96,7 @@ public class SearchController {
             response.put("status", "fail");
             response.put("message", e.getMessage());
         }
-
+        
         return response;
     }
 }
