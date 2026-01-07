@@ -33,9 +33,10 @@ interface PlannerMainPageProps {
   onCreatePlanner: () => void;
   onViewMore: () => void;
   onSelectPlanner: (planner: Planner) => void;
+  onNavigate?: (page: string) => void;  // 페이지 이동용
 }
 
-export function PlannerMainPage({ onCreatePlanner, onViewMore, onSelectPlanner }: PlannerMainPageProps) {
+export function PlannerMainPage({ onCreatePlanner, onViewMore, onSelectPlanner, onNavigate }: PlannerMainPageProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [myPlanners, setMyPlanners] = useState<Planner[]>([]);
@@ -51,14 +52,28 @@ export function PlannerMainPage({ onCreatePlanner, onViewMore, onSelectPlanner }
     if (memberInfo) {
       try {
         const member = JSON.parse(memberInfo);
-        // mId가 있는지 확인
-        return member.mId ? Number(member.mId) : null;
+        return member.mId || null;
       } catch (e) {
-        console.error("회원정보 파싱 실패", e);
         return null;
       }
     }
     return null;
+  };
+
+  /** 로그인 체크 후 플래너 생성 페이지로 이동 */
+  const handleCreatePlanner = () => {
+    const userId = getCurrentUserId();
+    
+    if (!userId) {
+      alert('로그인이 필요한 서비스입니다.');
+      if (onNavigate) {
+        onNavigate('login');
+      }
+      return;
+    }
+    
+    // 로그인 되어있으면 플래너 생성 페이지로 이동
+    onCreatePlanner();
   };
 
   /** 나의 플래너 목록 불러오기 */
@@ -92,7 +107,7 @@ export function PlannerMainPage({ onCreatePlanner, onViewMore, onSelectPlanner }
         setMyPlanners(planners);
       }
     } catch (error) {
-      console.error('나의 플래너 목록 로드 실패', error);
+      console.error('나의 플래너 목록 로드 실패:', error);
     } finally {
       setIsLoading(false);
     }
@@ -224,7 +239,7 @@ export function PlannerMainPage({ onCreatePlanner, onViewMore, onSelectPlanner }
       {/* 플래너 계획하기 버튼 */}
       <div className="mb-12">
         <Button
-          onClick={onCreatePlanner}
+          onClick={handleCreatePlanner}
           className="w-full h-16 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-lg"
         >
           <Plus className="h-6 w-6 mr-2" />
@@ -249,7 +264,7 @@ export function PlannerMainPage({ onCreatePlanner, onViewMore, onSelectPlanner }
         ) : myPlanners.length === 0 ? (
           <div className="bg-gray-50 rounded-lg p-12 text-center">
             <p className="text-gray-500 text-lg">아직 작성한 플래너가 없습니다</p>
-            <Button onClick={onCreatePlanner} className="mt-4">
+            <Button onClick={handleCreatePlanner} className="mt-4">
               첫 플래너 만들기
             </Button>
           </div>

@@ -940,22 +940,33 @@ export function MyPage({
                     favoritePlanners.map((planner) => (
                       <div
                         key={planner.favId}
-                        onClick={() => onNavigateToPlanner?.({
-                          plnId: planner.plnId,
-                          plnTitle: planner.plnTitle,
-                        })}
-                        className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow cursor-pointer"
+                        className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow"
                       >
                         <div className="flex gap-4 p-4">
-                          {/* 플래너 아이콘 */}
-                          <div className="w-32 h-32 bg-gradient-to-br from-blue-400 to-blue-600 rounded-lg flex items-center justify-center flex-shrink-0">
+                          {/* ★ 플래너 이미지 - 클릭 시 이동 (여행지와 동일하게) */}
+                          <div 
+                            className="w-32 h-32 bg-gradient-to-br from-blue-400 to-blue-600 rounded-lg flex items-center justify-center flex-shrink-0 cursor-pointer"
+                            onClick={() => onNavigateToPlanner?.({
+                              plnId: planner.plnId,
+                              plnTitle: planner.plnTitle,
+                            })}
+                          >
                             <Calendar className="h-12 w-12 text-white" />
                           </div>
                           
                           <div className="flex-1">
                             <div className="flex items-start justify-between mb-2">
                               <div>
-                                <h3 className="font-medium mb-1">{planner.plnTitle || '제목 없음'}</h3>
+                                {/* ★ 제목 클릭 시 이동 (여행지와 동일하게) */}
+                                <h3 
+                                  className="font-medium mb-1 cursor-pointer hover:text-blue-600"
+                                  onClick={() => onNavigateToPlanner?.({
+                                    plnId: planner.plnId,
+                                    plnTitle: planner.plnTitle,
+                                  })}
+                                >
+                                  {planner.plnTitle || '제목 없음'}
+                                </h3>
                                 <div className="flex items-center gap-3 text-sm text-gray-600">
                                   <span>작성자: {planner.authorNickname || '알 수 없음'}</span>
                                   <div className="flex items-center gap-1">
@@ -967,10 +978,7 @@ export function MyPage({
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleRemoveFavoritePlanner(planner.plnId);
-                                }}
+                                onClick={() => handleRemoveFavoritePlanner(planner.plnId)}
                                 className="text-red-500 hover:text-red-600"
                               >
                                 <Heart className="h-5 w-5 fill-red-500" />
