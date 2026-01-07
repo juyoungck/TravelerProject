@@ -5,29 +5,21 @@
  * - 아이콘 + 타입 + 제목 한 줄 정렬
  * - 총 검색 결과 개수 표시
  * - 정확한 페이징
+ * 
+ * ★ 색상은 contentTypeUtils.ts에서 통합 관리
+ * ★ 페이지 이동 시 검색 재실행 방지
  */
 
-import { useState, useEffect } from 'react';
-import { X, Search, MapPin, Calendar, ChevronLeft, ChevronRight, UtensilsCrossed, Building2 } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { X, Search, MapPin, Calendar, ChevronLeft, ChevronRight, UtensilsCrossed, Building2, ShoppingBag, Mountain, Landmark } from 'lucide-react';
 import { Input } from '../ui/input';
 import { Button } from '../ui/button';
+import { getContentTypeStyle, getContentTypeName } from '../../utils/contentTypeUtils';
 import api from '../../api/api';
-
-// contenttypeid 매핑
-const CONTENT_TYPE_MAP: Record<string, string> = {
-  '12': '관광지',
-  '14': '문화시설',
-  '15': '축제/공연',
-  '25': '여행코스',
-  '28': '레포츠',
-  '32': '숙박',
-  '38': '쇼핑',
-  '39': '음식점'
-};
 
 interface SearchResult {
   id: string;
-  type: '관광지' | '문화시설' | '축제/공연' | '여행코스' | '레포츠' | '숙박' | '쇼핑' | '음식점' | '플래너';
+  type: string;
   iconType: 'place' | 'planner';
   title: string;
   subtitle: string;
@@ -54,7 +46,10 @@ export function SearchModal({ isOpen, onClose, onSelectDestination, onSelectPlan
   const [activeTab, setActiveTab] = useState<SearchTab>('전체');
   const pageSize = 10;
 
-  // 검색어 변경 시 디바운스 적용
+  // ★ 마지막 검색어 저장 (페이지 이동 시 검색 재실행 방지)
+  const lastSearchQueryRef = useRef('');
+
+  // ★ 검색어 변경 시 디바운스 적용 (검색어가 실제로 변경된 경우에만)
   useEffect(() => {
     if (!isOpen) return;
 
@@ -63,16 +58,33 @@ export function SearchModal({ isOpen, onClose, onSelectDestination, onSelectPlan
       setCurrentPage(1);
       setTotalCount(0);
       setTotalPages(0);
+      lastSearchQueryRef.current = '';
+      return;
+    }
+
+    // ★ 검색어가 실제로 변경된 경우에만 검색 실행
+    if (searchQuery === lastSearchQueryRef.current) {
       return;
     }
 
     const timer = setTimeout(() => {
+      lastSearchQueryRef.current = searchQuery;
       setCurrentPage(1);
       handleSearch(searchQuery, 1, activeTab);
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [searchQuery, isOpen, activeTab]);
+  }, [searchQuery, isOpen]);
+
+  // ★ 탭 변경 시 검색 (별도 useEffect)
+  useEffect(() => {
+    if (!isOpen) return;
+    if (!searchQuery.trim()) return;
+
+    // 탭 변경 시에만 검색 실행
+    setCurrentPage(1);
+    handleSearch(searchQuery, 1, activeTab);
+  }, [activeTab]);
 
   // 모달 열릴 때 초기화
   useEffect(() => {
@@ -83,6 +95,7 @@ export function SearchModal({ isOpen, onClose, onSelectDestination, onSelectPlan
       setTotalCount(0);
       setTotalPages(0);
       setActiveTab('전체');
+      lastSearchQueryRef.current = '';
     }
   }, [isOpen]);
 
@@ -104,7 +117,6 @@ export function SearchModal({ isOpen, onClose, onSelectDestination, onSelectPlan
       let totalPgs = 0;
 
       if (tab === '전체') {
-        // 통합 검색 API 호출
         const response = await api.get('/search', {
           params: { keyword: query, page, size: pageSize }
         });
@@ -118,13 +130,12 @@ export function SearchModal({ isOpen, onClose, onSelectDestination, onSelectPlan
             const searchType = item.SEARCHTYPE || item.searchType;
             
             if (searchType === 'destination') {
-              // 여행지
               const contentTypeId = String(item.CONTENTTYPEID || item.contenttypeid || '12');
-              const typeName = CONTENT_TYPE_MAP[contentTypeId] || '관광지';
+              const typeName = getContentTypeName(contentTypeId);
 
               return {
                 id: String(item.ID || item.id),
-                type: typeName as SearchResult['type'],
+                type: typeName,
                 iconType: 'place' as const,
                 title: item.TITLE || item.title,
                 subtitle: item.REGIONNAME || item.regionName || item.ADDR1 || item.addr1 || '',
@@ -162,16 +173,17 @@ export function SearchModal({ isOpen, onClose, onSelectDestination, onSelectPlan
 
               return {
                 id: String(item.ID || item.id),
-                type: '플래너' as const,
+                type: '플래너',
                 iconType: 'planner' as const,
                 title: item.TITLE || item.title,
                 subtitle: subtitleParts.join(' | ') || '정보 없음',
+                // ★ 플래너 대표 이미지 추가
+                image: item.THUMBNAIL || item.thumbnail,
               };
             }
           });
         }
       } else if (tab === '여행지') {
-        // 여행지만 검색
         const response = await api.get('/search/destination', {
           params: { keyword: query, page, size: pageSize }
         });
@@ -183,11 +195,11 @@ export function SearchModal({ isOpen, onClose, onSelectDestination, onSelectPlan
 
           items = (result.data || []).map((item: any) => {
             const contentTypeId = String(item.CONTENTTYPEID || item.contenttypeid || '12');
-            const typeName = CONTENT_TYPE_MAP[contentTypeId] || '관광지';
+            const typeName = getContentTypeName(contentTypeId);
 
             return {
               id: String(item.CONTENTID || item.contentid),
-              type: typeName as SearchResult['type'],
+              type: typeName,
               iconType: 'place' as const,
               title: item.TITLE || item.title,
               subtitle: item.REGIONNAME || item.regionName || item.ADDR1 || item.addr1 || '',
@@ -237,10 +249,12 @@ export function SearchModal({ isOpen, onClose, onSelectDestination, onSelectPlan
 
             return {
               id: String(item.PLNID || item.plnId),
-              type: '플래너' as const,
+              type: '플래너',
               iconType: 'planner' as const,
               title: item.PLNTITLE || item.plnTitle,
               subtitle: subtitleParts.join(' | ') || '정보 없음',
+              // ★ 플래너 대표 이미지 추가
+              image: item.THUMBNAIL || item.thumbnail,
             };
           });
         }
@@ -260,59 +274,45 @@ export function SearchModal({ isOpen, onClose, onSelectDestination, onSelectPlan
     }
   };
 
+  // ★ 탭 변경 핸들러 (검색 로직 제거 - useEffect에서 처리)
   const handleTabChange = (tab: SearchTab) => {
     setActiveTab(tab);
-    setCurrentPage(1);
-    if (searchQuery.trim()) {
-      handleSearch(searchQuery, 1, tab);
-    }
   };
 
+  // ★ 페이지 변경 핸들러 (검색어 변경 없이 페이지만 변경)
   const handlePageChange = (newPage: number) => {
     if (newPage < 1 || newPage > totalPages) return;
     setCurrentPage(newPage);
     handleSearch(searchQuery, newPage, activeTab);
   };
 
+  /** 아이콘 가져오기 (contenttypeid 기반) */
   const getIcon = (result: SearchResult) => {
     if (result.iconType === 'planner') {
       return <Calendar className="h-4 w-4" />;
     }
 
-    // 여행지 타입별 아이콘
-    switch (result.type) {
-      case '음식점':
-        return <UtensilsCrossed className="h-4 w-4" />;
-      case '문화시설':
-      case '숙박':
-        return <Building2 className="h-4 w-4" />;
-      default:
-        return <MapPin className="h-4 w-4" />;
+    switch (result.contenttypeid) {
+      case '12': return <Landmark className="h-4 w-4" />;
+      case '14': return <Building2 className="h-4 w-4" />;
+      case '15': 
+      case '25': return <Calendar className="h-4 w-4" />;
+      case '28': return <Mountain className="h-4 w-4" />;
+      case '32': return <Building2 className="h-4 w-4" />;
+      case '38': return <ShoppingBag className="h-4 w-4" />;
+      case '39': return <UtensilsCrossed className="h-4 w-4" />;
+      default: return <MapPin className="h-4 w-4" />;
     }
   };
 
+  /** 타입별 색상 - contentTypeUtils 사용 */
   const getTypeColor = (result: SearchResult) => {
     if (result.iconType === 'planner') {
       return 'bg-green-100 text-green-600';
     }
 
-    // 여행지 타입별 색상
-    switch (result.type) {
-      case '관광지':
-        return 'bg-blue-100 text-blue-600';
-      case '문화시설':
-        return 'bg-purple-100 text-purple-600';
-      case '음식점':
-        return 'bg-orange-100 text-orange-600';
-      case '숙박':
-        return 'bg-pink-100 text-pink-600';
-      case '쇼핑':
-        return 'bg-yellow-100 text-yellow-600';
-      case '레포츠':
-        return 'bg-teal-100 text-teal-600';
-      default:
-        return 'bg-gray-100 text-gray-600';
-    }
+    const style = getContentTypeStyle(result.contenttypeid);
+    return `${style.bgColor} ${style.textColor}`;
   };
 
   const handleResultClick = (result: SearchResult) => {
@@ -324,7 +324,6 @@ export function SearchModal({ isOpen, onClose, onSelectDestination, onSelectPlan
     onClose();
   };
 
-  // 페이징 버튼 표시 여부
   const hasNextPage = currentPage < totalPages;
   const hasPrevPage = currentPage > 1;
 
@@ -373,21 +372,18 @@ export function SearchModal({ isOpen, onClose, onSelectDestination, onSelectPlan
 
         {/* 검색 결과 */}
         <div className="flex-1 overflow-y-auto p-6">
-          {/* 로딩 중 */}
           {isLoading && (
             <div className="text-center py-12 text-gray-500">
               검색 중...
             </div>
           )}
 
-          {/* 검색 결과 없음 */}
           {!isLoading && searchQuery && results.length === 0 && (
             <div className="text-center py-12 text-gray-500">
               검색 결과가 없습니다.
             </div>
           )}
 
-          {/* 검색 결과 목록 */}
           {!isLoading && results.length > 0 && (
             <div className="space-y-2">
               <p className="text-sm text-gray-500 mb-4">
@@ -412,9 +408,8 @@ export function SearchModal({ isOpen, onClose, onSelectDestination, onSelectPlan
                     </div>
                   )}
                   <div className="flex-1 min-w-0">
-                    {/* 아이콘 + 타입 + 제목 한 줄 정렬 */}
                     <div className="flex items-center gap-2 mb-1">
-                      <span className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded flex-shrink-0 ${getTypeColor(result)}`}>
+                      <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded flex-shrink-0 ${getTypeColor(result)}`}>
                         {getIcon(result)}
                         <span>{result.type}</span>
                       </span>

@@ -8,19 +8,25 @@
  * - 플래너 마커 (일차별 색상 + 순서 번호)
  * - 플래너 경로 선 그리기 (일차별 색상)
  * - 현재 위치 표시
+ * 
+ * ★ 색상은 contentTypeUtils.ts에서 통합 관리
+ * 
+ * @author TravelerProject
  */
 
 import { useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react';
-import { NearbyDestination, CONTENT_TYPE_NAME } from '../../api/mapApi';
+import type { NearbyDestination } from '../../api/mapApi';
 import { 
   createMarkerSvg, 
   createSelectedMarkerSvg, 
-  createCurrentLocationMarkerSvg,
+  createCurrentLocationMarkerSvg, 
   createPlannerMarkerSvg,
-  getPlannerDayColor,
-  MARKER_COLORS,
-  MARKER_EMOJI
+  MARKER_COLORS
 } from '../../utils/markerIcons';
+import { 
+  getContentTypeName,
+  getPlannerDayColor 
+} from '../../utils/contentTypeUtils';
 
 const KAKAO_MAP_API_KEY = import.meta.env.VITE_KAKAO_MAP_API_KEY;
 
@@ -30,16 +36,13 @@ let isKakaoLoading = false;
 const loadCallbacks: (() => void)[] = [];
 
 const loadKakaoMap = (callback: () => void) => {
-  // 이미 로드됨
   if (isKakaoLoaded && window.kakao?.maps) {
     callback();
     return;
   }
   
-  // 콜백 등록
   loadCallbacks.push(callback);
   
-  // 이미 로딩 중이면 대기
   if (isKakaoLoading) return;
   
   isKakaoLoading = true;
@@ -72,8 +75,8 @@ interface KakaoMapProps {
   onMapMoved?: (lat: number, lng: number) => void;
   onMapClick?: () => void;
   onNavigateToDetail?: (contentid: string) => void;
-  onToggleFavorite?: (destination: NearbyDestination) => void;  // ★ 찜 토글 콜백
-  isFavorite?: (contentid: string) => boolean;  // ★ 찜 여부 확인 함수
+  onToggleFavorite?: (destination: NearbyDestination) => void;
+  isFavorite?: (contentid: string) => boolean;
   className?: string;
   height?: string;
 }
@@ -118,9 +121,8 @@ const KakaoMap = forwardRef<KakaoMapRef, KakaoMapProps>(({
   onPlannerMarkerClick,
   onMapMoved,
   onMapClick,
-  onNavigateToDetail,
-  onToggleFavorite,  // ★ 추가
-  isFavorite,  // ★ 추가
+  onToggleFavorite,
+  isFavorite,
   className = '',
   height = '100%',
 }, ref) => {
@@ -128,8 +130,8 @@ const KakaoMap = forwardRef<KakaoMapRef, KakaoMapProps>(({
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<kakao.maps.Map | null>(null);
   const markersRef = useRef<kakao.maps.Marker[]>([]);
-  const plannerMarkersRef = useRef<kakao.maps.Marker[]>([]);  // ★ 플래너 마커 분리
-  const polylinesRef = useRef<kakao.maps.Polyline[]>([]);  // ★ 경로 선
+  const plannerMarkersRef = useRef<kakao.maps.Marker[]>([]);
+  const polylinesRef = useRef<kakao.maps.Polyline[]>([]);
   const infoWindowRef = useRef<kakao.maps.CustomOverlay | null>(null);
   const plannerInfoWindowRef = useRef<kakao.maps.CustomOverlay | null>(null);
   const currentLocationMarkerRef = useRef<kakao.maps.Marker | null>(null);
@@ -139,14 +141,8 @@ const KakaoMap = forwardRef<KakaoMapRef, KakaoMapProps>(({
   const plannerMarkerMapRef = useRef<Map<string, kakao.maps.Marker>>(new Map());
   const plannerPlacesMapRef = useRef<Map<string, PlannerPlace>>(new Map());
   
-  // 콜백을 ref로 저장 (클로저 문제 해결)
-  const onNavigateToDetailRef = useRef(onNavigateToDetail);
   const onToggleFavoriteRef = useRef(onToggleFavorite);
   const isFavoriteRef = useRef(isFavorite);
-  
-  useEffect(() => {
-    onNavigateToDetailRef.current = onNavigateToDetail;
-  }, [onNavigateToDetail]);
   
   useEffect(() => {
     onToggleFavoriteRef.current = onToggleFavorite;
@@ -164,7 +160,7 @@ const KakaoMap = forwardRef<KakaoMapRef, KakaoMapProps>(({
     marker.setImage(new kakao.maps.MarkerImage(src, size, option));
   }, []);
 
-  /** 인포윈도우 닫기 함수 */
+  /** 인포윈도우 닫기 */
   const closeInfoWindow = useCallback(() => {
     if (infoWindowRef.current) {
       infoWindowRef.current.setMap(null);
@@ -178,7 +174,7 @@ const KakaoMap = forwardRef<KakaoMapRef, KakaoMapProps>(({
     }
   }, [resetMarkerImage]);
 
-  /** 플래너 인포윈도우 닫기 함수 */
+  /** 플래너 인포윈도우 닫기 */
   const closePlannerInfoWindow = useCallback(() => {
     if (plannerInfoWindowRef.current) {
       plannerInfoWindowRef.current.setMap(null);
@@ -186,9 +182,8 @@ const KakaoMap = forwardRef<KakaoMapRef, KakaoMapProps>(({
     }
   }, []);
 
-  /** ★ 인포윈도우 DOM 요소 생성 (찜 버튼 추가) */
+  /** 인포윈도우 DOM 요소 생성 */
   const createInfoWindowElement = useCallback((destination: NearbyDestination): HTMLElement => {
-    const emoji = MARKER_EMOJI[destination.contenttypeid] || '📍';
     const color = MARKER_COLORS[destination.contenttypeid] || '#6B7280';
     const imageUrl = destination.firstimage2 || destination.firstimage;
 
@@ -204,7 +199,6 @@ const KakaoMap = forwardRef<KakaoMapRef, KakaoMapProps>(({
           : `${destination.distance}km`;
     }
 
-    /** 공통 컨테이너 */
     const container = document.createElement('div');
     container.style.cssText = `
       position: relative;
@@ -257,14 +251,8 @@ const KakaoMap = forwardRef<KakaoMapRef, KakaoMapProps>(({
       const img = document.createElement('img');
       img.src = imageUrl;
       img.alt = destination.title;
-      img.style.cssText = `
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-      `;
-      img.onerror = () => {
-        imgContainer.style.display = 'none';
-      };
+      img.style.cssText = `width: 100%; height: 100%; object-fit: cover;`;
+      img.onerror = () => { imgContainer.style.display = 'none'; };
 
       imgContainer.appendChild(img);
       container.appendChild(imgContainer);
@@ -280,8 +268,9 @@ const KakaoMap = forwardRef<KakaoMapRef, KakaoMapProps>(({
       padding-right: ${imageUrl ? '0' : '30px'};
     `;
 
+    // ★ contentTypeUtils의 getContentTypeName 사용
     const badge = document.createElement('span');
-    badge.innerHTML = `${CONTENT_TYPE_NAME[destination.contenttypeid] || destination.typeName || '기타'}`;
+    badge.innerHTML = `${getContentTypeName(destination.contenttypeid)}`;
     badge.style.cssText = `
       background: ${color}20;
       color: ${color};
@@ -299,23 +288,42 @@ const KakaoMap = forwardRef<KakaoMapRef, KakaoMapProps>(({
       badgeContainer.appendChild(distance);
     }
 
-    /** ★ 찜 버튼 (오른쪽 정렬) */
+    /** 찜 버튼 */
     const favoriteBtn = document.createElement('button');
-    favoriteBtn.textContent = favorited ? '♥' : '♡';
     favoriteBtn.style.cssText = `
       border: none;
       background: transparent;
       cursor: pointer;
-      font-size: 22px;
-      color: ${favorited ? '#EF4444' : '#374151'};
-      padding: 0 4px;
-      line-height: 1;
+      padding: 4px;
       margin-left: auto;
-      transition: transform 0.1s;
+      transition: transform 0.15s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     `;
 
+    const updateFavoriteIcon = (isFav: boolean) => {
+      if (isFav) {
+        // 채운 하트 (빨간색)
+        favoriteBtn.innerHTML = `
+          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="#EF4444" stroke="#EF4444" stroke-width="2">
+            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+          </svg>
+        `;
+      } else {
+        // 빈 하트 (테두리만)
+        favoriteBtn.innerHTML = `
+          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#6B7280" stroke-width="2">
+            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+          </svg>
+        `;
+      }
+    };
+
+    updateFavoriteIcon(favorited);
+
     favoriteBtn.addEventListener('mouseenter', () => {
-      favoriteBtn.style.transform = 'scale(1.2)';
+      favoriteBtn.style.transform = 'scale(1.15)';
     });
     favoriteBtn.addEventListener('mouseleave', () => {
       favoriteBtn.style.transform = 'scale(1)';
@@ -326,9 +334,8 @@ const KakaoMap = forwardRef<KakaoMapRef, KakaoMapProps>(({
 
       if (onToggleFavoriteRef.current) {
         onToggleFavoriteRef.current(destination);
-        const active = favoriteBtn.textContent === '♥';
-        favoriteBtn.textContent = active ? '♡' : '♥';
-        favoriteBtn.style.color = active ? '#374151' : '#EF4444';
+        const wasActive = favoriteBtn.querySelector('svg')?.getAttribute('fill') === '#EF4444';
+        updateFavoriteIcon(!wasActive);
       } else {
         alert('로그인이 필요한 기능입니다.');
       }
@@ -406,7 +413,7 @@ const KakaoMap = forwardRef<KakaoMapRef, KakaoMapProps>(({
     return container;
   }, [closeInfoWindow]);
 
-  /** ★ 플래너 마커용 인포윈도우 DOM 요소 생성 */
+  /** 플래너 마커용 인포윈도우 DOM 요소 생성 */
   const createPlannerInfoWindowElement = useCallback((place: PlannerPlace): HTMLElement => {
     const color = getPlannerDayColor(place.dayNumber);
     const imageUrl = place.firstimage2 || place.firstimage;
@@ -463,14 +470,8 @@ const KakaoMap = forwardRef<KakaoMapRef, KakaoMapProps>(({
       const img = document.createElement('img');
       img.src = imageUrl;
       img.alt = place.title;
-      img.style.cssText = `
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-      `;
-      img.onerror = () => {
-        imgContainer.style.display = 'none';
-      };
+      img.style.cssText = `width: 100%; height: 100%; object-fit: cover;`;
+      img.onerror = () => { imgContainer.style.display = 'none'; };
 
       imgContainer.appendChild(img);
       container.appendChild(imgContainer);
@@ -499,10 +500,7 @@ const KakaoMap = forwardRef<KakaoMapRef, KakaoMapProps>(({
 
     const orderBadge = document.createElement('span');
     orderBadge.textContent = `${place.orderNumber}번째 장소`;
-    orderBadge.style.cssText = `
-      font-size: 12px;
-      color: #6b7280;
-    `;
+    orderBadge.style.cssText = `font-size: 12px; color: #6b7280;`;
     badgeContainer.appendChild(orderBadge);
 
     container.appendChild(badgeContainer);
@@ -576,7 +574,7 @@ const KakaoMap = forwardRef<KakaoMapRef, KakaoMapProps>(({
     container.appendChild(tail);
 
     return container;
-  }, []);
+  }, [closePlannerInfoWindow]);
 
   /** 인포윈도우 표시 */
   const showInfoWindow = useCallback((marker: kakao.maps.Marker, destination: NearbyDestination, map: kakao.maps.Map) => {
@@ -653,19 +651,15 @@ const KakaoMap = forwardRef<KakaoMapRef, KakaoMapProps>(({
     plannerMarkerMapRef.current.set(place.contentid, marker);
     plannerPlacesMapRef.current.set(place.contentid, place);
 
-    // ★ 클릭 이벤트 추가
     kakao.maps.event.addListener(marker, 'click', function() {
-      // 기존 인포윈도우 닫기
       closePlannerInfoWindow();
       
-      // 콜백 호출
       if (onPlannerMarkerClick) {
         onPlannerMarkerClick(place);
       }
       
       map.panTo(marker.getPosition());
       
-      // 인포윈도우 표시
       const content = createPlannerInfoWindowElement(place);
       const infoWindow = new kakao.maps.CustomOverlay({
         content: content,
@@ -681,15 +675,13 @@ const KakaoMap = forwardRef<KakaoMapRef, KakaoMapProps>(({
     return marker;
   }, [onPlannerMarkerClick, createPlannerInfoWindowElement, closePlannerInfoWindow]);
 
-  /** ★ 플래너 경로 선 그리기 */
+  /** 플래너 경로 선 그리기 */
   const drawPlannerRoutes = useCallback((places: PlannerPlace[], map: kakao.maps.Map) => {
-    // 기존 경로 선 제거
     polylinesRef.current.forEach(polyline => polyline.setMap(null));
     polylinesRef.current = [];
     
     if (places.length < 2) return;
     
-    // 일차별로 그룹화
     const dayGroups: Map<number, PlannerPlace[]> = new Map();
     places.forEach(place => {
       const dayPlaces = dayGroups.get(place.dayNumber) || [];
@@ -697,22 +689,17 @@ const KakaoMap = forwardRef<KakaoMapRef, KakaoMapProps>(({
       dayGroups.set(place.dayNumber, dayPlaces);
     });
     
-    // 각 일차별로 경로 선 그리기
     dayGroups.forEach((dayPlaces, dayNumber) => {
-      // 순서대로 정렬
       dayPlaces.sort((a, b) => a.orderNumber - b.orderNumber);
       
       if (dayPlaces.length < 2) return;
       
-      // 경로 좌표 배열 생성
       const path = dayPlaces.map(place => 
         new kakao.maps.LatLng(place.mapy, place.mapx)
       );
       
-      // 일차별 색상
       const color = getPlannerDayColor(dayNumber);
       
-      // Polyline 생성
       const polyline = new kakao.maps.Polyline({
         path: path,
         strokeWeight: 4,
@@ -779,7 +766,6 @@ const KakaoMap = forwardRef<KakaoMapRef, KakaoMapProps>(({
   useEffect(() => {
     if (!mapRef.current) return;
     
-    // 현재 열린 인포윈도우 정보 저장
     const currentSelectedId = selectedMarkerRef.current 
       ? markerDestMapRef.current.get(selectedMarkerRef.current)?.contentid 
       : null;
@@ -797,7 +783,6 @@ const KakaoMap = forwardRef<KakaoMapRef, KakaoMapProps>(({
         markersRef.current.push(marker);
         destinationsMapRef.current.set(dest.contentid, dest);
         
-        // 이전에 선택된 마커면 인포윈도우 다시 표시
         if (currentSelectedId && dest.contentid === currentSelectedId) {
           setTimeout(() => {
             if (mapRef.current) {
@@ -807,26 +792,22 @@ const KakaoMap = forwardRef<KakaoMapRef, KakaoMapProps>(({
         }
       }
     });
-  }, [destinations, createMarker, showInfoWindow]);
+  }, [destinations]);
 
-  /** ★ 플래너 마커 + 경로 선 업데이트 (실시간) */
+  /** 플래너 마커 + 경로 선 업데이트 */
   useEffect(() => {
     if (!mapRef.current) return;
     
-    // 기존 플래너 마커 제거
     plannerMarkersRef.current.forEach(m => m.setMap(null));
     plannerMarkersRef.current = [];
-
     plannerMarkerMapRef.current.clear();
     plannerPlacesMapRef.current.clear();
     
-    // 기존 경로 선 제거
     polylinesRef.current.forEach(p => p.setMap(null));
     polylinesRef.current = [];
     
     if (!plannerPlaces.length) return;
     
-    // 새 플래너 마커 생성
     plannerPlaces.forEach(place => {
       if (place.mapx && place.mapy) {
         const marker = createPlannerMarker(place, mapRef.current!);
@@ -834,7 +815,6 @@ const KakaoMap = forwardRef<KakaoMapRef, KakaoMapProps>(({
       }
     });
     
-    // 경로 선 그리기
     drawPlannerRoutes(plannerPlaces, mapRef.current);
     
   }, [plannerPlaces, createPlannerMarker, drawPlannerRoutes]);
@@ -903,19 +883,14 @@ const KakaoMap = forwardRef<KakaoMapRef, KakaoMapProps>(({
         mapRef.current.relayout();
       }
     },
-
-    // ★ 플래너 마커 선택 (인포윈도우 열기)
     selectPlannerMarker: (contentid) => {
       const marker = plannerMarkerMapRef.current.get(contentid);
       const place = plannerPlacesMapRef.current.get(contentid);
       
       if (marker && place && mapRef.current) {
         closePlannerInfoWindow();
-        
-        // 지도 중심 이동
         mapRef.current.panTo(marker.getPosition());
         
-        // 인포윈도우 표시
         const content = createPlannerInfoWindowElement(place);
         const infoWindow = new kakao.maps.CustomOverlay({
           content: content,

@@ -42,6 +42,7 @@ export interface MyFavoritePlanner {
   lDongRegnCd: string;
   lDongSignguCd: string;
   isPublic: number;
+  thumbnail?: string;
 }
 
 // ============================================

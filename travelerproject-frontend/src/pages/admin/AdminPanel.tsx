@@ -1,8 +1,12 @@
 /**
  * AdminPanel.tsx - 관리자 패널
- * * 회원 관리, 게시판 관리, 리뷰 관리, 플래너 관리 기능
- * 수정: 플래너 제목 클릭 시 현재 창에서 페이지 이동 (window.location 사용)
- * * @author TravelerProject
+ * 회원 관리, 게시판 관리, 리뷰 관리, 플래너 관리 기능
+ * 
+ * 수정:
+ * - 플래너 제목 클릭 시 onNavigateToPlanner 사용
+ * - 게시판 카테고리 한글 표시 (COMPANION → 동행, REVIEW → 후기)
+ * 
+ * @author TravelerProject
  */
 
 import { useState, useEffect } from 'react';
@@ -28,10 +32,25 @@ interface AdminPanelProps {
   onClose?: () => void;
   onNavigateToDestination?: (contentid: string) => void;
   onNavigateToBoard?: (bdId: number) => void;
-  onNavigateToPlanner?: (plnId: number) => void;
+  onNavigateToPlanner?: (planner: any) => void;  // ★ 타입 변경
 }
 
-export function AdminPanel({ onClose, onNavigateToDestination, onNavigateToBoard, onNavigateToPlanner }: AdminPanelProps) {
+// ★ 게시판 카테고리 한글 변환
+const BOARD_CATEGORY_MAP: Record<string, string> = {
+  'COMPANION': '동행',
+  'REVIEW': '후기',
+};
+
+const getCategoryName = (category: string): string => {
+  return BOARD_CATEGORY_MAP[category] || category;
+};
+
+export function AdminPanel({ 
+  onClose, 
+  onNavigateToDestination, 
+  onNavigateToBoard,
+  onNavigateToPlanner  // ★ props 추가
+}: AdminPanelProps) {
   // ============================================
   // 상태 관리
   // ============================================
@@ -108,7 +127,7 @@ export function AdminPanel({ onClose, onNavigateToDestination, onNavigateToBoard
     try {
       const response = await adminApi.getMembers(
         page, 
-        20, 
+        10, 
         memberSearch || undefined, 
         memberStatusFilter || undefined
       );
@@ -131,7 +150,7 @@ export function AdminPanel({ onClose, onNavigateToDestination, onNavigateToBoard
     try {
       const response = await adminApi.getBoards(
         page, 
-        20, 
+        10, 
         boardSearch || undefined, 
         boardStatusFilter || undefined
       );
@@ -154,7 +173,7 @@ export function AdminPanel({ onClose, onNavigateToDestination, onNavigateToBoard
     try {
       const response = await adminApi.getReviews(
         page, 
-        20, 
+        10, 
         reviewSearch || undefined
       );
       if (response.status === 'success') {
@@ -177,7 +196,7 @@ export function AdminPanel({ onClose, onNavigateToDestination, onNavigateToBoard
   /** 회원 상태 변경 */
   const handleMemberStatusChange = async (mId: number, currentStatus: string) => {
     const newStatus = currentStatus === 'ACTIVE' ? 'DELETED' : 'ACTIVE';
-    const action = newStatus === 'ACTIVE' ? '활성화' : '비활성화';
+    const action = newStatus === 'ACTIVE' ? '차단 해제' : '차단';
     
     if (!confirm(`이 회원을 ${action}하시겠습니까?`)) return;
 
@@ -195,9 +214,9 @@ export function AdminPanel({ onClose, onNavigateToDestination, onNavigateToBoard
     }
   };
 
-  /** 회원 삭제 */
+  /** 회원 탈퇴 */
   const handleDeleteMember = async (mId: number, nickname: string) => {
-    if (!confirm(`"${nickname}" 회원을 완전히 삭제하시겠습니까?\n\n이 작업은 되돌릴 수 없으며, 회원의 모든 데이터가 삭제됩니다.`)) {
+    if (!confirm(`"${nickname}" 회원을 완전히 탈퇴처리 하시겠습니까?\n\n이 작업은 되돌릴 수 없으며, 회원의 모든 데이터가 삭제됩니다.`)) {
       return;
     }
 
@@ -207,11 +226,11 @@ export function AdminPanel({ onClose, onNavigateToDestination, onNavigateToBoard
         alert(response.message);
         fetchMembers();
       } else {
-        alert(response.message || '삭제에 실패했습니다.');
+        alert(response.message || '탈퇴에 실패했습니다.');
       }
     } catch (error) {
-      console.error('회원 삭제 오류:', error);
-      alert('삭제 중 오류가 발생했습니다.');
+      console.error('회원 탈퇴 오류:', error);
+      alert('탈퇴 중 오류가 발생했습니다.');
     }
   };
 
@@ -544,7 +563,7 @@ export function AdminPanel({ onClose, onNavigateToDestination, onNavigateToBoard
                 
                 {/* 검색 & 필터 */}
                 <div className="bg-white rounded-lg shadow p-4">
-                  <div className="flex gap-4">
+                  <div className="flex gap-3">
                     <div className="flex-1 relative">
                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                       <Input
@@ -558,13 +577,13 @@ export function AdminPanel({ onClose, onNavigateToDestination, onNavigateToBoard
                     <select
                       value={memberStatusFilter}
                       onChange={(e) => setMemberStatusFilter(e.target.value)}
-                      className="border rounded-lg px-4 py-2"
+                      className="border rounded-md px-2 py-1 text-sm w-22"
                     >
-                      <option value="">전체 상태</option>
-                      <option value="ACTIVE">활성</option>
-                      <option value="DELETED">비활성</option>
+                      <option value="">전체</option>
+                      <option value="ACTIVE">일반</option>
+                      <option value="DELETED">차단</option>
                     </select>
-                    <Button onClick={() => fetchMembers(1)}>검색</Button>
+                    <Button className="border rounded-md px-2 py-4 text-sm w-12" onClick={() => fetchMembers(1)}>검색</Button>
                   </div>
                 </div>
 
@@ -573,30 +592,30 @@ export function AdminPanel({ onClose, onNavigateToDestination, onNavigateToBoard
                   <table className="w-full table-fixed min-w-[900px]">
                     <thead className="bg-gray-50">
                       <tr>
-                        <th className="w-[50px] px-2 py-3 text-left text-sm font-medium text-gray-600">ID</th>
-                        <th className="w-[180px] px-2 py-3 text-left text-sm font-medium text-gray-600">아이디</th>
-                        <th className="w-[100px] px-2 py-3 text-left text-sm font-medium text-gray-600">닉네임</th>
-                        <th className="w-[200px] px-2 py-3 text-left text-sm font-medium text-gray-600">이메일</th>
-                        <th className="w-[80px] px-2 py-3 text-center text-sm font-medium text-gray-600">가입유형</th>
-                        <th className="w-[70px] px-2 py-3 text-center text-sm font-medium text-gray-600">상태</th>
-                        <th className="w-[90px] px-2 py-3 text-center text-sm font-medium text-gray-600">가입일</th>
-                        <th className="w-[80px] px-2 py-3 text-center text-sm font-medium text-gray-600">관리</th>
+                        <th className="w-[50px] px-3 py-3 text-left text-sm font-medium text-gray-600">ID</th>
+                        <th className="w-[140px] px-3 py-3 text-left text-sm font-medium text-gray-600">아이디</th>
+                        <th className="w-[100px] px-3 py-3 text-left text-sm font-medium text-gray-600">닉네임</th>
+                        <th className="w-[180px] px-3 py-3 text-left text-sm font-medium text-gray-600">이메일</th>
+                        <th className="w-[80px] px-3 py-3 text-center text-sm font-medium text-gray-600">가입유형</th>
+                        <th className="w-[70px] px-3 py-3 text-center text-sm font-medium text-gray-600">상태</th>
+                        <th className="w-[100px] px-3 py-3 text-center text-sm font-medium text-gray-600">가입일</th>
+                        <th className="w-[80px] px-3 py-3 text-center text-sm font-medium text-gray-600">관리</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y">
                       {members.map((member) => (
                         <tr key={member.mId} className="hover:bg-gray-50">
-                          <td className="px-2 py-3 text-sm">{member.mId}</td>
-                          <td className="px-2 py-3 text-sm truncate max-w-[180px]" title={member.mUsername}>
+                          <td className="px-3 py-3 text-sm">{member.mId}</td>
+                          <td className="px-3 py-3 text-sm truncate" title={member.mUsername}>
                             {member.mUsername}
                           </td>
-                          <td className="px-2 py-3 text-sm font-medium truncate max-w-[100px]" title={member.mNickname}>
+                          <td className="px-3 py-3 text-sm font-medium truncate" title={member.mNickname}>
                             {member.mNickname}
                           </td>
-                          <td className="px-2 py-3 text-sm text-gray-600 truncate max-w-[200px]" title={member.mEmail}>
+                          <td className="px-3 py-3 text-sm text-gray-600 truncate" title={member.mEmail}>
                             {member.mEmail}
                           </td>
-                          <td className="px-2 py-3 text-sm text-center">
+                          <td className="px-3 py-3 text-sm text-center">
                             <span className={`px-2 py-1 rounded text-xs ${
                               member.mLoginType === 'LOCAL' ? 'bg-gray-100' :
                               member.mLoginType === 'SOCIAL' ? 'bg-blue-100 text-blue-700' :
@@ -605,30 +624,31 @@ export function AdminPanel({ onClose, onNavigateToDestination, onNavigateToBoard
                               {member.mLoginType}
                             </span>
                           </td>
-                          <td className="px-2 py-3 text-sm text-center">
+                          <td className="px-3 py-3 text-sm text-center">
                             <span className={`px-2 py-1 rounded text-xs ${
                               member.mStatus === 'ACTIVE' 
                                 ? 'bg-green-100 text-green-700' 
                                 : 'bg-red-100 text-red-700'
                             }`}>
-                              {member.mStatus === 'ACTIVE' ? '활성' : '비활성'}
+                              {member.mStatus === 'ACTIVE' ? '일반' : '차단'}
                             </span>
                           </td>
-                          <td className="px-2 py-3 text-sm text-gray-600 text-center">
+                          <td className="px-3 py-3 text-sm text-gray-600 text-center">
                             {formatDate(member.mRegdate)}
                           </td>
-                          <td className="px-2 py-3">
+                          <td className="px-3 py-3">
                             <div className="flex justify-center gap-1">
+                              {/* ★ 아이콘 반대로: 활성 → 차단 아이콘, 비활성 → 해제 아이콘 */}
                               <Button
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => handleMemberStatusChange(member.mId, member.mStatus)}
-                                title={member.mStatus === 'ACTIVE' ? '비활성화' : '활성화'}
+                                title={member.mStatus === 'ACTIVE' ? '차단하기' : '차단해제'}
                               >
                                 {member.mStatus === 'ACTIVE' ? (
-                                  <UserX className="h-4 w-4 text-orange-500" />
-                                ) : (
                                   <UserCheck className="h-4 w-4 text-green-500" />
+                                ) : (
+                                  <UserX className="h-4 w-4 text-red-500" />
                                 )}
                               </Button>
                               <Button
@@ -673,7 +693,6 @@ export function AdminPanel({ onClose, onNavigateToDestination, onNavigateToBoard
                     <ChevronLeft className="h-4 w-4" />
                   </Button>
                   
-                  {/* 페이지 번호 */}
                   {Array.from({ length: Math.min(5, memberTotalPages) }, (_, i) => {
                     let pageNum;
                     if (memberTotalPages <= 5) {
@@ -730,7 +749,7 @@ export function AdminPanel({ onClose, onNavigateToDestination, onNavigateToBoard
                 
                 {/* 검색 & 필터 */}
                 <div className="bg-white rounded-lg shadow p-4">
-                  <div className="flex gap-4">
+                  <div className="flex gap-3">
                     <div className="flex-1 relative">
                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                       <Input
@@ -744,47 +763,55 @@ export function AdminPanel({ onClose, onNavigateToDestination, onNavigateToBoard
                     <select
                       value={boardStatusFilter}
                       onChange={(e) => setBoardStatusFilter(e.target.value)}
-                      className="border rounded-lg px-4 py-2"
+                      className="border rounded-md px-2 py-1 text-sm w-22"
                     >
-                      <option value="">전체 상태</option>
+                      <option value="">전체</option>
                       <option value="PUBLIC">공개</option>
                       <option value="HIDDEN">숨김</option>
                     </select>
-                    <Button onClick={() => fetchBoards(1)}>검색</Button>
+                    <Button className="border rounded-md px-2 py-4 text-sm w-12" onClick={() => fetchBoards(1)}>검색</Button>
                   </div>
                 </div>
 
                 {/* 게시글 목록 테이블 */}
-                <div className="bg-white rounded-lg shadow overflow-hidden">
-                  <table className="w-full">
+                <div className="bg-white rounded-lg shadow overflow-hidden overflow-x-auto">
+                  <table className="w-full table-fixed min-w-[900px]">
                     <thead className="bg-gray-50">
                       <tr>
-                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">ID</th>
-                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">제목</th>
-                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">작성자</th>
-                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">카테고리</th>
-                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">상태</th>
-                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">조회수</th>
-                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">작성일</th>
-                        <th className="px-4 py-3 text-center text-sm font-medium text-gray-600">관리</th>
+                        <th className="w-[50px] px-3 py-3 text-left text-sm font-medium text-gray-600">ID</th>
+                        <th className="w-[250px] px-3 py-3 text-left text-sm font-medium text-gray-600">제목</th>
+                        <th className="w-[100px] px-3 py-3 text-left text-sm font-medium text-gray-600">작성자</th>
+                        <th className="w-[80px] px-3 py-3 text-center text-sm font-medium text-gray-600">카테고리</th>
+                        <th className="w-[70px] px-3 py-3 text-center text-sm font-medium text-gray-600">상태</th>
+                        <th className="w-[70px] px-3 py-3 text-center text-sm font-medium text-gray-600">조회수</th>
+                        <th className="w-[100px] px-3 py-3 text-center text-sm font-medium text-gray-600">작성일</th>
+                        <th className="w-[80px] px-3 py-3 text-center text-sm font-medium text-gray-600">관리</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y">
                       {boards.map((board) => (
                         <tr key={board.bdId} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 text-sm">{board.bdId}</td>
-                          <td className="px-4 py-3 text-sm font-medium max-w-xs truncate">
+                          <td className="px-3 py-3 text-sm">{board.bdId}</td>
+                          <td className="px-3 py-3 text-sm font-medium truncate">
                             <button
                               onClick={() => onNavigateToBoard?.(board.bdId)}
-                              className="text-blue-600 hover:text-blue-800 hover:underline text-left"
+                              className="text-blue-600 hover:text-blue-800 hover:underline text-left truncate block w-full"
                               title="게시글 상세 페이지로 이동"
                             >
                               {board.bdTitle}
                             </button>
                           </td>
-                          <td className="px-4 py-3 text-sm">{board.authorNickname}</td>
-                          <td className="px-4 py-3 text-sm">{board.bdCategory}</td>
-                          <td className="px-4 py-3 text-sm">
+                          <td className="px-3 py-3 text-sm truncate">{board.authorNickname}</td>
+                          <td className="px-3 py-3 text-sm text-center">
+                            <span className={`px-2 py-1 rounded text-xs ${
+                              board.bdCategory === 'COMPANION' 
+                                ? 'bg-blue-100 text-blue-700' 
+                                : 'bg-green-100 text-green-700'
+                            }`}>
+                              {getCategoryName(board.bdCategory)}
+                            </span>
+                          </td>
+                          <td className="px-3 py-3 text-sm text-center">
                             <span className={`px-2 py-1 rounded text-xs ${
                               board.isDeleted === 0 || board.isDeleted === null
                                 ? 'bg-green-100 text-green-700' 
@@ -793,12 +820,13 @@ export function AdminPanel({ onClose, onNavigateToDestination, onNavigateToBoard
                               {board.isDeleted === 0 || board.isDeleted === null ? '공개' : '숨김'}
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-sm text-gray-600">{board.bdViewCount}</td>
-                          <td className="px-4 py-3 text-sm text-gray-600">
+                          <td className="px-3 py-3 text-sm text-gray-600 text-center">{board.bdViewCount}</td>
+                          <td className="px-3 py-3 text-sm text-gray-600 text-center">
                             {formatDate(board.createdAt)}
                           </td>
-                          <td className="px-4 py-3">
-                            <div className="flex justify-center gap-2">
+                          <td className="px-3 py-3">
+                            <div className="flex justify-center gap-1">
+                              {/* ★ 아이콘 반대로: 공개 → 눈 아이콘, 숨김 → 눈 감은 아이콘 */}
                               <Button
                                 variant="ghost"
                                 size="sm"
@@ -806,9 +834,9 @@ export function AdminPanel({ onClose, onNavigateToDestination, onNavigateToBoard
                                 title={board.isDeleted === 0 || board.isDeleted === null ? '숨김 처리' : '공개'}
                               >
                                 {board.isDeleted === 0 || board.isDeleted === null ? (
-                                  <EyeOff className="h-4 w-4 text-orange-500" />
-                                ) : (
                                   <Eye className="h-4 w-4 text-green-500" />
+                                ) : (
+                                  <EyeOff className="h-4 w-4 text-orange-500" />
                                 )}
                               </Button>
                               <Button
@@ -853,7 +881,6 @@ export function AdminPanel({ onClose, onNavigateToDestination, onNavigateToBoard
                     <ChevronLeft className="h-4 w-4" />
                   </Button>
                   
-                  {/* 페이지 번호 */}
                   {Array.from({ length: Math.min(5, boardTotalPages) }, (_, i) => {
                     let pageNum;
                     if (boardTotalPages <= 5) {
@@ -914,55 +941,57 @@ export function AdminPanel({ onClose, onNavigateToDestination, onNavigateToBoard
                     <div className="flex-1 relative">
                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                       <Input
-                        placeholder="리뷰 내용, 작성자, 여행지 ID 검색..."
+                        placeholder="리뷰 내용, 작성자, 여행지명 검색..."
                         value={reviewSearch}
                         onChange={(e) => setReviewSearch(e.target.value)}
                         className="pl-10"
                         onKeyDown={(e) => e.key === 'Enter' && fetchReviews(1)}
                       />
                     </div>
-                    <Button onClick={() => fetchReviews(1)}>검색</Button>
+                    <Button className="border rounded-md px-2 py-4 text-sm w-12" onClick={() => fetchReviews(1)}>검색</Button>
                   </div>
                 </div>
 
-                {/* 리뷰 목록 테이블 */}
-                <div className="bg-white rounded-lg shadow overflow-hidden">
-                  <table className="w-full">
+                {/* 리뷰 목록 테이블 - ★ 컬럼 순서 변경: 내용 → 여행지 */}
+                <div className="bg-white rounded-lg shadow overflow-hidden overflow-x-auto">
+                  <table className="w-full table-fixed min-w-[900px]">
                     <thead className="bg-gray-50">
                       <tr>
-                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">ID</th>
-                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">여행지 ID</th>
-                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">작성자</th>
-                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">내용</th>
-                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">평점</th>
-                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">작성일</th>
-                        <th className="px-4 py-3 text-center text-sm font-medium text-gray-600">관리</th>
+                        <th className="w-[50px] px-3 py-3 text-left text-sm font-medium text-gray-600">ID</th>
+                        <th className="w-[250px] px-3 py-3 text-left text-sm font-medium text-gray-600">내용</th>
+                        <th className="w-[150px] px-3 py-3 text-left text-sm font-medium text-gray-600">여행지</th>
+                        <th className="w-[100px] px-3 py-3 text-left text-sm font-medium text-gray-600">작성자</th>
+                        <th className="w-[70px] px-3 py-3 text-center text-sm font-medium text-gray-600">평점</th>
+                        <th className="w-[100px] px-3 py-3 text-center text-sm font-medium text-gray-600">작성일</th>
+                        <th className="w-[80px] px-3 py-3 text-center text-sm font-medium text-gray-600">관리</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y">
                       {reviews.map((review) => (
                         <tr key={review.rvId} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 text-sm">{review.rvId}</td>
-                          <td className="px-4 py-3 text-sm">
-                            <button
-                              onClick={() => onNavigateToDestination?.(review.contentid)}
-                              className="text-blue-600 hover:text-blue-800 hover:underline"
-                              title="여행지 상세 페이지로 이동"
-                            >
-                              {review.contentid}
-                            </button>
-                          </td>
-                          <td className="px-4 py-3 text-sm">{review.authorNickname}</td>
-                          <td className="px-4 py-3 text-sm max-w-xs truncate">
+                          <td className="px-3 py-3 text-sm">{review.rvId}</td>
+                          {/* ★ 내용 먼저 */}
+                          <td className="px-3 py-3 text-sm truncate" title={review.rvContent}>
                             {review.rvContent}
                           </td>
-                          <td className="px-4 py-3 text-sm">
+                          {/* ★ 여행지 */}
+                          <td className="px-3 py-3 text-sm">
+                            <button
+                              onClick={() => onNavigateToDestination?.(review.contentid)}
+                              className="text-blue-600 hover:text-blue-800 hover:underline text-left truncate block w-full"
+                              title={`${review.destinationTitle || review.contentid} - 클릭하여 이동`}
+                            >
+                              {review.destinationTitle || review.contentid}
+                            </button>
+                          </td>
+                          <td className="px-3 py-3 text-sm truncate">{review.authorNickname || '-'}</td>
+                          <td className="px-3 py-3 text-sm text-center">
                             <span className="text-yellow-500">★</span> {review.rvRating}
                           </td>
-                          <td className="px-4 py-3 text-sm text-gray-600">
-                            {formatDateTime(review.createdAt)}
+                          <td className="px-3 py-3 text-sm text-gray-600 text-center">
+                            {formatDate(review.createdAt)}
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-3 py-3">
                             <div className="flex justify-center">
                               <Button
                                 variant="ghost"
@@ -1006,7 +1035,6 @@ export function AdminPanel({ onClose, onNavigateToDestination, onNavigateToBoard
                     <ChevronLeft className="h-4 w-4" />
                   </Button>
                   
-                  {/* 페이지 번호 */}
                   {Array.from({ length: Math.min(5, reviewTotalPages) }, (_, i) => {
                     let pageNum;
                     if (reviewTotalPages <= 5) {
@@ -1063,11 +1091,11 @@ export function AdminPanel({ onClose, onNavigateToDestination, onNavigateToBoard
                 
                 {/* 검색 & 필터 */}
                 <div className="bg-white rounded-lg shadow p-4">
-                  <div className="flex gap-4">
+                  <div className="flex gap-3">
                     <div className="flex-1 relative">
                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                       <Input
-                        placeholder="제목, 설명, 작성자 검색..."
+                        placeholder="제목, 작성자 검색..."
                         value={plannerSearch}
                         onChange={(e) => setPlannerSearch(e.target.value)}
                         className="pl-10"
@@ -1080,50 +1108,54 @@ export function AdminPanel({ onClose, onNavigateToDestination, onNavigateToBoard
                         setPlannerStatusFilter(e.target.value);
                         setTimeout(() => fetchPlanners(1), 0);
                       }}
-                      className="border rounded-md px-3 py-2"
+                      className="border rounded-md px-2 py-1 text-sm w-22"
                     >
-                      <option value="">전체 상태</option>
+                      <option value="">전체</option>
                       <option value="PUBLIC">공개</option>
                       <option value="PRIVATE">비공개</option>
                     </select>
-                    <Button onClick={() => fetchPlanners(1)}>검색</Button>
+                    <Button className="border rounded-md px-2 py-4 text-sm w-12" onClick={() => fetchPlanners(1)}>검색</Button>
                   </div>
                 </div>
 
                 {/* 플래너 목록 테이블 */}
-                <div className="bg-white rounded-lg shadow overflow-hidden">
-                  <table className="w-full">
+                <div className="bg-white rounded-lg shadow overflow-hidden overflow-x-auto">
+                  <table className="w-full table-fixed min-w-[900px]">
                     <thead className="bg-gray-50">
                       <tr>
-                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">ID</th>
-                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">제목</th>
-                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">작성자</th>
-                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">기간</th>
-                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">상태</th>
-                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">작성일</th>
-                        <th className="px-4 py-3 text-center text-sm font-medium text-gray-600">관리</th>
+                        <th className="w-[50px] px-3 py-3 text-left text-sm font-medium text-gray-600">ID</th>
+                        <th className="w-[250px] px-3 py-3 text-left text-sm font-medium text-gray-600">제목</th>
+                        <th className="w-[100px] px-3 py-3 text-left text-sm font-medium text-gray-600">작성자</th>
+                        <th className="w-[170px] px-3 py-3 text-center text-sm font-medium text-gray-600">여행기간</th>
+                        <th className="w-[70px] px-3 py-3 text-center text-sm font-medium text-gray-600">상태</th>
+                        <th className="w-[100px] px-3 py-3 text-center text-sm font-medium text-gray-600">작성일</th>
+                        <th className="w-[80px] px-3 py-3 text-center text-sm font-medium text-gray-600">관리</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y">
                       {planners.map((planner) => (
                         <tr key={planner.plnId} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 text-sm">{planner.plnId}</td>
-                          {/* ✅ 제목 클릭 시 현재 창에서 이동하도록 수정 */}
-                          <td className="px-4 py-3 text-sm font-medium max-w-xs truncate">
-                            <span
-                              onClick={() => window.location.href = `/?page=planner-detail&plnId=${planner.plnId}`}
-                              className="text-blue-600 hover:text-blue-800 hover:underline cursor-pointer block truncate"
-                            title="플래너 상세 보기"
+                          <td className="px-3 py-3 text-sm">{planner.plnId}</td>
+                          <td className="px-3 py-3 text-sm font-medium truncate">
+                            <button
+                              onClick={() => onNavigateToPlanner?.({
+                                plnId: planner.plnId,
+                                title: planner.plnTitle,
+                                author: planner.authorNickname,
+                                days: planner.totalDays,
+                              })}
+                              className="text-blue-600 hover:text-blue-800 hover:underline text-left truncate block w-full"
+                              title="플래너 상세 보기"
                             >
                               {planner.plnTitle}
-                            </span>
+                            </button>
                           </td>
-                          <td className="px-4 py-3 text-sm">{planner.authorNickname}</td>
-                          <td className="px-4 py-3 text-sm text-gray-600">
+                          <td className="px-3 py-3 text-sm truncate">{planner.authorNickname}</td>
+                          <td className="px-3 py-3 text-sm text-gray-600 text-center">
                             {formatDate(planner.startDate)} ~ {formatDate(planner.endDate)}
                             <span className="ml-1 text-xs text-gray-400">({planner.totalDays}일)</span>
                           </td>
-                          <td className="px-4 py-3 text-sm">
+                          <td className="px-3 py-3 text-sm text-center">
                             <span className={`px-2 py-1 rounded text-xs ${
                               planner.isPublic === 1
                                 ? 'bg-green-100 text-green-700' 
@@ -1132,11 +1164,12 @@ export function AdminPanel({ onClose, onNavigateToDestination, onNavigateToBoard
                               {planner.isPublic === 1 ? '공개' : '비공개'}
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-sm text-gray-600">
+                          <td className="px-3 py-3 text-sm text-gray-600 text-center">
                             {formatDate(planner.createdAt)}
                           </td>
-                          <td className="px-4 py-3">
-                            <div className="flex justify-center gap-2">
+                          <td className="px-3 py-3">
+                            <div className="flex justify-center gap-1">
+                              {/* ★ 아이콘 반대로: 공개 → 눈 아이콘, 비공개 → 눈 감은 아이콘 */}
                               <Button
                                 variant="ghost"
                                 size="sm"
@@ -1144,9 +1177,9 @@ export function AdminPanel({ onClose, onNavigateToDestination, onNavigateToBoard
                                 title={planner.isPublic === 1 ? '비공개로 변경' : '공개로 변경'}
                               >
                                 {planner.isPublic === 1 ? (
-                                  <EyeOff className="h-4 w-4 text-gray-500" />
-                                ) : (
                                   <Eye className="h-4 w-4 text-green-500" />
+                                ) : (
+                                  <EyeOff className="h-4 w-4 text-gray-500" />
                                 )}
                               </Button>
                               <Button
@@ -1163,7 +1196,7 @@ export function AdminPanel({ onClose, onNavigateToDestination, onNavigateToBoard
                       ))}
                       {planners.length === 0 && (
                         <tr>
-                          <td colSpan={7} className="px-4 py-8 text-center text-gray-500">
+                          <td colSpan={7} className="px-4 py-12 text-center text-gray-400">
                             플래너가 없습니다.
                           </td>
                         </tr>
@@ -1191,7 +1224,6 @@ export function AdminPanel({ onClose, onNavigateToDestination, onNavigateToBoard
                     <ChevronLeft className="h-4 w-4" />
                   </Button>
                   
-                  {/* 페이지 번호 */}
                   {Array.from({ length: Math.min(5, plannerTotalPages) }, (_, i) => {
                     let pageNum;
                     if (plannerTotalPages <= 5) {

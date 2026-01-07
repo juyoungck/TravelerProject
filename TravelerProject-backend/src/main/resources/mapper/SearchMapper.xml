@@ -38,7 +38,7 @@
           AND contenttypeid != 25
     </select>
 
-    <!-- 플래너 검색 (제목, 작성자, 지역, 날짜 포함) -->
+    <!-- ★ 플래너 검색 (썸네일 이미지 추가) -->
     <select id="searchPlanners" resultType="map">
         SELECT * FROM (
             SELECT
@@ -78,6 +78,17 @@
                     ELSE ''
                 END AS sidoName,
                 NVL(s.SIGNGU_NAME, '') AS signguName,
+                <!-- ★ 1일차 첫 번째 장소의 썸네일 이미지 -->
+                (
+                    SELECT dest.firstimage
+                    FROM planner_day pd
+                    JOIN planner_place pp ON pd.day_id = pp.day_id
+                    JOIN destination dest ON pp.contentid = dest.contentid
+                    WHERE pd.pln_id = p.pln_id
+                      AND pd.day_number = 1
+                      AND pp.sort_order = 1
+                      AND ROWNUM = 1
+                ) AS thumbnail,
                 ROWNUM AS rn
             FROM (
                 SELECT * FROM planner
@@ -101,13 +112,14 @@
           AND is_public = 1
     </select>
 
-    <!-- 통합 검색 (여행지 + 플래너, 여행지 먼저 → 플래너 뒤) -->
+    <!-- ★ 통합 검색 (플래너 썸네일 추가) -->
     <select id="searchAll" resultType="map">
         SELECT * FROM (
             SELECT 
                 innerQuery.*,
                 ROWNUM AS rn
             FROM (
+                <!-- 여행지 -->
                 SELECT 
                     'destination' AS searchType,
                     TO_CHAR(d.contentid) AS id,
@@ -121,6 +133,7 @@
                     '' AS signguName,
                     NULL AS startDate,
                     NULL AS endDate,
+                    '' AS thumbnail,
                     1 AS sortOrder,
                     TO_NUMBER(d.contentid) AS sortKey
                 FROM destination d
@@ -130,7 +143,10 @@
                 WHERE LOWER(d.title) LIKE '%' || LOWER(#{keyword}) || '%'
                   AND d.contenttypeid != 15
                   AND d.contenttypeid != 25
+                
                 UNION ALL
+                
+                <!-- ★ 플래너 (썸네일 추가) -->
                 SELECT 
                     'planner' AS searchType,
                     TO_CHAR(p.pln_id) AS id,
@@ -169,6 +185,16 @@
                     NVL(s.SIGNGU_NAME, '') AS signguName,
                     p.start_date AS startDate,
                     p.end_date AS endDate,
+                    (
+                        SELECT dest.firstimage
+                        FROM planner_day pd
+                        JOIN planner_place pp ON pd.day_id = pp.day_id
+                        JOIN destination dest ON pp.contentid = dest.contentid
+                        WHERE pd.pln_id = p.pln_id
+                          AND pd.day_number = 1
+                          AND pp.sort_order = 1
+                          AND ROWNUM = 1
+                    ) AS thumbnail,
                     2 AS sortOrder,
                     p.pln_id AS sortKey
                 FROM planner p

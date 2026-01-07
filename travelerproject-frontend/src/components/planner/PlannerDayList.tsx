@@ -76,7 +76,6 @@ function DaySection({
   onMovePlace,
   onAddPlaceAtIndex,
   onUpdateMemo,
-  onDeleteDay,
   onRemovePlace,
 }: DaySectionProps) {
   const ref = useRef<HTMLDivElement>(null);

@@ -18,7 +18,8 @@ import { Calendar, MapPin, ChevronLeft, ChevronRight, Loader2, Route } from 'luc
 import { Button } from '../../components/ui/button';
 import { EventDetailPage } from './EventDetailPage';
 import { CourseDetailPage } from './CourseDetailPage';
-import { getFestivalList, FestivalItem, FestivalType } from '../../api/festivalApi';
+import { getFestivalList } from '../../api/festivalApi';
+import type { FestivalItem, FestivalType } from '../../api/festivalApi';
 import api from '../../api/api';
 
 type EventTab = '전체' | '축제' | '공연' | '행사' | '여행코스';
@@ -122,7 +123,6 @@ export function EventPage({ onNavigate, isLoggedIn, onOpenSearch }: EventPagePro
 
   /** 종료일 가까운 순 정렬 */
   const sortByEndDate = (items: FestivalItem[]): FestivalItem[] => {
-    const today = getTodayString();
     return [...items].sort((a, b) => {
       const endA = a.eventenddate || a.eventstartdate || '99999999';
       const endB = b.eventenddate || b.eventstartdate || '99999999';

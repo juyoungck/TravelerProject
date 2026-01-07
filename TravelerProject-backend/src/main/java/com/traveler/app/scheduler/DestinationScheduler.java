@@ -33,7 +33,7 @@ public class DestinationScheduler {
      * 크론 표현식: 초 분 시 일 월 요일
      * "0 0 3 * * *" = 매일 03:00:00
      */
-    @Scheduled(cron = "0 0 3 * * *")
+    @Scheduled(cron = "0 0 4 * * *")
     public void updateDestinationData() {
         String startTime = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
         log.info("========== [스케줄러] 여행지 데이터 업데이트 시작: {} ==========", startTime);

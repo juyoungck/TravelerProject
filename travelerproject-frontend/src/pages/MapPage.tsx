@@ -8,24 +8,22 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   MapPin, Navigation, RefreshCw, Loader2, ChevronRight, ChevronLeft, 
-  ChevronDown, ChevronUp, Search, X 
-} from 'lucide-react';
+  ChevronDown, ChevronUp, Search, X } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
-import KakaoMap, { KakaoMapRef } from '../components/map/KakaoMap';
-import { 
-  getNearbyDestinations, 
-  searchDestinationsForMap,
-  NearbyDestination, 
-  CONTENT_TYPE_NAME 
-} from '../api/mapApi';
+import KakaoMap from '../components/map/KakaoMap';
+import type { KakaoMapRef } from '../components/map/KakaoMap';
+import { getNearbyDestinations, searchDestinationsForMap, CONTENT_TYPE_NAME } from '../api/mapApi';
+import type { NearbyDestination } from '../api/mapApi';
 import { getDestinationDetail } from '../api/destinationApi';
+import favoriteApi from '../api/favoriteApi';
 import { getWeather } from '../api/weatherApi';
 import { MARKER_COLORS, MARKER_EMOJI } from '../utils/markerIcons';
 
 /** 여행지 선택 상태 */
 interface MapPageProps {
-  initialContentId?: string;  
+  initialContentId?: string;
+  onNavigate?: (page: string, params?: any) => void;
 }
 
 /** 카테고리 목록 */
@@ -79,7 +77,9 @@ export function MapPage({ initialContentId }: MapPageProps) {
   const [searchKeyword, setSearchKeyword] = useState('');
   const [isSearchMode, setIsSearchMode] = useState(false);
   const [lastSearchKeyword, setLastSearchKeyword] = useState('');
-  
+  const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+
   // 날씨 상태
   const [weather, setWeather] = useState<{ temperature: string; sky: string } | null>(null);
   const [isWeatherLoading, setIsWeatherLoading] = useState(false);
@@ -191,6 +191,58 @@ export function MapPage({ initialContentId }: MapPageProps) {
     }
   }, [searchRadius]);
 
+  /** 찜 목록 조회 */
+  const fetchFavorites = async () => {
+    try {
+      const response = await favoriteApi.getMyFavoriteDestinations();
+      if (response.status === 'success' && response.data) {
+        const ids = new Set(response.data.map((fav: any) => fav.contentid));
+        setFavoriteIds(ids);
+      }
+    } catch (error) {
+      console.error('찜 목록 조회 실패:', error);
+    }
+  };
+
+  /** 찜 여부 확인 */
+  const isFavorite = useCallback((contentid: string): boolean => {
+    return favoriteIds.has(contentid);
+  }, [favoriteIds]);
+
+  /** 찜 토글 */
+  const handleToggleFavorite = useCallback(async (destination: NearbyDestination) => {
+    if (!isLoggedIn) {
+      alert('로그인이 필요한 기능입니다.');
+      return;
+    }
+    
+    const contentid = destination.contentid;
+    const isCurrentlyFavorite = favoriteIds.has(contentid);
+    
+    try {
+      if (isCurrentlyFavorite) {
+        // 찜 해제
+        const response = await favoriteApi.removeFavoriteDestination(contentid);
+        if (response.status === 'success') {
+          setFavoriteIds(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(contentid);
+            return newSet;
+          });
+        }
+      } else {
+        // 찜 추가
+        const response = await favoriteApi.addFavoriteDestination(contentid);
+        if (response.status === 'success') {
+          setFavoriteIds(prev => new Set(prev).add(contentid));
+        }
+      }
+    } catch (error) {
+      console.error('찜 토글 실패:', error);
+      alert('찜 처리 중 오류가 발생했습니다.');
+    }
+  }, [isLoggedIn, favoriteIds]);
+
   /**
    * 키워드 검색
    */
@@ -284,6 +336,15 @@ export function MapPage({ initialContentId }: MapPageProps) {
   useEffect(() => {
     getCurrentLocation();
   }, [getCurrentLocation]);
+
+  useEffect(() => {
+    const token = localStorage.getItem('accessToken');
+    setIsLoggedIn(!!token);
+    
+    if (token) {
+      fetchFavorites();
+    }
+  }, []);
 
   /** 
    * 초기 로드 (contentid 있을 시)
@@ -770,6 +831,8 @@ export function MapPage({ initialContentId }: MapPageProps) {
             onMarkerClick={handleMarkerClick}
             onMapClick={() => setSelectedDestination(null)}
             onNavigateToDetail={handleNavigateToDetail}
+            onToggleFavorite={handleToggleFavorite}
+            isFavorite={isFavorite}
             height="100%"
           />
         ) : (

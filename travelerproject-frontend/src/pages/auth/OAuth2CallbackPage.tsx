@@ -12,7 +12,8 @@
  */
 
 import { useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
+import api, { setAccessToken, setRefreshToken } from '../../api/api';
 
 interface OAuth2CallbackPageProps {
   /** 로그인 성공 시 호출될 콜백 */
@@ -21,11 +22,11 @@ interface OAuth2CallbackPageProps {
     refreshToken: string;
     tokenType: string;
     expiresIn: number;
+    member?: any;
   }) => void;
 }
 
 export function OAuth2CallbackPage({ onLoginSuccess }: OAuth2CallbackPageProps) {
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [errorMessage, setErrorMessage] = useState('');
@@ -47,31 +48,53 @@ export function OAuth2CallbackPage({ onLoginSuccess }: OAuth2CallbackPageProps) 
 
     // 토큰 확인
     if (accessToken && refreshToken) {
-      // 로컬 스토리지에 토큰 저장
-      localStorage.setItem('accessToken', accessToken);
-      localStorage.setItem('refreshToken', refreshToken);
+      // 1. 토큰 먼저 저장 (API 호출에 필요)
+      setAccessToken(accessToken);
+      setRefreshToken(refreshToken);
 
-      // 콜백 호출 (있으면)
-      if (onLoginSuccess) {
-        onLoginSuccess({
-          accessToken,
-          refreshToken,
-          tokenType: tokenType || 'Bearer',
-          expiresIn: parseInt(expiresIn || '1800', 10),
-        });
-      }
+      // 2. 회원 정보 조회 API 호출
+      const fetchMemberInfo = async () => {
+        try {
+          const response = await api.get('/auth/me');
+          
+          if (response.data.status === 'success') {
+            // 3. 회원 정보 저장
+            const member = response.data.data;
+            localStorage.setItem('memberInfo', JSON.stringify(member));
+            
+            // 4. 콜백 호출 (App.tsx에서 상태 업데이트)
+            if (onLoginSuccess) {
+              onLoginSuccess({
+                accessToken,
+                refreshToken,
+                tokenType: tokenType || 'Bearer',
+                expiresIn: parseInt(expiresIn || '1800', 10),
+                member,
+              });
+            }
+            
+            setStatus('success');
 
-      setStatus('success');
+            // 5. 1.5초 후 메인 페이지로 이동
+            setTimeout(() => {
+              window.location.href = '/';
+            }, 1500);
+          } else {
+            throw new Error('회원 정보 조회 실패');
+          }
+        } catch (err: any) {
+          console.error('회원 정보 조회 실패:', err);
+          setStatus('error');
+          setErrorMessage(err.response?.data?.message || '회원 정보를 불러올 수 없습니다.');
+        }
+      };
 
-      // 2초 후 메인 페이지로 이동
-      setTimeout(() => {
-        navigate('/');
-      }, 2000);
+      fetchMemberInfo();
     } else {
       setStatus('error');
       setErrorMessage('로그인 정보를 받아올 수 없습니다.');
     }
-  }, [searchParams, onLoginSuccess, navigate]);
+  }, [searchParams, onLoginSuccess]);
 
   return (
     <div className="container mx-auto px-4 py-12 flex items-center justify-center min-h-[80vh]">
@@ -110,7 +133,7 @@ export function OAuth2CallbackPage({ onLoginSuccess }: OAuth2CallbackPageProps) 
             <h2 className="text-xl font-semibold text-red-600 mb-2">로그인 실패</h2>
             <p className="text-gray-600 mb-4">{errorMessage}</p>
             <button
-              onClick={() => navigate('/login')}
+              onClick={() => window.location.href = '/?page=login'}
               className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
             >
               로그인 페이지로 돌아가기

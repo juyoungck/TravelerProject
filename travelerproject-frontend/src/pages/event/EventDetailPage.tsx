@@ -10,7 +10,8 @@ import { useState, useEffect } from 'react';
 import { MapPin, Calendar, Phone, X, ArrowUp, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { Header } from '../../components/layout/Header';
 import KakaoMap from '../../components/map/KakaoMap';
-import { FestivalItem, getFestivalImages } from '../../api/festivalApi';
+import { getFestivalImages } from '../../api/festivalApi';
+import type { FestivalItem } from '../../api/festivalApi';
 
 interface EventDetailPageProps {
   event: FestivalItem;
@@ -128,12 +129,16 @@ export function EventDetailPage({
     contenttypeid: '15',
     title: event.title,
     addr1: event.addr1,
+    addr2: null,
+    tel: null,
     mapx: parseFloat(event.mapx),
     mapy: parseFloat(event.mapy),
     firstimage: event.firstimage,
     firstimage2: event.firstimage2,
     distance: null,
     typeName: event.category,
+    regnName: null,
+    signguName: null,
   }] : [];
 
   return (

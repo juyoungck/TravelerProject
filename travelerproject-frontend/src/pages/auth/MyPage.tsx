@@ -14,7 +14,7 @@ import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import { SocialLinkSection } from '../../components/SocialLinkSection';
-
+import { getContentTypeStyle } from '../../utils/contentTypeUtils';
 import { authApi } from '../../api/authApi';
 import { reviewApi, type MyReview } from '../../api/reviewApi';
 import { favoriteApi, type MyFavoriteDestination, type MyFavoritePlanner } from '../../api/favoriteApi';
@@ -32,21 +32,6 @@ interface MyPageProps {
 
 type TabType = 'info' | 'reviews' | 'favorites' | 'admin';
 type FavoriteType = 'destinations' | 'planners';
-
-/** 콘텐츠 타입 이름 변환 */
-const getContentTypeName = (typeId: string): string => {
-  const types: { [key: string]: string } = {
-    '12': '관광지',
-    '14': '문화시설',
-    '15': '축제/공연/행사',
-    '25': '여행코스',
-    '28': '레포츠',
-    '32': '숙박',
-    '38': '쇼핑',
-    '39': '음식점',
-  };
-  return types[typeId] || '기타';
-};
 
 export function MyPage({ 
   onLogout, 
@@ -388,7 +373,7 @@ export function MyPage({
   // ============================================
   const renderStars = (rating: number) => {
     return (
-      <div className="flex gap-1">
+      <div className="flex gap-0.5">
         {[1, 2, 3, 4, 5].map((star) => (
           <Star
             key={star}
@@ -777,6 +762,14 @@ export function MyPage({
                       <div className="flex-1">
                         <div className="flex items-start justify-between mb-2">
                           <div>
+                            {(() => {
+                              const style = getContentTypeStyle(review.contenttypeid);
+                              return (
+                                <span className={`inline-block px-2 py-0.5 text-xs rounded mb-1 ${style.bgColor} ${style.textColor}`}>
+                                  {style.name}
+                                </span>
+                              );
+                            })()}
                             <h3 
                               className="font-medium mb-1 cursor-pointer hover:text-blue-600"
                               onClick={() => onNavigateToDestination?.(review.contentid)}
@@ -784,9 +777,6 @@ export function MyPage({
                               {review.title || '여행지 정보 없음'}
                             </h3>
                             {renderStars(review.rvRating)}
-                            <span className="text-xs text-gray-500 ml-2">
-                              {getContentTypeName(review.contenttypeid)}
-                            </span>
                           </div>
                           <span className="text-sm text-gray-500">
                             {formatDate(review.createdAt)}
@@ -891,23 +881,27 @@ export function MyPage({
                           <div className="flex-1">
                             <div className="flex items-start justify-between mb-2">
                               <div>
+                                {(() => {
+                                  const style = getContentTypeStyle(favorite.contenttypeid);
+                                  return (
+                                    <span className={`inline-block px-2 py-0.5 text-xs rounded mb-1 ${style.bgColor} ${style.textColor}`}>
+                                      {style.name}
+                                    </span>
+                                  );
+                                })()}
                                 <h3 
-                                  className="font-medium mb-1 cursor-pointer hover:text-blue-600"
+                                  className="font-medium cursor-pointer hover:text-blue-600"
                                   onClick={() => onNavigateToDestination?.(favorite.contentid)}
                                 >
                                   {favorite.title || '여행지 정보 없음'}
                                 </h3>
-                                <span className="inline-block px-2 py-1 text-xs bg-blue-100 text-blue-600 rounded">
-                                  {getContentTypeName(favorite.contenttypeid)}
-                                </span>
                               </div>
                               <Button
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => handleRemoveFavoriteDestination(favorite.contentid)}
-                                className="text-red-500 hover:text-red-600"
                               >
-                                <Heart className="h-5 w-5 fill-red-500" />
+                                <Heart className="h-6 w-6 transition-colors fill-red-500 text-red-500 hover:text-red-400" />
                               </Button>
                             </div>
                             
@@ -943,31 +937,49 @@ export function MyPage({
                         className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow"
                       >
                         <div className="flex gap-4 p-4">
-                          {/* ★ 플래너 이미지 - 클릭 시 이동 (여행지와 동일하게) */}
+                          {/* ★ 플래너 썸네일 이미지 */}
                           <div 
                             className="w-32 h-32 bg-gradient-to-br from-blue-400 to-blue-600 rounded-lg flex items-center justify-center flex-shrink-0 cursor-pointer"
                             onClick={() => onNavigateToPlanner?.({
-                              plnId: planner.plnId,
-                              plnTitle: planner.plnTitle,
+                              id: planner.plnId,
+                              title: planner.plnTitle,
+                              author: planner.authorNickname,
+                              days: planner.totalDays,
                             })}
                           >
-                            <Calendar className="h-12 w-12 text-white" />
+                            {planner.thumbnail ? (
+                              <img
+                                src={planner.thumbnail}
+                                alt={planner.plnTitle}
+                                className="w-full h-full object-cover rounded-lg"
+                              />
+                            ) : (
+                              <div className="w-full h-full bg-gradient-to-br from-blue-400 to-blue-600 rounded-lg flex items-center justify-center">
+                                <Calendar className="h-12 w-12 text-white" />
+                              </div>
+                            )}
                           </div>
                           
                           <div className="flex-1">
                             <div className="flex items-start justify-between mb-2">
                               <div>
-                                {/* ★ 제목 클릭 시 이동 (여행지와 동일하게) */}
+                                {/* ★ 플래너 태그 */}
+                                <span className="inline-block px-2 py-0.5 text-xs rounded mb-1 bg-green-100 text-green-600">
+                                  플래너
+                                </span>
+                                {/* ★ 제목 클릭 시 이동 */}
                                 <h3 
                                   className="font-medium mb-1 cursor-pointer hover:text-blue-600"
                                   onClick={() => onNavigateToPlanner?.({
-                                    plnId: planner.plnId,
-                                    plnTitle: planner.plnTitle,
+                                    id: planner.plnId,
+                                    title: planner.plnTitle,
+                                    author: planner.authorNickname,
+                                    days: planner.totalDays,
                                   })}
                                 >
                                   {planner.plnTitle || '제목 없음'}
                                 </h3>
-                                <div className="flex items-center gap-3 text-sm text-gray-600">
+                                <div className="flex items-center gap-3 text-sm text-gray-600 mt-1">
                                   <span>작성자: {planner.authorNickname || '알 수 없음'}</span>
                                   <div className="flex items-center gap-1">
                                     <Calendar className="h-4 w-4" />
@@ -979,9 +991,8 @@ export function MyPage({
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => handleRemoveFavoritePlanner(planner.plnId)}
-                                className="text-red-500 hover:text-red-600"
                               >
-                                <Heart className="h-5 w-5 fill-red-500" />
+                                <Heart className="h-6 w-6 fill-red-500 text-red-500 hover:text-red-400 transition-colors" />
                               </Button>
                             </div>
                             
@@ -1017,7 +1028,7 @@ export function MyPage({
           onClose={() => setActiveTab('info')} 
           onNavigateToDestination={onNavigateToDestination}
           onNavigateToBoard={onNavigateToBoard}
-          onNavigateToPlanner={(plnId) => onNavigateToPlanner?.({ plnId })}
+          onNavigateToPlanner={onNavigateToPlanner}
         />
       )}
 

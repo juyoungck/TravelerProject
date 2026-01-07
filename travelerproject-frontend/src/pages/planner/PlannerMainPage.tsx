@@ -33,10 +33,9 @@ interface PlannerMainPageProps {
   onCreatePlanner: () => void;
   onViewMore: () => void;
   onSelectPlanner: (planner: Planner) => void;
-  onNavigate?: (page: string) => void;  // 페이지 이동용
 }
 
-export function PlannerMainPage({ onCreatePlanner, onViewMore, onSelectPlanner, onNavigate }: PlannerMainPageProps) {
+export function PlannerMainPage({ onCreatePlanner, onSelectPlanner }: PlannerMainPageProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [myPlanners, setMyPlanners] = useState<Planner[]>([]);
@@ -66,9 +65,6 @@ export function PlannerMainPage({ onCreatePlanner, onViewMore, onSelectPlanner, 
     
     if (!userId) {
       alert('로그인이 필요한 서비스입니다.');
-      if (onNavigate) {
-        onNavigate('login');
-      }
       return;
     }
     
