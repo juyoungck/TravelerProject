@@ -4,6 +4,7 @@
  * ★ 플래너 카드형 표시 + 클릭 시 미리보기 이동 (새창 X)
  * ★ 레이아웃: 플래너(위) → 본문(아래)
  * ★ 댓글 작성 시 이미지 깜빡임 방지
+ * ★ H1/H2/H3 태그 스타일 적용
  */
 
 import { useState, useEffect, useMemo } from 'react';
@@ -67,7 +68,7 @@ interface BoardDetailPageProps {
   bdId: number;
   onClose: () => void;
   onDelete?: () => void;
-  onEdit?: () => void;  // ★ 편집 페이지로 이동
+  onEdit?: () => void;
   onNavigate?: (page: string) => void;
   isLoggedIn?: boolean;
   currentUserId?: number;
@@ -95,22 +96,18 @@ export function BoardDetailPage({
   const [replyingTo, setReplyingTo] = useState<number | null>(null);
   const [replyContent, setReplyContent] = useState('');
   
-  // 플래너 상세
   const [plannerDetail, setPlannerDetail] = useState<PlannerDetailData | null>(null);
 
-  /** 날짜 포맷 */
   const formatDate = (dateStr: string): string => {
     if (!dateStr) return '';
     const date = new Date(dateStr);
     return date.toLocaleString('ko-KR');
   };
 
-  /** 카테고리 영문 → 한글 */
   const getCategoryLabel = (cat: string): string => {
     return cat === 'COMPANION' ? '동행' : '후기';
   };
 
-  /** 모집상태 영문 → 한글 */
   const getRecruitLabel = (status: string | null): string => {
     switch (status) {
       case 'RECRUITING': return '모집중';
@@ -119,13 +116,11 @@ export function BoardDetailPage({
     }
   };
 
-  /** 별점 렌더링 */
   const renderStars = (rating: number | null) => {
     if (!rating) return null;
     return '⭐'.repeat(rating);
   };
 
-  /** 날짜 포맷팅 (플래너용) */
   const formatPeriod = (startDate: string, endDate: string) => {
     const start = new Date(startDate);
     const end = new Date(endDate);
@@ -133,7 +128,6 @@ export function BoardDetailPage({
     return `${days}일 (${startDate} ~ ${endDate})`;
   };
 
-  /** 게시글 상세 조회 */
   const fetchDetail = async () => {
     setLoading(true);
     try {
@@ -159,7 +153,6 @@ export function BoardDetailPage({
         setComments(convertedComments);
         setCommentCount(response.data.commentCount || 0);
         
-        // 플래너 상세 정보 불러오기
         if (response.data.board.plnId) {
           fetchPlannerDetailInfo(response.data.board.plnId);
         } else {
@@ -175,7 +168,6 @@ export function BoardDetailPage({
     }
   };
 
-  /** 플래너 상세 정보 조회 */
   const fetchPlannerDetailInfo = async (plnId: number) => {
     try {
       const response = await getPlannerDetail(plnId);
@@ -199,20 +191,97 @@ export function BoardDetailPage({
     fetchDetail();
   }, [bdId]);
 
-  // ★ 본문 메모이제이션 (깜빡임 방지)
+  // ★ 본문 메모이제이션 + H1/H2/H3 스타일 적용
   const boardContent = useMemo(() => {
     if (!board) return null;
     return (
       <div className="bg-gray-50 p-6 rounded-lg">
+        <style>{`
+          .board-content h1 {
+            font-size: 2em;
+            font-weight: bold;
+            margin: 1em 0 0.5em 0;
+            padding-bottom: 0.3em;
+            border-bottom: 2px solid #e5e7eb;
+          }
+          .board-content h2 {
+            font-size: 1.5em;
+            font-weight: bold;
+            margin: 1em 0 0.5em 0;
+            padding-bottom: 0.2em;
+            border-bottom: 1px solid #e5e7eb;
+          }
+          .board-content h3 {
+            font-size: 1.25em;
+            font-weight: bold;
+            margin: 1em 0 0.5em 0;
+          }
+          .board-content h4 {
+            font-size: 1.1em;
+            font-weight: bold;
+            margin: 1em 0 0.5em 0;
+          }
+          .board-content p {
+            margin: 0.5em 0;
+            line-height: 1.7;
+          }
+          .board-content img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+            margin: 1em 0;
+          }
+          .board-content ul, .board-content ol {
+            padding-left: 1.5em;
+            margin: 0.5em 0;
+          }
+          .board-content li {
+            margin: 0.25em 0;
+          }
+          .board-content blockquote {
+            border-left: 4px solid #3b82f6;
+            padding-left: 1em;
+            margin: 1em 0;
+            color: #6b7280;
+            font-style: italic;
+          }
+          .board-content hr {
+            border: none;
+            border-top: 1px solid #e5e7eb;
+            margin: 1.5em 0;
+          }
+          .board-content a {
+            color: #3b82f6;
+            text-decoration: underline;
+          }
+          .board-content strong {
+            font-weight: bold;
+          }
+          .board-content em {
+            font-style: italic;
+          }
+          .board-content code {
+            background-color: #f3f4f6;
+            padding: 0.2em 0.4em;
+            border-radius: 4px;
+            font-family: monospace;
+          }
+          .board-content pre {
+            background-color: #1f2937;
+            color: #f9fafb;
+            padding: 1em;
+            border-radius: 8px;
+            overflow-x: auto;
+          }
+        `}</style>
         <div 
-          className="text-gray-700 leading-relaxed prose max-w-none"
+          className="board-content text-gray-700 leading-relaxed"
           dangerouslySetInnerHTML={{ __html: board.bdContent }}
         />
       </div>
     );
   }, [board?.bdContent]);
 
-  /** ★ 댓글만 새로고침 (이미지 깜빡임 방지) */
   const fetchCommentsOnly = async () => {
     try {
       const response = await getBoardDetail(bdId);
@@ -240,7 +309,6 @@ export function BoardDetailPage({
     }
   };
 
-  /** ★ 플래너 미리보기 페이지 이동 (새창 X) */
   const handleViewPlanner = () => {
     if (!board?.plnId) return;
     if (onViewPlanner) {
@@ -248,7 +316,6 @@ export function BoardDetailPage({
     }
   };
 
-  /** 게시글 삭제 */
   const handleDeletePost = async () => {
     if (!currentUserId || !board) return;
     if (!confirm('정말로 이 게시글을 삭제하시겠습니까?')) return;
@@ -265,7 +332,6 @@ export function BoardDetailPage({
     }
   };
 
-  /** 모집 마감 */
   const handleCloseRecruit = async () => {
     if (!currentUserId || !board) return;
     if (!confirm('모집을 마감하시겠습니까?')) return;
@@ -282,7 +348,6 @@ export function BoardDetailPage({
     }
   };
 
-  /** 댓글 작성 */
   const handleAddComment = async () => {
     if (!isLoggedIn || !currentUserId) {
       alert('로그인이 필요한 서비스입니다.');
@@ -307,7 +372,6 @@ export function BoardDetailPage({
     }
   };
 
-  /** 답글 작성 */
   const handleAddReply = async (commentId: number) => {
     if (!isLoggedIn || !currentUserId) {
       alert('로그인이 필요한 서비스입니다.');
@@ -334,7 +398,6 @@ export function BoardDetailPage({
     }
   };
 
-  /** 댓글/답글 삭제 */
   const handleDeleteComment = async (cmtId: number) => {
     if (!currentUserId) return;
     if (!confirm('정말로 이 댓글을 삭제하시겠습니까?')) return;
@@ -350,7 +413,6 @@ export function BoardDetailPage({
     }
   };
 
-  // 로딩 중
   if (loading) {
     return (
       <div className="fixed inset-0 z-50 bg-white flex items-center justify-center">
@@ -359,7 +421,6 @@ export function BoardDetailPage({
     );
   }
 
-  // 게시글 없음
   if (!board) {
     return (
       <div className="fixed inset-0 z-50 bg-white flex items-center justify-center">
@@ -383,7 +444,6 @@ export function BoardDetailPage({
       )}
 
       <div className="container mx-auto px-4 py-8 max-w-4xl">
-        {/* 목록으로 버튼 */}
         <Button
           onClick={onClose}
           variant="ghost"
@@ -393,7 +453,6 @@ export function BoardDetailPage({
           목록으로
         </Button>
 
-        {/* 게시글 헤더 */}
         <div className="mb-6 pb-6 border-b">
           <div className="flex items-start justify-between mb-4">
             <div className="flex-1">
@@ -436,7 +495,6 @@ export function BoardDetailPage({
               </div>
             </div>
             
-            {/* ★ 조회수 + 버튼들 */}
             <div className="flex flex-col items-end gap-2">
               <div className="flex items-center gap-1 text-gray-500">
                 <Eye className="h-4 w-4" />
@@ -445,7 +503,6 @@ export function BoardDetailPage({
               
               {isAuthor && (
                 <>
-                  {/* 첫 번째 줄: 모집마감 + 삭제 */}
                   <div className="flex items-center gap-2">
                     {board.bdCategory === 'COMPANION' && board.recruitStatus === 'RECRUITING' && (
                       <Button 
@@ -468,7 +525,6 @@ export function BoardDetailPage({
                     </Button>
                   </div>
                   
-                  {/* 두 번째 줄: 편집하기 */}
                   <Button 
                     onClick={onEdit}
                     variant="outline"
@@ -484,18 +540,14 @@ export function BoardDetailPage({
           </div>
         </div>
 
-        {/* ★ 플래너 카드 (위) → 본문 (아래) */}
         <div className="mb-8">
-          
-          {/* 연결된 플래너 - 카드형 */}
           {(board.plnId && plannerDetail) && (
             <div className="mb-6">
               <div 
-                className="border rounded-lg overflow-hidden cursor-pointer hover:shadow-lg transition-shadow"
+                className="border rounded-lg overflow-hidden cursor-pointer hover:shadow-lg transition-shadow max-w-sm"
                 onClick={handleViewPlanner}
               >
-                {/* 플래너 썸네일 */}
-                <div className="relative h-48 bg-gray-200">
+                <div className="relative h-28 bg-gray-200">
                   {plannerDetail.thumbnailUrl ? (
                     <img 
                       src={plannerDetail.thumbnailUrl} 
@@ -504,35 +556,34 @@ export function BoardDetailPage({
                     />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-gray-400">
-                      <MapPin className="h-12 w-12" />
+                      <MapPin className="h-6 w-6" />
                     </div>
                   )}
-                  <span className="absolute top-3 left-3 bg-blue-500 text-white px-3 py-1 rounded-full text-sm font-medium">
-                    내 플래너
+                  <span className="absolute top-2 left-2 bg-blue-500 text-white px-2 py-0.5 rounded-full text-xs font-medium">
+                    연결된 플래너
                   </span>
                 </div>
                 
-                {/* 플래너 정보 */}
-                <div className="p-4">
-                  <h4 className="font-bold text-lg mb-2">{plannerDetail.plnTitle}</h4>
-                  <div className="flex items-center gap-1 text-gray-600 text-sm mb-1">
-                    <MapPin className="h-4 w-4" />
-                    <span>{plannerDetail.region}</span>
-                  </div>
-                  <div className="flex items-center gap-1 text-gray-600 text-sm">
-                    <Calendar className="h-4 w-4" />
-                    <span>{formatPeriod(plannerDetail.startDate, plannerDetail.endDate)}</span>
+                <div className="p-2">
+                  <h4 className="font-bold text-sm mb-1 line-clamp-1">{plannerDetail.plnTitle}</h4>
+                  <div className="flex items-center gap-2 text-xs text-gray-600">
+                    <div className="flex items-center gap-1">
+                      <MapPin className="h-3 w-3" />
+                      <span>{plannerDetail.region}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Calendar className="h-3 w-3" />
+                      <span>{formatPeriod(plannerDetail.startDate, plannerDetail.endDate)}</span>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
           )}
 
-          {/* 본문 내용 */}
           {boardContent}
         </div>
 
-        {/* 댓글 섹션 */}
         <div className="mb-8">
           <h3 className="text-lg font-semibold mb-4">댓글 ({commentCount})</h3>
           
@@ -629,7 +680,6 @@ export function BoardDetailPage({
             ))}
           </div>
 
-          {/* 댓글 입력 */}
           <div className="bg-gray-50 p-4 rounded-lg">
             <div className="flex gap-2">
               <Input

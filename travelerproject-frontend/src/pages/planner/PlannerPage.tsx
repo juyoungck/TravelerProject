@@ -42,13 +42,15 @@ interface PlannerPageProps {
   isLoggedIn?: boolean;
   favoritePlanners?: any[];
   onToggleFavoritePlanner?: (planner: any) => void;
+  onNavigate?: (page: string) => void;
 }
 
 export function PlannerPage({ 
   selectedPlanner: initialSelectedPlanner,
   isLoggedIn,
   favoritePlanners,
-  onToggleFavoritePlanner 
+  onToggleFavoritePlanner,
+  onNavigate
 }: PlannerPageProps) {
   const [currentPage, setCurrentPage] = useState<PageType>('main');
   const [selectedPlanner, setSelectedPlanner] = useState<any>(null);
@@ -115,6 +117,7 @@ export function PlannerPage({
         setSelectedPlanner(planner);
         setCurrentPage('preview');
       }}
+      onNavigate={onNavigate}
     />
   );
 }
