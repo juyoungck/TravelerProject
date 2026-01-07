@@ -18,7 +18,6 @@ import {
   Trash2,
   Share2,
   Calendar as CalendarIcon,
-  MapPin as MapPinIcon,
   ChevronLeft,
   ChevronRight,
   ChevronUp,
@@ -32,18 +31,13 @@ import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { PlannerDayList } from '../../components/planner/PlannerDayList';
 import { PlannerSearchResults } from '../../components/planner/PlannerSearchResults';
-import {
-  createPlanner,
-  updatePlanner,
-  deletePlanner,
-  createShareLink,
-  PlannerRequest,
-  DayPlanRequest,
-} from '../../api/plannerApi';
+import { createPlanner, updatePlanner, deletePlanner, createShareLink } from '../../api/plannerApi';
+import type { PlannerRequest, DayPlanRequest } from '../../api/plannerApi';
 import axios from 'axios';
 
 const API_BASE_URL = 'http://localhost:8080/api';
-import KakaoMap, { KakaoMapRef, PlannerPlace } from '../../components/map/KakaoMap';
+import KakaoMap from '../../components/map/KakaoMap';
+import type { KakaoMapRef, PlannerPlace } from '../../components/map/KakaoMap';
 
 interface Place {
   id: string;

@@ -1,3 +1,4 @@
+/// <reference path="../../types/kakao.d.ts" />
 /**
  * kakao.d.ts
  * 카카오맵 JavaScript SDK 타입 선언
@@ -306,6 +307,10 @@ declare namespace kakao.maps {
 declare global {
   interface Window {
     kakao: typeof kakao;
+  }
+  
+  namespace kakao {
+    export import maps = kakao.maps;
   }
 }
 

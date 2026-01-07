@@ -53,7 +53,7 @@ export function BoardCreatePage({
   const [submitting, setSubmitting] = useState(false);
 
   const [myPlanners, setMyPlanners] = useState<PlannerItem[]>([]);
-  const [loadingPlanners, setLoadingPlanners] = useState(false);
+  const [_loadingPlanners, setLoadingPlanners] = useState(false);
   const [favoritePlanners, setFavoritePlanners] = useState<PlannerItem[]>([]);
    
   const handleOpenPlannerModal = () => {

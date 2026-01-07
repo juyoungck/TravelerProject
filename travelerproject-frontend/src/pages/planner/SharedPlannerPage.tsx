@@ -15,7 +15,8 @@ import {
   Copy,
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
-import { getPlannerByShareLink, PlannerDetail, DayPlanDetail } from '../../api/plannerApi';
+import { getPlannerByShareLink } from '../../api/plannerApi';
+import type { PlannerDetail, DayPlanDetail } from '../../api/plannerApi';
 
 interface Place {
   id: string;

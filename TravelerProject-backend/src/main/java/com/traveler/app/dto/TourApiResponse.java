@@ -1,8 +1,12 @@
 package com.traveler.app.dto;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonSetter;
+import com.fasterxml.jackson.annotation.Nulls;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -43,7 +47,9 @@ public class TourApiResponse<T> {
     @NoArgsConstructor
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class Body<T> {
-        private Items<T> items;
+    	@JsonSetter(nulls = Nulls.AS_EMPTY)
+    	private Items<T> items = new Items<>();
+    	
         private int numOfRows;
         private int pageNo;
         private int totalCount;
@@ -54,6 +60,7 @@ public class TourApiResponse<T> {
     @NoArgsConstructor
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class Items<T> {
-        private List<T> item;
+    	@JsonSetter(nulls = Nulls.AS_EMPTY)
+        private List<T> item = new ArrayList<>();
     }
 }

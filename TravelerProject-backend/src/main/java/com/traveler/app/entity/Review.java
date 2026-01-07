@@ -36,8 +36,14 @@ public class Review {
     /** 회원 ID */
     private Long mId;
     
+    /** 닉네임 */
+    private String authorNickname; 
+    
     /** 여행지 콘텐츠 ID */
     private String contentid;
+    
+    /** 여행지 이름 */
+    private String destinationTitle;
     
     /** 리뷰 내용 */
     private String rvContent;

@@ -1,70 +1,22 @@
 /**
  * markerIcons.ts
- * 관광 타입별 카카오맵 마커 아이콘 (SVG 기반)
+ * 카카오맵 마커 아이콘 (SVG 기반)
  * 
- * 마커 색상:
- * - 관광지(12): 파랑 (#3B82F6)
- * - 문화시설(14): 보라 (#8B5CF6)
- * - 축제/공연(15): 주황 (#F97316)
- * - 여행코스(25): 청록 (#06B6D4)
- * - 레포츠(28): 초록 (#22C55E)
- * - 숙박(32): 분홍 (#EC4899)
- * - 쇼핑(38): 노랑 (#EAB308)
- * - 음식점(39): 빨강 (#EF4444)
+ * ★ 색상은 contentTypeUtils.ts에서 통합 관리
  * 
- * 플래너 일차별 색상 (10일차까지):
- * - 1일차: 파랑, 2일차: 초록, 3일차: 주황, 4일차: 보라
- * - 5일차: 분홍, 6일차: 청록, 7일차: 빨강, 8일차: 노랑
- * - 9일차: 남색, 10일차 이상: 회색
+ * @author TravelerProject
  */
 
-/** 마커 색상 정의 */
-export const MARKER_COLORS: Record<string, string> = {
-  '12': '#3B82F6', // 관광지 - 파랑
-  '14': '#8B5CF6', // 문화시설 - 보라
-  '15': '#F97316', // 축제/공연 - 주황
-  '25': '#06B6D4', // 여행코스 - 청록
-  '28': '#22C55E', // 레포츠 - 초록
-  '32': '#EC4899', // 숙박 - 분홍
-  '38': '#EAB308', // 쇼핑 - 노랑
-  '39': '#EF4444', // 음식점 - 빨강
-};
+import { 
+  MARKER_COLORS, 
+  MARKER_EMOJI,
+  PLANNER_DAY_COLORS,
+  getPlannerDayColor,
+  getContentTypeMarkerColor 
+} from './contentTypeUtils';
 
-/** 마커 아이콘 이모지 (인포윈도우용) */
-export const MARKER_EMOJI: Record<string, string> = {
-  '12': '🏛️', // 관광지
-  '14': '🎭', // 문화시설
-  '15': '🎉', // 축제/공연
-  '25': '🗺️', // 여행코스
-  '28': '⛷️', // 레포츠
-  '32': '🏨', // 숙박
-  '38': '🛍️', // 쇼핑
-  '39': '🍽️', // 음식점
-};
-
-/** ★ 플래너 일차별 색상 배열 (10일차까지 지원) */
-export const PLANNER_DAY_COLORS: string[] = [
-  '#3B82F6', // 1일차 - 파랑
-  '#22C55E', // 2일차 - 초록
-  '#F97316', // 3일차 - 주황
-  '#8B5CF6', // 4일차 - 보라
-  '#EC4899', // 5일차 - 분홍
-  '#06B6D4', // 6일차 - 청록
-  '#EF4444', // 7일차 - 빨강
-  '#EAB308', // 8일차 - 노랑
-  '#6366F1', // 9일차 - 남색 (인디고)
-  '#6B7280', // 10일차 이상 - 회색
-];
-
-/**
- * 일차 번호에 따른 색상 반환
- * @param dayNumber 일차 번호 (1부터 시작)
- * @returns 색상 코드
- */
-export const getPlannerDayColor = (dayNumber: number): string => {
-  const index = Math.min(dayNumber - 1, PLANNER_DAY_COLORS.length - 1);
-  return PLANNER_DAY_COLORS[Math.max(0, index)];
-};
+// contentTypeUtils에서 가져온 것들 재export (하위 호환)
+export { MARKER_COLORS, MARKER_EMOJI, PLANNER_DAY_COLORS, getPlannerDayColor, getContentTypeMarkerColor };
 
 /**
  * 관광 타입별 마커 SVG 생성
@@ -105,21 +57,21 @@ const getMarkerIcon = (contenttypeid: string): string => {
   const color = MARKER_COLORS[contenttypeid] || '#6B7280';
   
   switch (contenttypeid) {
-    case '12': // 관광지 - 카메라 아이콘
+    case '12': // 관광 - 카메라 아이콘
       return `<path d="M12 12h12v1h-12zM13 13h10v8h-10zM15 14h2v2h-2zM19 14h2v2h-2z" fill="${color}"/>
               <circle cx="18" cy="17" r="3" fill="${color}"/>`;
     
-    case '14': // 문화시설 - 건물 아이콘
+    case '14': // 문화 - 건물 아이콘
       return `<path d="M18 9l-8 4v2h16v-2l-8-4zM11 16v7h3v-4h8v4h3v-7h-14z" fill="${color}"/>`;
     
-    case '15': // 축제/공연 - 별 아이콘
+    case '15': // 이벤트 - 별 아이콘
       return `<path d="M18 10l2 5h5l-4 3 1.5 5-4.5-3-4.5 3 1.5-5-4-3h5z" fill="${color}"/>`;
     
-    case '25': // 여행코스 - 경로 아이콘
+    case '25': // 이벤트(코스) - 경로 아이콘
       return `<path d="M12 12c0 1.1.9 2 2 2s2-.9 2-2-.9-2-2-2-2 .9-2 2zM20 20c0 1.1.9 2 2 2s2-.9 2-2-.9-2-2-2-2 .9-2 2zM14 14l8 4" 
               stroke="${color}" stroke-width="2" fill="none"/>`;
     
-    case '28': // 레포츠 - 자전거 아이콘
+    case '28': // 레저 - 자전거 아이콘
       return `<circle cx="14" cy="18" r="3" stroke="${color}" stroke-width="1.5" fill="none"/>
               <circle cx="22" cy="18" r="3" stroke="${color}" stroke-width="1.5" fill="none"/>
               <path d="M14 18l4-6 4 6M18 12v6" stroke="${color}" stroke-width="1.5" fill="none"/>`;
@@ -132,7 +84,7 @@ const getMarkerIcon = (contenttypeid: string): string => {
       return `<path d="M12 13h12v10h-12zM15 11v2M21 11v2" stroke="${color}" stroke-width="1.5" fill="none"/>
               <path d="M12 13h12v10h-12z" stroke="${color}" stroke-width="1.5" fill="none"/>`;
     
-    case '39': // 음식점 - 포크&나이프 아이콘
+    case '39': // 음식 - 포크&나이프 아이콘
       return `<path d="M14 10v6c0 1 1 2 2 2v5M22 10v5c0 2-2 3-2 3v5M14 10c0 2 1 3 2 3M22 10c0 0 0 3-2 3" 
               stroke="${color}" stroke-width="1.5" fill="none" stroke-linecap="round"/>`;
     
@@ -150,7 +102,6 @@ const getMarkerIcon = (contenttypeid: string): string => {
  * @returns SVG 문자열 (Data URL 형태)
  */
 export const createPlannerMarkerSvg = (dayNumber: number, orderNumber: number): string => {
-  // ★ 확장된 일차별 색상 사용
   const color = getPlannerDayColor(dayNumber);
   
   const svg = `

@@ -354,31 +354,34 @@ public class OAuth2Service {
     
     /**
      * OAuth2 로그인 처리 (신규 가입 또는 기존 회원 로그인)
-     * 
-     * m_username 컬럼에 "KAKAO_123456" 형태로 저장하여 식별
      */
     private LoginResponseDto processOAuth2Login(OAuth2UserDto userDto) {
-    	    // 1. 소셜 ID 생성 (예: KAKAO_123456)
-    	    String socialUsername = userDto.getProvider() + "_" + userDto.getProviderId();
-    	    
-    	    // 2. 기존 회원 조회 (m_username으로 조회)
-    	    Member member = memberDao.selectMemberByUsername(socialUsername);
-    	    
-    	    // 3. 신규 회원 여부 확인
-    	    boolean isNewUser = false;
-    	    
-    	    // 4. 기존 회원이 없으면 신규 가입
-    	    if (member == null) {
-    	        // ★★★ 추가: 이미 다른 계정에 연동된 소셜인지 확인 ★★★
-    	        SocialAccount existingLink = socialAccountDao.selectByProviderAndProviderId(
-    	                userDto.getProvider(), userDto.getProviderId());
-    	        if (existingLink != null) {
-    	            throw new RuntimeException("이미 다른 계정에 연동된 소셜 계정입니다. 해당 계정으로 로그인해주세요.");
-    	        }
-    	        
-    	        isNewUser = true;
-    	        member = createSocialMember(userDto, socialUsername);
-    	    }
+        // 1. 소셜 ID 생성 (예: KAKAO_123456)
+        String socialUsername = userDto.getProvider() + "_" + userDto.getProviderId();
+        
+        // 2. 기존 회원 조회 (m_username으로 조회) - 순수 소셜 회원
+        Member member = memberDao.selectMemberByUsername(socialUsername);
+        
+        // 3. 신규 회원 여부 확인
+        boolean isNewUser = false;
+        
+        // 4. 순수 소셜 회원이 없으면
+        if (member == null) {
+            // ★★★ 소셜 연동 테이블에서 조회 (both 계정 처리) ★★★
+            SocialAccount linkedAccount = socialAccountDao.selectByProviderAndProviderId(
+                    userDto.getProvider(), userDto.getProviderId());
+            
+            if (linkedAccount != null) {
+                // 연동된 계정이 있으면 → 해당 회원으로 로그인!
+                member = memberDao.selectMemberById(linkedAccount.getMId());
+                log.info("소셜 연동 계정으로 로그인 - provider: {}, memberId: {}", 
+                        userDto.getProvider(), linkedAccount.getMId());
+            } else {
+                // 연동된 계정도 없으면 → 신규 회원 생성
+                isNewUser = true;
+                member = createSocialMember(userDto, socialUsername);
+            }
+        }
         
         // 5. 계정 상태 확인
         if (!"ACTIVE".equals(member.getMStatus())) {

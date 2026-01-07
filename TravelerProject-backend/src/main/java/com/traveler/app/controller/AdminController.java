@@ -138,7 +138,7 @@ public class AdminController {
             adminService.updateMemberStatus(mId, newStatus);
             
             response.put("status", "success");
-            response.put("message", newStatus.equals("ACTIVE") ? "회원이 복원되었습니다." : "회원이 탈퇴 처리되었습니다.");
+            response.put("message", newStatus.equals("ACTIVE") ? "회원이 차단 해제되었습니다." : "회원이 차단되었습니다.");
             
             return ResponseEntity.ok(response);
         } catch (Exception e) {
@@ -150,7 +150,7 @@ public class AdminController {
     }
 
     /**
-     * 회원 삭제 (완전 삭제)
+     * 회원 탈퇴 (완전 삭제)
      * DELETE /api/admin/members/{mId}
      */
     @DeleteMapping("/members/{mId}")
@@ -167,18 +167,18 @@ public class AdminController {
         }
 
         try {
-            log.info("회원 삭제 - mId: {}", mId);
+            log.info("회원 탈퇴 - mId: {}", mId);
             
             adminService.deleteMember(mId);
             
             response.put("status", "success");
-            response.put("message", "회원이 삭제되었습니다.");
+            response.put("message", "회원이 탈퇴처리 되었습니다.");
             
             return ResponseEntity.ok(response);
         } catch (Exception e) {
-            log.error("회원 삭제 오류", e);
+            log.error("회원 탈퇴 오류", e);
             response.put("status", "error");
-            response.put("message", "회원 삭제 중 오류가 발생했습니다.");
+            response.put("message", "회원 탈퇴 중 오류가 발생했습니다.");
             return ResponseEntity.status(500).body(response);
         }
     }
@@ -260,7 +260,7 @@ public class AdminController {
             adminService.updateBoardStatus(bdId, newStatus);
             
             response.put("status", "success");
-            response.put("message", newStatus.equals("PUBLIC") ? "게시글이 공개되었습니다." : "게시글이 숨김 처리되었습니다.");
+            response.put("message", newStatus.equals("PUBLIC") ? "게시글이 공개 처리되었습니다." : "게시글이 숨김 처리되었습니다.");
             
             return ResponseEntity.ok(response);
         } catch (Exception e) {

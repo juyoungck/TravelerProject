@@ -17,7 +17,7 @@ interface SocialLinkSectionProps {
   onLinkStart: (provider: string) => void;
 }
 
-export function SocialLinkSection({ onLinkStart }: SocialLinkSectionProps) {
+export function SocialLinkSection({}: SocialLinkSectionProps) {
   const [linkStatus, setLinkStatus] = useState<SocialLinkStatus[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 

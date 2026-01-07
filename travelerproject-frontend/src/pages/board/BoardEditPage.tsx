@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { ArrowLeft, X, Plus, Pencil, Save, Trash2, MapPin, Calendar } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Save, Trash2, MapPin, Calendar } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
@@ -67,7 +67,7 @@ export function BoardEditPage({
   const [plannerDetail, setPlannerDetail] = useState<PlannerDetailData | null>(null);
   const [showPlannerModal, setShowPlannerModal] = useState(false);
   const [myPlanners, setMyPlanners] = useState<PlannerItem[]>([]);
-  const [loadingPlanners, setLoadingPlanners] = useState(false);
+  const [_loadingPlanners, setLoadingPlanners] = useState(false);
   const [activePlannerTab, setActivePlannerTab] = useState<'my' | 'favorite'>('my');
   const [favoritePlanners, setFavoritePlanners] = useState<PlannerItem[]>([]);
 

@@ -66,4 +66,7 @@ public class MyFavoritePlannerDto {
     
     /** 공개 여부 */
     private Integer isPublic;
+    
+    /** 썸네일 */
+    private String thumbnail;
 }

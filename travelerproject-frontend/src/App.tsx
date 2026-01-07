@@ -35,11 +35,11 @@ export default function App() {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [selectedDestinationId, setSelectedDestinationId] = useState<string | null>(null);
   const [selectedPlanner, setSelectedPlanner] = useState<any>(null);
-  const [selectedMapContentId, setSelectedMapContentId] = useState<string | null>(null);
+  const [selectedMapContentId, setSelectedMapContentId] = useState<string | undefined>(undefined);
   const [favoriteDestinations, setFavoriteDestinations] = useState<any[]>([]);
   const [favoritePlanners, setFavoritePlanners] = useState<any[]>([]);
   const [reviews, setReviews] = useState<any[]>([]);
-  
+
   // 소셜 로그인 콜백 상태
   const [oauthStatus, setOauthStatus] = useState<'loading' | 'success' | 'error' | null>(null);
   const [oauthError, setOauthError] = useState<string>('');
@@ -58,6 +58,9 @@ export default function App() {
 
   // 게시글 상세 이동용 상태
   const [selectedBoardId, setSelectedBoardId] = useState<number | null>(null);
+
+  // ★ 페이지 리셋용 키 (같은 페이지 클릭 시 강제 리렌더링)
+  const [pageResetKey, setPageResetKey] = useState(0);
 
   /**
    * 페이지 로드 시 로그인 상태 확인
@@ -100,38 +103,86 @@ export default function App() {
     const error = urlParams.get('error');
     const isNewUser = urlParams.get('isNewUser');
     
-    if (window.location.pathname === '/oauth2/callback' || accessToken || error) {
-      if (error) {
-        setOauthStatus('error');
-        setOauthError(decodeURIComponent(error));
-        
-        setTimeout(() => {
-          setOauthStatus(null);
-          setCurrentPage('login');
-          window.history.replaceState({}, '', '/');
-        }, 3000);
-      } else if (accessToken && refreshToken) {
-        localStorage.setItem('accessToken', accessToken);
-        localStorage.setItem('refreshToken', refreshToken);
-        setIsLoggedIn(true);
-        
-        if (isNewUser === 'true') {
-          setOauthStatus('success');
-          localStorage.setItem('socialSignupMode', 'true');
+    if (!(window.location.pathname === '/oauth2/callback' || accessToken || error)) {
+      return;
+    }
+    
+    if (error) {
+      setOauthStatus('error');
+      setOauthError(decodeURIComponent(error));
+      
+      setTimeout(() => {
+        setOauthStatus(null);
+        setCurrentPage('login');
+        window.history.replaceState({}, '', '/');
+      }, 3000);
+      return;
+    }
+    
+    // 토큰이 있으면 처리
+    if (accessToken && refreshToken) {
+      // 1. 토큰 저장
+      localStorage.setItem('accessToken', accessToken);
+      localStorage.setItem('refreshToken', refreshToken);
+      
+      setOauthStatus('loading');
+      
+      // 2. 회원 정보 조회 API 호출
+      const fetchMemberInfo = async () => {
+        try {
+          const response = await fetch('http://localhost:8080/api/auth/me', {
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+              'Content-Type': 'application/json'
+            }
+          });
+          
+          const data = await response.json();
+          
+          if (data.status === 'success' && data.data) {
+            // 3. 회원 정보 저장
+            localStorage.setItem('memberInfo', JSON.stringify(data.data));
+            setCurrentUser({ mId: data.data.mId, nickname: data.data.nickname });
+            setIsLoggedIn(true);
+            
+            setOauthStatus('success');
+            
+            // 4. 신규 회원이면 추가 정보 입력 페이지로
+            if (isNewUser === 'true') {
+              localStorage.setItem('socialSignupMode', 'true');
+              setTimeout(() => {
+                setOauthStatus(null);
+                setCurrentPage('signup');
+                window.history.replaceState({}, '', '/');
+              }, 1500);
+            } else {
+              setTimeout(() => {
+                setOauthStatus(null);
+                setCurrentPage('home');
+                window.history.replaceState({}, '', '/');
+              }, 1500);
+            }
+          } else {
+            throw new Error('회원 정보 조회 실패');
+          }
+        } catch (err) {
+          console.error('회원 정보 조회 실패:', err);
+          setOauthStatus('error');
+          setOauthError('회원 정보를 불러올 수 없습니다.');
+          
+          // 토큰 삭제
+          localStorage.removeItem('accessToken');
+          localStorage.removeItem('refreshToken');
+          
           setTimeout(() => {
             setOauthStatus(null);
-            setCurrentPage('signup');
+            setCurrentPage('login');
             window.history.replaceState({}, '', '/');
-          }, 1500);
-        } else {
-          setOauthStatus('success');
-          setTimeout(() => {
-            setOauthStatus(null);
-            setCurrentPage('home');
-            window.history.replaceState({}, '', '/');
-          }, 2000);
+          }, 3000);
         }
-      }
+      };
+      
+      fetchMemberInfo();
     }
   }, []);
 
@@ -253,6 +304,7 @@ export default function App() {
       onPageChange();
       return;
     }
+    setPageResetKey(prev => prev + 1);
 
     setCurrentPage(page);
     setShareLink(null);
@@ -269,7 +321,7 @@ export default function App() {
 
   // ★ 지도 페이지로 이동할 때 상세 ID 초기화
   if (page === "map") {
-    setSelectedMapContentId(null);
+    setSelectedMapContentId(undefined);
   }
     // URL 변경 (공유 링크가 아닌 경우 기본 경로로)
     if (page === "home") {
@@ -349,20 +401,6 @@ export default function App() {
     }
   };
 
-  /** 찜/리뷰 핸들러들 */
-  const handleToggleFavorite = (destination: any) => {
-    const isAlreadyFavorite = favoriteDestinations.some((fav) => fav.id === destination.id);
-    if (isAlreadyFavorite) {
-      setFavoriteDestinations(favoriteDestinations.filter((fav) => fav.id !== destination.id));
-    } else {
-      setFavoriteDestinations([...favoriteDestinations, destination]);
-    }
-  };
-
-  const handleRemoveFavorite = (id: number) => {
-    setFavoriteDestinations(favoriteDestinations.filter((fav) => fav.id !== id));
-  };
-
   const handleToggleFavoritePlanner = (planner: any) => {
     const isAlreadyFavorite = favoritePlanners.some((fav) => fav.id === planner.id);
     if (isAlreadyFavorite) {
@@ -370,18 +408,6 @@ export default function App() {
     } else {
       setFavoritePlanners([...favoritePlanners, planner]);
     }
-  };
-
-  const handleRemoveFavoritePlanner = (id: number) => {
-    setFavoritePlanners(favoritePlanners.filter((fav) => fav.id !== id));
-  };
-
-  const handleAddReview = (review: any) => {
-    setReviews([review, ...reviews]);
-  };
-
-  const handleDeleteReview = (reviewId: number) => {
-    setReviews(reviews.filter((review) => review.id !== reviewId));
   };
 
   /** 소셜 로그인 콜백 UI */
@@ -450,6 +476,7 @@ export default function App() {
     if (currentPage === "travel") {
       return (
         <TravelPage
+          key={`travel-${pageResetKey}`}
           onNavigate={handleNavigate}
           isLoggedIn={isLoggedIn}
           initialDestinationId={selectedDestinationId}
@@ -462,6 +489,7 @@ export default function App() {
     if (currentPage === "planner") {
       return (
         <PlannerPage
+          key={`planner-${pageResetKey}`}
           selectedPlanner={selectedPlanner}
           isLoggedIn={isLoggedIn}
           favoritePlanners={favoritePlanners}
@@ -473,6 +501,7 @@ export default function App() {
     if (currentPage === "event") {
       return (
         <EventPage
+          key={`event-${pageResetKey}`}
           onNavigate={handleNavigate}
           isLoggedIn={isLoggedIn}
           onOpenSearch={() => setIsSearchModalOpen(true)}
@@ -483,8 +512,9 @@ export default function App() {
     if (currentPage === "map") {
       return (
         <MapPage 
+          key={`map-${pageResetKey}`}
           initialContentId={selectedMapContentId}
-          onNavigate={(page, params) => {
+          onNavigate={(page: string, params?: any) => {
             if (page === 'travel-detail' && params?.contentid) {
               setSelectedDestinationId(params.contentid);
               setCurrentPage('travel');
@@ -498,6 +528,7 @@ export default function App() {
     if (currentPage === "board") {
       return (
         <BoardPage
+          key={`board-${pageResetKey}`}
           onNavigate={handleNavigate}
           isLoggedIn={isLoggedIn}
           currentUserId={currentUser?.mId}

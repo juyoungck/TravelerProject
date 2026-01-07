@@ -11,6 +11,7 @@ import { Button } from '../../components/ui/button';
 import { Header } from '../../components/layout/Header';
 import KakaoMap from '../../components/map/KakaoMap';
 import { ImageGalleryModal } from '../../components/modals/ImageGalleryModal';
+import { getContentTypeStyle } from '../../utils/contentTypeUtils';
 import { 
   getDestinationDetail, 
   increaseViewCount,
@@ -606,21 +607,6 @@ export function TravelDetailPage({
     );
   };
 
-  /** 콘텐츠 타입 이름 변환 */
-  const getContentTypeName = (typeId: string) => {
-    const types: { [key: string]: string } = {
-      '12': '관광지',
-      '14': '문화시설',
-      '15': '축제/공연/행사',
-      '25': '여행코스',
-      '28': '레포츠',
-      '32': '숙박',
-      '38': '쇼핑',
-      '39': '음식점',
-    };
-    return types[typeId] || '기타';
-  };
-
   /** 날짜 포맷 */
   const formatDate = (dateString: string) => {
     if (!dateString) return '';
@@ -634,11 +620,16 @@ export function TravelDetailPage({
     contenttypeid: destination.contenttypeid,
     title: destination.title,
     addr1: destination.addr1,
+    addr2: null,
+    tel: null,
     mapx: Number(destination.mapx),
     mapy: Number(destination.mapy),
     firstimage: destination.firstimage,
     firstimage2: destination.firstimage2,
     distance: null,
+    typeName: '관광지',
+    regnName: null,
+    signguName: null,
   }] : [];
 
   /** 마커 클릭 핸들러 */
@@ -699,6 +690,15 @@ export function TravelDetailPage({
         <div className="mb-6">
           <div className="flex items-start justify-between mb-2">
             <div className="flex-1">
+              {/* 카테고리 태그 (제목 위) */}
+              {(() => {
+                const style = getContentTypeStyle(destination.contenttypeid);
+                return (
+                  <span className={`inline-block px-2 py-0.5 text-xs rounded mb-2 ${style.bgColor} ${style.textColor}`}>
+                    {style.name}
+                  </span>
+                );
+              })()}
               <h1 className="text-2xl font-bold mb-2">{destination.title}</h1>
               <div className="flex items-center gap-2 text-gray-600">
                 <MapPin className="h-4 w-4" />
@@ -707,25 +707,23 @@ export function TravelDetailPage({
             </div>
           </div>
           
-          <div className="flex items-center justify-between py-4 border-y">
-            <div className="flex items-center gap-4">
-              <span className="px-3 py-1 bg-blue-100 text-blue-600 rounded">
-                {getContentTypeName(destination.contenttypeid)}
-              </span>
-            </div>
-            <div className="flex items-center gap-4">
-              <button 
-                onClick={handleToggleFavorite}
-                disabled={favoriteLoading}
-                className="flex items-center gap-1 text-gray-600 hover:text-red-500 transition-colors cursor-pointer disabled:opacity-50"
-              >
-                <Heart className={`h-5 w-5 ${isFavorite ? 'fill-red-500 text-red-500' : ''}`} />
-                <span>{favoriteCount}</span>
-              </button>
-              <div className="flex items-center gap-1 text-gray-600">
-                <Eye className="h-5 w-5" />
-                <span>{destination.viewCount || 0}</span>
-              </div>
+          {/* 찜/조회수 */}
+          <div className="flex items-center justify-end gap-4 py-4 border-y">
+            <button 
+              onClick={handleToggleFavorite}
+              disabled={favoriteLoading}
+              className="flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-50"
+            >
+              <Heart className={`h-6 w-6 transition-colors ${
+                isFavorite 
+                  ? 'fill-red-500 text-red-500' 
+                  : 'text-gray-300 hover:text-red-400'
+              }`} />
+              <span className="text-gray-600">{favoriteCount}</span>
+            </button>
+            <div className="flex items-center gap-1 text-gray-600">
+              <Eye className="h-5 w-5" />
+              <span>{destination.viewCount || 0}</span>
             </div>
           </div>
         </div>
@@ -875,9 +873,15 @@ export function TravelDetailPage({
                       onClick={() => setNewReviewRating(star)}
                       onMouseEnter={() => setHoverRating(star)}
                       onMouseLeave={() => setHoverRating(0)}
-                      className="text-3xl transition-all"
+                      className="text-2xl w-8 h-8 flex items-center justify-center"
                     >
-                      {star <= (hoverRating || newReviewRating) ? '⭐' : '☆'}
+                      <Star 
+                        className={`h-6 w-6 ${
+                          star <= (hoverRating || newReviewRating) 
+                            ? 'fill-yellow-400 text-yellow-400' 
+                            : 'text-gray-300'
+                        }`}
+                      />
                     </button>
                   ))}
                   <span className="text-sm text-gray-600 ml-2">
@@ -987,9 +991,15 @@ export function TravelDetailPage({
                               onClick={() => setEditRating(star)}
                               onMouseEnter={() => setEditHoverRating(star)}
                               onMouseLeave={() => setEditHoverRating(0)}
-                              className="text-2xl transition-all"
+                              className="text-2xl w-8 h-8 flex items-center justify-center"
                             >
-                              {star <= (editHoverRating || editRating) ? '⭐' : '☆'}
+                              <Star 
+                                className={`h-6 w-6 ${
+                                  star <= (editHoverRating || editRating) 
+                                    ? 'fill-yellow-400 text-yellow-400' 
+                                    : 'text-gray-300'
+                                }`}
+                              />
                             </button>
                           ))}
                         </div>

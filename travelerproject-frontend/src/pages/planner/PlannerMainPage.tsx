@@ -35,7 +35,7 @@ interface PlannerMainPageProps {
   onSelectPlanner: (planner: Planner) => void;
 }
 
-export function PlannerMainPage({ onCreatePlanner, onViewMore, onSelectPlanner }: PlannerMainPageProps) {
+export function PlannerMainPage({ onCreatePlanner, onSelectPlanner }: PlannerMainPageProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [myPlanners, setMyPlanners] = useState<Planner[]>([]);

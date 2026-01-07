@@ -69,7 +69,6 @@ const allContentTypes = ['12', '14', '15', '28', '32', '38', '39'];
 
 export function PlannerSearchResults({
   category,
-  region,
   searchQuery,
   dayPlans,
   onAddPlace,
@@ -281,7 +280,7 @@ interface DraggableSearchItemProps {
   onAddPlace: (place: Place, dayId: string) => void;
 }
 
-function DraggableSearchItem({ place, dayPlans, onAddPlace }: DraggableSearchItemProps) {
+function DraggableSearchItem({ place }: DraggableSearchItemProps) {
   const [{ isDragging }, drag] = useDrag({
     type: 'PLACE',
     item: { 
@@ -297,7 +296,7 @@ function DraggableSearchItem({ place, dayPlans, onAddPlace }: DraggableSearchIte
 
   return (
     <div
-      ref={drag}
+      ref={drag as unknown as React.Ref<HTMLDivElement>}
       className={`bg-white border rounded p-2 cursor-move hover:border-blue-400 transition-colors ${
         isDragging ? 'opacity-50' : ''
       }`}

@@ -20,8 +20,10 @@ import {
   Share2,
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
-import { getPlannerDetail, PlannerDetail, DayPlanDetail } from '../../api/plannerApi';
-import KakaoMap, { KakaoMapRef, PlannerPlace } from '../../components/map/KakaoMap';
+import { getPlannerDetail } from '../../api/plannerApi';
+import type { PlannerDetail, DayPlanDetail } from '../../api/plannerApi';
+import KakaoMap from '../../components/map/KakaoMap';
+import type { KakaoMapRef, PlannerPlace } from '../../components/map/KakaoMap';
 import axios from 'axios';
 
 const API_BASE_URL = 'http://localhost:8080/api';
@@ -97,8 +99,8 @@ const convertToDayPlan = (dayPlanDetail: DayPlanDetail): DayPlan => ({
     region: place.addr1?.split(' ')[0] || '',
     image: place.firstimage || DEFAULT_IMAGE,
     contentid: place.contentid,
-    mapx: place.mapx,
-    mapy: place.mapy,
+    mapx: Number(place.mapx),
+    mapy: Number(place.mapy),
   })),
 });
 
@@ -122,9 +124,6 @@ export function PlannerPreviewPage({
   planner, 
   onBack, 
   onEdit, 
-  isLoggedIn, 
-  favoritePlanners, 
-  onToggleFavoritePlanner 
 }: PlannerPreviewPageProps) {
   const mapRef = useRef<KakaoMapRef>(null);
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(true);

@@ -12,7 +12,8 @@
 import { useState, useEffect } from 'react';
 import { MapPin, X, ArrowUp, ChevronLeft, ChevronRight, Loader2, Navigation, ExternalLink } from 'lucide-react';
 import { Header } from '../../components/layout/Header';
-import { CourseSpot, getCourseDetail } from '../../api/festivalApi';
+import { getCourseDetail } from '../../api/festivalApi';
+import type { CourseSpot } from '../../api/festivalApi';
 
 /** 여행코스 아이템 인터페이스 (DB) */
 interface CourseItem {

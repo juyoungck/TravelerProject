@@ -66,6 +66,7 @@ export interface AdminReview {
   rvRating: number;
   createdAt: string;
   authorNickname: string;
+  destinationTitle?: string;
 }
 
 /** 플래너 정보 */
@@ -136,7 +137,7 @@ export const getDashboardStats = async (): Promise<AdminResponse> => {
  */
 export const getMembers = async (
   page: number = 1,
-  size: number = 20,
+  size: number = 10,
   search?: string,
   status?: string
 ): Promise<AdminListResponse<AdminMember>> => {
@@ -176,7 +177,7 @@ export const deleteMember = async (mId: number): Promise<AdminResponse> => {
  */
 export const getBoards = async (
   page: number = 1,
-  size: number = 20,
+  size: number = 10,
   search?: string,
   status?: string
 ): Promise<AdminListResponse<AdminBoard>> => {
@@ -216,7 +217,7 @@ export const deleteBoard = async (bdId: number): Promise<AdminResponse> => {
  */
 export const getReviews = async (
   page: number = 1,
-  size: number = 20,
+  size: number = 10,
   search?: string
 ): Promise<AdminListResponse<AdminReview>> => {
   const params: any = { page, size };

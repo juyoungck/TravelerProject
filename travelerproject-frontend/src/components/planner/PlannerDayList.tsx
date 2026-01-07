@@ -7,10 +7,8 @@
 
 import { useRef } from 'react';
 import { useDrop } from "react-dnd";
-import { X } from "lucide-react";
 import { DraggablePlaceItem } from "./DraggablePlaceItem";
 import { Input } from "../ui/input";
-import { Button } from "../ui/button";
 
 interface Place {
   id: string;
@@ -93,7 +91,6 @@ function DaySection({
   onMovePlace,
   onAddPlaceAtIndex,
   onUpdateMemo,
-  onDeleteDay,
   onRemovePlace,
 }: DaySectionProps) {
   const ref = useRef<HTMLDivElement>(null);

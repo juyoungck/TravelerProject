@@ -187,13 +187,4 @@ export const CONTENT_TYPE = {
 /**
  * 관광 타입 이름 매핑
  */
-export const CONTENT_TYPE_NAME: Record<string, string> = {
-  '12': '관광',
-  '14': '문화',
-  '15': '축제/공연',
-  '25': '여행코스',
-  '28': '레저',
-  '32': '숙박',
-  '38': '쇼핑',
-  '39': '음식',
-};
+export { CONTENT_TYPE_NAME } from '../utils/contentTypeUtils';
