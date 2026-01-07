@@ -2,11 +2,12 @@
  * BoardEditPage.tsx - 게시판 수정 페이지
  * ★ 제목/내용/별점/플래너 수정 가능
  * ★ 제목 30자 제한
- * ★ HTML 태그 제거 후 편집
+ * ★ TOAST UI Editor 사용 (HTML 태그 + 이미지 유지)
+ * ★ 찜한 플래너 썸네일 표시 수정
  */
 
-import { useState, useEffect } from 'react';
-import { ArrowLeft, Plus, Pencil, Save, Trash2, MapPin, Calendar } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { ArrowLeft, X, Plus, Pencil, Save, Trash2, MapPin, Calendar } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
@@ -14,6 +15,8 @@ import { Header } from '../../components/layout/Header';
 import { getBoardDetail, updateBoard } from '../../api/boardApi';
 import { getMyPlannerList, getPlannerDetail } from '../../api/plannerApi';
 import favoriteApi from '../../api/favoriteApi';
+import { Editor } from '@toast-ui/react-editor';
+import '@toast-ui/editor/dist/toastui-editor.css';
 
 interface PlannerItem {
   plnId: number;
@@ -58,10 +61,13 @@ export function BoardEditPage({
   // 게시글 데이터
   const [bdCategory, setBdCategory] = useState('');
   const [title, setTitle] = useState('');
-  const [content, setContent] = useState('');
+  const [initialContent, setInitialContent] = useState('');  // ★ 초기 HTML 콘텐츠
   const [rating, setRating] = useState<number | null>(null);
   const [hoverRating, setHoverRating] = useState(0);
   const [plnId, setPlnId] = useState<number | null>(null);
+  
+  // ★ TOAST UI Editor ref
+  const editorRef = useRef<Editor>(null);
   
   // 플래너 관련
   const [plannerDetail, setPlannerDetail] = useState<PlannerDetailData | null>(null);
@@ -70,13 +76,6 @@ export function BoardEditPage({
   const [_loadingPlanners, setLoadingPlanners] = useState(false);
   const [activePlannerTab, setActivePlannerTab] = useState<'my' | 'favorite'>('my');
   const [favoritePlanners, setFavoritePlanners] = useState<PlannerItem[]>([]);
-
-  /** HTML 태그 제거 함수 */
-  const stripHtml = (html: string): string => {
-    if (!html) return '';
-    const doc = new DOMParser().parseFromString(html, 'text/html');
-    return doc.body.textContent || '';
-  };
 
   /** 날짜 포맷팅 (플래너용) */
   const formatDate = (startDate: string, endDate: string) => {
@@ -95,7 +94,7 @@ export function BoardEditPage({
         const board = response.data.board;
         setBdCategory(board.bdCategory);
         setTitle(board.bdTitle);
-        setContent(stripHtml(board.bdContent));  // ★ HTML 태그 제거
+        setInitialContent(board.bdContent || '');  // ★ HTML 그대로 저장
         setRating(board.bdRating);
         setPlnId(board.plnId);
         
@@ -159,23 +158,39 @@ export function BoardEditPage({
     fetchDetail();
   }, [bdId]);
 
-  /** 찜한 플래너 불러오기 */
+  /** ★ 찜한 플래너 불러오기 (썸네일 포함) */
   const fetchMyFavoritePlanners = async () => {
     if (!currentUserId) return;
 
     try {
       const response = await favoriteApi.getMyFavoritePlanners();
       if (response.status === 'success') {
-        setFavoritePlanners(
-          response.data.map((p: any) => ({
-            plnId: p.plnId,
-            plnTitle: p.plnTitle,
-            startDate: p.startDate,
-            endDate: p.endDate,
-            region: p.regionName || '전국',
-            thumbnailUrl: p.thumbnailImage || '',
-          }))
+        // ★ 각 플래너의 상세 정보를 가져와서 썸네일 추출
+        const plannersWithThumbnail = await Promise.all(
+          (response.data || []).map(async (p: any) => {
+            try {
+              const detail = await getPlannerDetail(p.plnId);
+              return {
+                plnId: p.plnId,
+                plnTitle: p.plnTitle,
+                startDate: p.startDate,
+                endDate: p.endDate,
+                region: detail?.regionName || '전국',
+                thumbnailUrl: detail?.dayPlans?.[0]?.places?.[0]?.firstimage || '',
+              };
+            } catch {
+              return {
+                plnId: p.plnId,
+                plnTitle: p.plnTitle,
+                startDate: p.startDate,
+                endDate: p.endDate,
+                region: '전국',
+                thumbnailUrl: '',
+              };
+            }
+          })
         );
+        setFavoritePlanners(plannersWithThumbnail);
       }
     } catch (e) {
       console.error('찜한 플래너 조회 실패', e);
@@ -195,14 +210,29 @@ export function BoardEditPage({
   /** 플래너 선택 */
   const handlePlannerSelect = async (planner: PlannerItem) => {
     setPlnId(planner.plnId);
-    setPlannerDetail({
-      plnId: planner.plnId,
-      plnTitle: planner.plnTitle,
-      startDate: planner.startDate,
-      endDate: planner.endDate,
-      region: planner.region || '전국',
-      thumbnailUrl: planner.thumbnailUrl || ''
-    });
+    
+    // ★ 선택한 플래너의 상세 정보 가져오기 (썸네일 포함)
+    try {
+      const detail = await getPlannerDetail(planner.plnId);
+      setPlannerDetail({
+        plnId: planner.plnId,
+        plnTitle: planner.plnTitle,
+        startDate: planner.startDate,
+        endDate: planner.endDate,
+        region: detail?.regionName || planner.region || '전국',
+        thumbnailUrl: detail?.dayPlans?.[0]?.places?.[0]?.firstimage || planner.thumbnailUrl || ''
+      });
+    } catch {
+      setPlannerDetail({
+        plnId: planner.plnId,
+        plnTitle: planner.plnTitle,
+        startDate: planner.startDate,
+        endDate: planner.endDate,
+        region: planner.region || '전국',
+        thumbnailUrl: planner.thumbnailUrl || ''
+      });
+    }
+    
     setShowPlannerModal(false);
   };
 
@@ -213,6 +243,29 @@ export function BoardEditPage({
     setPlannerDetail(null);
   };
 
+  /** ★ 이미지 업로드 핸들러 */
+  const handleImageUpload = async (blob: Blob, callback: (url: string, alt: string) => void) => {
+    const formData = new FormData();
+    formData.append('file', blob);
+
+    try {
+      const response = await fetch('http://localhost:8080/api/upload/board', {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await response.json();
+
+      if (data.success && data.url) {
+        callback(data.url, '이미지');
+      } else {
+        alert('이미지 업로드에 실패했습니다.');
+      }
+    } catch (error) {
+      console.error('이미지 업로드 오류:', error);
+      alert('이미지 업로드 중 오류가 발생했습니다.');
+    }
+  };
+
   /** 게시글 저장 */
   const handleSave = async () => {
     if (!currentUserId) return;
@@ -221,7 +274,12 @@ export function BoardEditPage({
       alert('제목을 입력해주세요.');
       return;
     }
-    if (!content.trim()) {
+    
+    // ★ TOAST UI Editor에서 HTML 가져오기
+    const editorInstance = editorRef.current?.getInstance();
+    const content = editorInstance?.getHTML() || '';
+    
+    if (!content.trim() || content === '<p><br></p>') {
       alert('내용을 입력해주세요.');
       return;
     }
@@ -232,13 +290,10 @@ export function BoardEditPage({
     
     setSaving(true);
     try {
-      // ★ 순수 텍스트를 <p> 태그로 감싸서 저장
-      const htmlContent = `<p>${content.trim().replace(/\n/g, '</p><p>')}</p>`;
-      
       const response = await updateBoard(bdId, {
         mId: currentUserId,
         bdTitle: title.trim(),
-        bdContent: htmlContent,
+        bdContent: content,  // ★ HTML 그대로 저장
         plnId: plnId || undefined,
         bdRating: rating || undefined
       });
@@ -340,9 +395,9 @@ export function BoardEditPage({
               <Label>플래너</Label>
               <div className="mt-2">
                 {plannerDetail ? (
-                  <div className="border rounded-lg overflow-hidden">
+                  <div className="border rounded-lg overflow-hidden max-w-sm">
                     {/* 플래너 썸네일 */}
-                    <div className="relative h-48 bg-gray-200">
+                    <div className="relative h-28 bg-gray-200">
                       {plannerDetail.thumbnailUrl ? (
                         <img 
                           src={plannerDetail.thumbnailUrl} 
@@ -351,44 +406,46 @@ export function BoardEditPage({
                         />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-gray-400">
-                          <MapPin className="h-12 w-12" />
+                          <MapPin className="h-6 w-6" />
                         </div>
                       )}
-                      <span className="absolute top-3 left-3 bg-blue-500 text-white px-3 py-1 rounded-full text-sm font-medium">
-                        내 플래너
+                      <span className="absolute top-2 left-2 bg-blue-500 text-white px-2 py-0.5 rounded-full text-xs font-medium">
+                        연결된 플래너
                       </span>
                     </div>
                     
                     {/* 플래너 정보 */}
-                    <div className="p-4">
-                      <h4 className="font-bold text-lg mb-2">{plannerDetail.plnTitle}</h4>
-                      <div className="flex items-center gap-1 text-gray-600 text-sm mb-1">
-                        <MapPin className="h-4 w-4" />
-                        <span>{plannerDetail.region}</span>
-                      </div>
-                      <div className="flex items-center gap-1 text-gray-600 text-sm">
-                        <Calendar className="h-4 w-4" />
-                        <span>{formatDate(plannerDetail.startDate, plannerDetail.endDate)}</span>
+                    <div className="p-2">
+                      <h4 className="font-bold text-sm mb-1 line-clamp-1">{plannerDetail.plnTitle}</h4>
+                      <div className="flex items-center gap-2 text-xs text-gray-600 mb-2">
+                        <div className="flex items-center gap-1">
+                          <MapPin className="h-3 w-3" />
+                          <span>{plannerDetail.region}</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Calendar className="h-3 w-3" />
+                          <span>{formatDate(plannerDetail.startDate, plannerDetail.endDate)}</span>
+                        </div>
                       </div>
                       
                       {/* 수정/삭제 버튼 */}
-                      <div className="flex items-center gap-2 mt-4 pt-4 border-t">
+                      <div className="flex items-center gap-2 pt-2 border-t">
                         <Button
                           onClick={handleOpenPlannerModal}
                           variant="outline"
                           size="sm"
-                          className="flex-1 text-blue-600 border-blue-300 hover:bg-blue-50"
+                          className="flex-1 text-blue-600 border-blue-300 hover:bg-blue-50 text-xs py-1"
                         >
-                          <Pencil className="h-4 w-4 mr-1" />
+                          <Pencil className="h-3 w-3 mr-1" />
                           수정
                         </Button>
                         <Button
                           onClick={handleRemovePlanner}
                           variant="outline"
                           size="sm"
-                          className="flex-1 text-red-600 border-red-300 hover:bg-red-50"
+                          className="flex-1 text-red-600 border-red-300 hover:bg-red-50 text-xs py-1"
                         >
-                          <Trash2 className="h-4 w-4 mr-1" />
+                          <Trash2 className="h-3 w-3 mr-1" />
                           삭제
                         </Button>
                       </div>
@@ -408,16 +465,25 @@ export function BoardEditPage({
             </div>
           )}
 
-          {/* 내용 */}
+          {/* ★ 내용 - TOAST UI Editor */}
           <div>
-            <Label htmlFor="content">내용</Label>
-            <textarea
-              id="content"
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              className="w-full h-64 mt-2 p-4 border rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="내용을 입력하세요"
-            />
+            <Label>내용</Label>
+            <div className="mt-2 border rounded-md">
+              <Editor
+                ref={editorRef}
+                initialValue={initialContent}
+                placeholder="내용을 입력하세요"
+                height="400px"
+                initialEditType="wysiwyg"
+                hooks={{ addImageBlobHook: handleImageUpload }}
+                toolbarItems={[
+                  ['heading', 'bold', 'italic', 'strike'],
+                  ['hr', 'quote'],
+                  ['ul', 'ol'],
+                  ['image', 'link'],
+                ]}
+              />
+            </div>
           </div>
 
           {/* ★ 별점 - 후기일 때만 */}
@@ -446,71 +512,74 @@ export function BoardEditPage({
         </div>
       </div>
 
-{/* 플래너 선택 패널 */}
-{showPlannerModal && (
-  <div
-    className="fixed inset-0 z-[60] flex items-center justify-center p-4"
-    onClick={() => setShowPlannerModal(false)}   
-  >
-    <div
-      className="bg-white rounded-2xl border border-gray-200 shadow-xl w-[600px]"
-      onClick={(e) => e.stopPropagation()}       
-    >
-      <div className="flex items-center justify-between px-6 py-4 border-b">
-        <h2 className="text-lg font-semibold">플래너 선택</h2>
-        <button onClick={() => setShowPlannerModal(false)}>✕</button>
-      </div>
-
-      {/* 탭 */}
-      <div className="flex border-b">
-        <button
-          className={`flex-1 py-3 ${
-            activePlannerTab === 'my'
-              ? 'border-b-2 border-blue-600 text-blue-600'
-              : 'text-gray-500'
-          }`}
-          onClick={() => setActivePlannerTab('my')}
+      {/* 플래너 선택 패널 */}
+      {showPlannerModal && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+          onClick={() => setShowPlannerModal(false)}   
         >
-          내 플래너
-        </button>
-        <button
-          className={`flex-1 py-3 ${
-            activePlannerTab === 'favorite'
-              ? 'border-b-2 border-blue-600 text-blue-600'
-              : 'text-gray-500'
-          }`}
-          onClick={() => setActivePlannerTab('favorite')}
-        >
-          찜한 플래너
-        </button>
-      </div>
-
-      {/* 리스트 */}
-      <div className="p-4 max-h-[320px] overflow-y-auto space-y-3">
-        {(activePlannerTab === 'my' ? myPlanners : favoritePlanners).length === 0 ? (
-          <p className="text-sm text-gray-500 text-center py-8">
-            플래너가 없습니다.
-          </p>
-        ) : (
-          (activePlannerTab === 'my' ? myPlanners : favoritePlanners).map(planner => (
-            <div
-              key={planner.plnId}
-              onClick={() => handlePlannerSelect(planner)}
-              className="rounded-xl border border-gray-200 p-4 cursor-pointer
-                         hover:border-blue-500 hover:bg-blue-50"
-            >
-              <p className="font-medium">{planner.plnTitle}</p>
-              <p className="text-sm text-gray-500">
-                {formatDate(planner.startDate, planner.endDate)}
-              </p>
+          <div
+            className="bg-white rounded-2xl border border-gray-200 shadow-xl w-[600px]"
+            onClick={(e) => e.stopPropagation()}       
+          >
+            <div className="flex items-center justify-between px-6 py-4 border-b">
+              <h2 className="text-lg font-semibold">플래너 선택</h2>
+              <button onClick={() => setShowPlannerModal(false)}>✕</button>
             </div>
-          ))
-        )}
-      </div>
-    </div>
-  </div>
-)}
 
+            {/* 탭 */}
+            <div className="flex border-b">
+              <button
+                className={`flex-1 py-3 ${
+                  activePlannerTab === 'my'
+                    ? 'border-b-2 border-blue-600 text-blue-600'
+                    : 'text-gray-500'
+                }`}
+                onClick={() => setActivePlannerTab('my')}
+              >
+                내 플래너
+              </button>
+              <button
+                className={`flex-1 py-3 ${
+                  activePlannerTab === 'favorite'
+                    ? 'border-b-2 border-blue-600 text-blue-600'
+                    : 'text-gray-500'
+                }`}
+                onClick={() => setActivePlannerTab('favorite')}
+              >
+                찜한 플래너
+              </button>
+            </div>
+
+            {/* 리스트 */}
+            <div className="p-4 max-h-[320px] overflow-y-auto space-y-3">
+              {loadingPlanners ? (
+                <p className="text-sm text-gray-500 text-center py-8">
+                  불러오는 중...
+                </p>
+              ) : (activePlannerTab === 'my' ? myPlanners : favoritePlanners).length === 0 ? (
+                <p className="text-sm text-gray-500 text-center py-8">
+                  플래너가 없습니다.
+                </p>
+              ) : (
+                (activePlannerTab === 'my' ? myPlanners : favoritePlanners).map(planner => (
+                  <div
+                    key={planner.plnId}
+                    onClick={() => handlePlannerSelect(planner)}
+                    className="rounded-xl border border-gray-200 p-4 cursor-pointer
+                               hover:border-blue-500 hover:bg-blue-50"
+                  >
+                    <p className="font-medium">{planner.plnTitle}</p>
+                    <p className="text-sm text-gray-500">
+                      {formatDate(planner.startDate, planner.endDate)}
+                    </p>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

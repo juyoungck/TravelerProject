@@ -245,21 +245,21 @@ export function EventDetailPage({
           ) : images.length > 0 ? (
             <div className="relative">
               {/* 메인 이미지 */}
-              <div className="relative w-full h-80 bg-gray-100 rounded-lg overflow-hidden">
-                <img
-                  src={images[currentImageIndex]}
-                  alt={`${event.title} - ${currentImageIndex + 1}`}
-                  className="w-full h-full object-cover"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).src = '/placeholder-image.jpg';
-                  }}
-                />
-                
-                {/* 이미지 카운터 */}
-                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/50 text-white px-3 py-1 rounded-full text-sm">
-                  {currentImageIndex + 1} / {images.length}
-                </div>
-              </div>
+<div className="relative w-full h-[500px] bg-gray-100 rounded-lg overflow-hidden">
+  <img
+    src={images[currentImageIndex]}
+    alt={`${event.title} - ${currentImageIndex + 1}`}
+    className="w-full h-full object-contain bg-gray-100"
+    onError={(e) => {
+      (e.target as HTMLImageElement).src = '/placeholder-image.jpg';
+    }}
+  />
+  
+  {/* 이미지 카운터 */}
+  <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/50 text-white px-3 py-1 rounded-full text-sm">
+    {currentImageIndex + 1} / {images.length}
+  </div>
+</div>
 
               {/* 좌우 버튼 */}
               {images.length > 1 && (
@@ -281,7 +281,7 @@ export function EventDetailPage({
 
               {/* 썸네일 목록 */}
               {images.length > 1 && (
-                <div className="flex gap-2 mt-4 overflow-x-auto pb-2">
+                <div className="flex gap-3 mt-4 overflow-x-auto pb-2">
                   {images.map((img, index) => (
                     <button
                       key={index}
@@ -295,7 +295,7 @@ export function EventDetailPage({
                       <img
                         src={img}
                         alt={`썸네일 ${index + 1}`}
-                        className="w-full h-full object-cover"
+                        className="w-full h-full object-cover bg-gray-100"
                         onError={(e) => {
                           (e.target as HTMLImageElement).style.display = 'none';
                         }}
@@ -349,13 +349,13 @@ export function EventDetailPage({
           <div className="mb-6">
             <h4 className="font-semibold mb-3">위치</h4>
             {event.mapx && event.mapy ? (
-              <div className="w-full h-64 rounded-lg overflow-hidden border">
+              <div className="w-full h-80 rounded-lg overflow-hidden border">
                 <KakaoMap
                   centerLat={parseFloat(event.mapy)}
                   centerLng={parseFloat(event.mapx)}
                   level={3}
                   destinations={mapDestination}
-                  height="256px"
+                  height="320px"
                 />
               </div>
             ) : (

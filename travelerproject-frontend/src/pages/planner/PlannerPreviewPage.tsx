@@ -48,13 +48,15 @@ interface DayPlan {
 
 interface PlannerPreviewPageProps {
   planner: {
-    id: number;
-    title: string;
-    author: string;
-    region: string;
-    days: number;
-    image: string;
-    likes: number;
+    id?: number;      // ★ PlannerMainPage에서 사용
+    plnId?: number;   // ★ MyPage, BoardPage에서 사용
+    title?: string;
+    plnTitle?: string;
+    author?: string;
+    region?: string;
+    days?: number;
+    image?: string;
+    likes?: number;
     isOwn?: boolean;
   };
   onBack: () => void;
@@ -133,6 +135,9 @@ export function PlannerPreviewPage({
   const [plannerDetail, setPlannerDetail] = useState<PlannerDetail | null>(null);
   const [dayPlans, setDayPlans] = useState<DayPlan[]>([]);
   
+  // ★ plnId 또는 id 둘 다 지원
+  const plannerId = planner.plnId || planner.id;
+  
   // 찜 상태 관리
   const [isLiked, setIsLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(planner.likes || 0);
@@ -186,7 +191,7 @@ export function PlannerPreviewPage({
     if (!userId) return;
     
     try {
-      const response = await axios.get(`${API_BASE_URL}/planner/${planner.id}/favorite`, {
+      const response = await axios.get(`${API_BASE_URL}/planner/${plannerId}/favorite`, {
         params: { mId: userId }
       });
       
@@ -206,7 +211,7 @@ export function PlannerPreviewPage({
     setLoading(true);
     setError(null);
     try {
-      const detail = await getPlannerDetail(planner.id);
+      const detail = await getPlannerDetail(plannerId);
       setPlannerDetail(detail);
       setLikeCount(detail.favoriteCount || 0);
       
@@ -234,8 +239,10 @@ export function PlannerPreviewPage({
   };
 
   useEffect(() => {
+    // 페이지 진입 시 스크롤 맨 위로 초기화
+    window.scrollTo(0, 0);
     fetchPlannerDetail();
-  }, [planner.id]);
+  }, [plannerId]);
 
   /**
    * 찜 토글 핸들러 (API 직접 호출)
@@ -249,7 +256,7 @@ export function PlannerPreviewPage({
     }
 
     try {
-      const response = await axios.post(`${API_BASE_URL}/planner/${planner.id}/favorite`, null, {
+      const response = await axios.post(`${API_BASE_URL}/planner/${plannerId}/favorite`, null, {
         params: { mId: userId }
       });
       
@@ -272,7 +279,7 @@ export function PlannerPreviewPage({
     }
 
     try {
-      const response = await axios.delete(`${API_BASE_URL}/planner/${planner.id}`);
+      const response = await axios.delete(`${API_BASE_URL}/planner/${plannerId}`);
       
       if (response.data.status === 'success') {
         alert('플래너가 삭제되었습니다.');
@@ -289,7 +296,7 @@ export function PlannerPreviewPage({
    */
   const handleShare = async () => {
     try {
-      const shareUrl = `${window.location.origin}/planner/preview/${planner.id}`;
+      const shareUrl = `${window.location.origin}/planner/preview/${plannerId}`;
       await navigator.clipboard.writeText(shareUrl);
       alert(`공유 링크가 복사되었습니다!\n\n${shareUrl}`);
     } catch (error) {
@@ -363,11 +370,11 @@ export function PlannerPreviewPage({
   }
 
   // 데이터 표시용 변수
-  const title = plannerDetail?.plnTitle || planner.title;
-  const author = plannerDetail?.authorNickname || planner.author;
+  const title = plannerDetail?.plnTitle || planner.title || planner.plnTitle || '';
+  const author = plannerDetail?.authorNickname || planner.author || '';
   const startDate = plannerDetail?.startDate || '';
   const endDate = plannerDetail?.endDate || '';
-  const totalDays = plannerDetail?.totalDays || planner.days;
+  const totalDays = plannerDetail?.totalDays || planner.days || 0;
 
   /**
    * DAY 리스트 렌더링 (공통)
@@ -459,17 +466,8 @@ export function PlannerPreviewPage({
               {/* ===== 나의 플래너 레이아웃 (isOwner === true) ===== */}
               {isOwner ? (
                 <>
-                  {/* 1. 버튼 맨 위 (찜/삭제/공유/편집) */}
-                  <div className="flex justify-end gap-2 mb-3">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleLike}
-                      className={`${isLiked ? 'text-red-500 border-red-500' : ''}`}
-                    >
-                      <Heart className={`h-4 w-4 mr-1 ${isLiked ? 'fill-current' : ''}`} />
-                      {likeCount}
-                    </Button>
+                  {/* 1. 삭제/공유/편집 버튼 맨 위 */}
+                  <div className="grid grid-cols-3 gap-2 mb-3">
                     <Button
                       variant="outline"
                       size="sm"
@@ -511,8 +509,19 @@ export function PlannerPreviewPage({
                     </div>
                   </div>
 
-                  {/* 4. 일정 라벨 */}
-                  <h4 className="text-sm font-semibold mb-3">일정</h4>
+                  {/* 4. 일정 라벨 + 찜 버튼 */}
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-sm font-semibold">일정</h4>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleLike}
+                      className={`${isLiked ? 'text-red-500 border-red-500' : ''}`}
+                    >
+                      <Heart className={`h-4 w-4 mr-1 ${isLiked ? 'fill-current' : ''}`} />
+                      {likeCount}
+                    </Button>
+                  </div>
 
                   {/* 5. DAY 리스트 */}
                   {renderDayList()}

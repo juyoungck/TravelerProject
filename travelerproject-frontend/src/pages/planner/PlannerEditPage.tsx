@@ -121,8 +121,8 @@ export function PlannerEditPage({ onBack, initialData }: PlannerEditPageProps) {
   // 지역 관련 상태
   const [regnCodes, setRegnCodes] = useState<RegnCode[]>([]);
   const [signguCodes, setSignguCodes] = useState<SignguCode[]>([]);
-  const [selectedLDongRegnCd, setSelectedLDongRegnCd] = useState<string>('');
-  const [selectedLDongSignguCd, setSelectedLDongSignguCd] = useState<string>('');
+  const [selectedLDongRegnCd, setSelectedLDongRegnCd] = useState<string>(initialData?.lDongRegnCd || '');
+  const [selectedLDongSignguCd, setSelectedLDongSignguCd] = useState<string>(initialData?.lDongSignguCd || '');
   const [isLoadingRegions, setIsLoadingRegions] = useState(false);
   const [isRegionOpen, setIsRegionOpen] = useState(true);
   
@@ -150,6 +150,26 @@ export function PlannerEditPage({ onBack, initialData }: PlannerEditPageProps) {
   useEffect(() => {
     fetchRegnCodes();
   }, []);
+
+  // 시도 목록 로드 완료 후 초기 지역 이름 설정
+  useEffect(() => {
+    if (regnCodes.length > 0 && initialData?.lDongRegnCd) {
+      const regn = regnCodes.find(r => r.lDongRegnCd === initialData.lDongRegnCd);
+      if (regn) {
+        setSelectedRegion(shortenRegnName(regn.regnName));
+      }
+    }
+  }, [regnCodes, initialData?.lDongRegnCd]);
+
+  // 시군구 목록 로드 완료 후 초기 시군구 이름 설정
+  useEffect(() => {
+    if (signguCodes.length > 0 && initialData?.lDongSignguCd) {
+      const signgu = signguCodes.find(s => s.lDongSignguCd === initialData.lDongSignguCd);
+      if (signgu) {
+        setSelectedCity(signgu.signguName);
+      }
+    }
+  }, [signguCodes, initialData?.lDongSignguCd]);
 
   // 플래너 찜 여부 확인 (수정 모드일 때)
   useEffect(() => {
@@ -610,20 +630,10 @@ export function PlannerEditPage({ onBack, initialData }: PlannerEditPageProps) {
             <div className="w-80 bg-white border-r overflow-y-auto">
               <div className="p-4">
                 {/* 찜/삭제/공유/저장 버튼 */}
-                <div className="flex justify-end gap-2 mb-3">
-                  {plannerId && (
+                {/* 1. 삭제/공유/저장 버튼 맨 위 */}
+                <div className="grid grid-cols-3 gap-2 mb-3">
+                  {plannerId ? (
                     <>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleToggleFavorite}
-                        className={`${
-                          isLiked ? 'text-red-500 border-red-500' : ''
-                        }`}
-                      >
-                        <Heart className={`h-4 w-4 mr-1 ${isLiked ? 'fill-current' : ''}`} />
-                        {likeCount}
-                      </Button>
                       <Button 
                         variant="outline" 
                         size="sm" 
@@ -642,16 +652,31 @@ export function PlannerEditPage({ onBack, initialData }: PlannerEditPageProps) {
                         <Share2 className="h-4 w-4 mr-1" />
                         공유
                       </Button>
+                      <Button variant="outline" size="sm" onClick={handleSave} disabled={isSaving}>
+                        {isSaving ? (
+                          <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                        ) : (
+                          <Save className="h-4 w-4 mr-1" />
+                        )}
+                        저장
+                      </Button>
                     </>
+                  ) : (
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={handleSave} 
+                      disabled={isSaving}
+                      className="col-span-3"
+                    >
+                      {isSaving ? (
+                        <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                      ) : (
+                        <Save className="h-4 w-4 mr-1" />
+                      )}
+                      저장
+                    </Button>
                   )}
-                  <Button variant="outline" size="sm" onClick={handleSave} disabled={isSaving}>
-                    {isSaving ? (
-                      <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                    ) : (
-                      <Save className="h-4 w-4 mr-1" />
-                    )}
-                    저장
-                  </Button>
                 </div>
 
                 {/* 플래너 제목 */}
@@ -693,48 +718,35 @@ export function PlannerEditPage({ onBack, initialData }: PlannerEditPageProps) {
 
                 {/* 날짜 선택 */}
                 <div className="mb-4">
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 text-sm text-gray-600">
+                  <div className="flex items-center gap-2 mb-2">
+                    <CalendarIcon className="h-4 w-4 text-gray-500" />
+                    <span className="text-sm text-gray-600">
                       {startDate} ~ {endDate} ({getDaysDifference()}일)
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={() => setShowDatePicker(!showDatePicker)}
-                    >
-                      <CalendarIcon className="h-4 w-4" />
-                    </Button>
+                    </span>
                   </div>
-
-                  {showDatePicker && (
-                    <div className="bg-gray-50 p-4 rounded-lg mt-2">
-                      <div className="space-y-2">
-                        <div>
-                          <label className="text-sm text-gray-600">시작일</label>
-                          <Input
-                            type="date"
-                            value={startDate}
-                            onChange={(e) => setStartDate(e.target.value)}
-                          />
-                        </div>
-                        <div>
-                          <label className="text-sm text-gray-600">종료일</label>
-                          <Input
-                            type="date"
-                            value={endDate}
-                            onChange={(e) => setEndDate(e.target.value)}
-                          />
-                        </div>
-                        <Button
-                          onClick={() => setShowDatePicker(false)}
-                          size="sm"
-                          className="w-full"
-                        >
-                          확인
-                        </Button>
-                      </div>
+                  <div className="flex gap-2">
+                    <div className="flex-1">
+                      <label className="text-xs text-gray-500 block mb-1">시작일</label>
+                      <input
+                        type="date"
+                        value={startDate}
+                        onChange={(e) => setStartDate(e.target.value)}
+                        onKeyDown={(e) => e.preventDefault()}
+                        className="w-full p-2 border rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                      />
                     </div>
-                  )}
+                    <div className="flex-1">
+                      <label className="text-xs text-gray-500 block mb-1">종료일</label>
+                      <input
+                        type="date"
+                        value={endDate}
+                        min={startDate}
+                        onChange={(e) => setEndDate(e.target.value)}
+                        onKeyDown={(e) => e.preventDefault()}
+                        className="w-full p-2 border rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                      />
+                    </div>
+                  </div>
                 </div>
 
                 {/* 지역 선택 (시도) */}
@@ -842,7 +854,22 @@ export function PlannerEditPage({ onBack, initialData }: PlannerEditPageProps) {
 
                 {/* DAY 리스트 */}
                 <div>
-                  <h4 className="text-sm font-semibold mb-3">일정</h4>
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-sm font-semibold">일정</h4>
+                    {plannerId && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleToggleFavorite}
+                        className={`${
+                          isLiked ? 'text-red-500 border-red-500' : ''
+                        }`}
+                      >
+                        <Heart className={`h-4 w-4 mr-1 ${isLiked ? 'fill-current' : ''}`} />
+                        {likeCount}
+                      </Button>
+                    )}
+                  </div>
                   <PlannerDayList
                     dayPlans={dayPlans}
                     onMovePlace={handleMovePlace}
@@ -858,12 +885,7 @@ export function PlannerEditPage({ onBack, initialData }: PlannerEditPageProps) {
 
           {/* 토글 버튼 (왼쪽) */}
           <button
-            onClick={() => {
-              setIsLeftSidebarOpen(!isLeftSidebarOpen)
-              setTimeout(() => {
-                mapRef.current?.relayout();
-              }, 350);
-            }}
+            onClick={() => setIsLeftSidebarOpen(!isLeftSidebarOpen)}
             className="w-6 bg-gray-200 hover:bg-gray-300 flex items-center justify-center"
           >
             {isLeftSidebarOpen ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
@@ -883,12 +905,7 @@ export function PlannerEditPage({ onBack, initialData }: PlannerEditPageProps) {
 
           {/* 토글 버튼 (오른쪽) */}
           <button
-            onClick={() => {
-              setIsRightSidebarOpen(!isRightSidebarOpen)
-              setTimeout(() => {
-                mapRef.current?.relayout();
-              }, 350);
-            }}
+            onClick={() => setIsRightSidebarOpen(!isRightSidebarOpen)}
             className="w-6 bg-gray-200 hover:bg-gray-300 flex items-center justify-center"
           >
             {isRightSidebarOpen ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}

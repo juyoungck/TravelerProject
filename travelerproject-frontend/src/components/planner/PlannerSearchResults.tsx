@@ -81,21 +81,23 @@ export function PlannerSearchResults({
   const [page, setPage] = useState(1);
   const pageSize = 20;
 
+  // 카테고리를 문자열로 변환 (배열 비교 문제 해결)
+  const categoryKey = category.sort().join(',');
+
   // 카테고리, 검색어, 지역이 변경되면 데이터 다시 로드
   useEffect(() => {
     setPage(1);
-    setPlaces([]);
-    fetchPlaces(1);
-  }, [category, searchQuery, lDongRegnCd, lDongSignguCd]);
+    fetchPlaces(1, true);
+  }, [categoryKey, searchQuery, lDongRegnCd, lDongSignguCd]);
 
   // 페이지 변경 시 데이터 로드
   useEffect(() => {
     if (page > 1) {
-      fetchPlaces(page);
+      fetchPlaces(page, false);  // false = 추가 로드 (기존 결과에 추가)
     }
   }, [page]);
 
-  const fetchPlaces = async (pageNum: number) => {
+  const fetchPlaces = async (pageNum: number, isNewSearch: boolean = false) => {
     setIsLoading(true);
     try {
       // 검색어가 있으면 검색 API 사용
@@ -118,10 +120,10 @@ export function PlannerSearchResults({
         
         if (response.data.status === 'success') {
           const newPlaces = mapResponseToPlaces(response.data.data || []);
-          if (pageNum === 1) {
-            setPlaces(newPlaces);
+          if (isNewSearch) {
+            setPlaces(newPlaces);  // 새 검색이면 교체
           } else {
-            setPlaces(prev => [...prev, ...newPlaces]);
+            setPlaces(prev => [...prev, ...newPlaces]);  // 추가 로드면 추가
           }
           setTotalCount(response.data.totalCount || 0);
         }
@@ -178,8 +180,8 @@ export function PlannerSearchResults({
           index === self.findIndex(p => p.id === place.id)
         );
 
-        if (pageNum === 1) {
-          setPlaces(uniquePlaces);
+        if (isNewSearch) {
+          setPlaces(uniquePlaces);  // 새 검색이면 교체
         } else {
           setPlaces(prev => {
             const combined = [...prev, ...uniquePlaces];

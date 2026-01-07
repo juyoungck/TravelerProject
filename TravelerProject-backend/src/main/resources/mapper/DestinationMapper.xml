@@ -342,5 +342,4 @@
         ) WHERE ROWNUM <= #{size}
         ]]>
     </select>
-
 </mapper>

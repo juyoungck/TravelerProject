@@ -336,8 +336,12 @@ export default function App() {
   /**
    * ★ 플래너 미리보기 이동 핸들러 (게시판에서 호출)
    */
+  /**
+   * ★ 플래너 미리보기 이동 핸들러 (게시판/마이페이지에서 호출)
+   * PlannerPage에서 plnId를 기대하므로 통일
+   */
   const handleViewPlannerFromBoard = (plnId: number) => {
-    setSelectedPlanner({ id: plnId });
+    setSelectedPlanner({ plnId: plnId });
     setCurrentPage('planner');
   };
 
@@ -494,6 +498,7 @@ export default function App() {
           isLoggedIn={isLoggedIn}
           favoritePlanners={favoritePlanners}
           onToggleFavoritePlanner={handleToggleFavoritePlanner}
+          onNavigate={handleNavigate}
         />
       );
     }

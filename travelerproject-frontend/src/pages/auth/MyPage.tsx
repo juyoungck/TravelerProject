@@ -939,7 +939,7 @@ export function MyPage({
                         <div className="flex gap-4 p-4">
                           {/* ★ 플래너 썸네일 이미지 */}
                           <div 
-                            className="w-32 h-32 flex-shrink-0 cursor-pointer"
+                            className="w-32 h-32 bg-gradient-to-br from-blue-400 to-blue-600 rounded-lg flex items-center justify-center flex-shrink-0 cursor-pointer"
                             onClick={() => onNavigateToPlanner?.({
                               id: planner.plnId,
                               title: planner.plnTitle,
@@ -969,7 +969,7 @@ export function MyPage({
                                 </span>
                                 {/* ★ 제목 클릭 시 이동 */}
                                 <h3 
-                                  className="font-medium cursor-pointer hover:text-blue-600"
+                                  className="font-medium mb-1 cursor-pointer hover:text-blue-600"
                                   onClick={() => onNavigateToPlanner?.({
                                     id: planner.plnId,
                                     title: planner.plnTitle,
