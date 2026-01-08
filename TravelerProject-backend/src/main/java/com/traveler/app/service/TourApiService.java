@@ -249,7 +249,7 @@ public class TourApiService {
 
             String response = restTemplate.getForObject(uri, String.class);
             
-         // ★★★ 디버그 로그 추가 ★★★
+            // ★★★ 디버그 로그 추가 ★★★
             log.info("상세정보 API 응답 (contentid: {}): {}", contentid, response);
 
             TourApiResponse<DestinationDetailDto> apiResponse = objectMapper.readValue(

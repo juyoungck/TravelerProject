@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" 
+    "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+    플래너 일차 Mapper XML
+    - planner_day 테이블 CRUD 쿼리
+-->
+<mapper namespace="com.traveler.app.dao.PlannerDayDao">
+
+    <!-- 플래너 일차 기본 ResultMap -->
+    <resultMap id="plannerDayResultMap" type="com.traveler.app.entity.PlannerDay">
+        <id property="dayId" column="day_id"/>
+        <result property="plnId" column="pln_id"/>
+        <result property="dayNumber" column="day_number"/>
+        <result property="tripDate" column="trip_date"/>
+        <result property="memo" column="memo"/>
+    </resultMap>
+
+    <!-- 일차별 상세 DTO ResultMap (장소 정보 포함) -->
+    <resultMap id="dayPlanDetailResultMap" type="com.traveler.app.dto.PlannerDetailDto$DayPlanDetailDto">
+        <id property="dayId" column="day_id"/>
+        <result property="dayNumber" column="day_number"/>
+        <result property="tripDate" column="trip_date"/>
+        <result property="memo" column="memo"/>
+        <collection property="places" 
+                    column="day_id" 
+                    select="com.traveler.app.dao.PlannerPlaceDao.selectPlacesByDayId"/>
+    </resultMap>
+
+    <!-- 플래너 일차 생성 -->
+    <insert id="insertPlannerDay" parameterType="com.traveler.app.entity.PlannerDay">
+        <selectKey keyProperty="dayId" resultType="long" order="AFTER">
+            SELECT seq_planner_day.CURRVAL FROM DUAL
+        </selectKey>
+        INSERT INTO planner_day (
+            pln_id, day_number, trip_date, memo
+        ) VALUES (
+            #{plnId}, #{dayNumber}, #{tripDate}, #{memo}
+        )
+    </insert>
+
+    <!-- 플래너 일차 수정 -->
+    <update id="updatePlannerDay" parameterType="com.traveler.app.entity.PlannerDay">
+        UPDATE planner_day SET
+            day_number = #{dayNumber},
+            trip_date = #{tripDate},
+            memo = #{memo}
+        WHERE day_id = #{dayId}
+    </update>
+
+    <!-- 플래너 일차 삭제 -->
+    <delete id="deletePlannerDay">
+        DELETE FROM planner_day WHERE day_id = #{dayId}
+    </delete>
+
+    <!-- 플래너의 모든 일차 삭제 -->
+    <delete id="deletePlannerDaysByPlnId">
+        DELETE FROM planner_day WHERE pln_id = #{plnId}
+    </delete>
+
+    <!-- 일차 ID로 조회 -->
+    <select id="selectPlannerDayById" resultMap="plannerDayResultMap">
+        SELECT * FROM planner_day WHERE day_id = #{dayId}
+    </select>
+
+    <!-- 플래너의 모든 일차 조회 (장소 정보 포함) -->
+    <select id="selectDayPlansByPlnId" resultMap="dayPlanDetailResultMap">
+        SELECT 
+            day_id,
+            pln_id,
+            day_number,
+            trip_date,
+            memo
+        FROM planner_day 
+        WHERE pln_id = #{plnId}
+        ORDER BY day_number ASC
+    </select>
+
+    <!-- 플래너의 모든 일차 조회 (Entity만) -->
+    <select id="selectPlannerDaysByPlnId" resultMap="plannerDayResultMap">
+        SELECT * FROM planner_day 
+        WHERE pln_id = #{plnId}
+        ORDER BY day_number ASC
+    </select>
+
+</mapper>

@@ -4,20 +4,25 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
 
+import com.traveler.app.dao.DestinationDao;
 import com.traveler.app.entity.Destination;
+import com.traveler.app.entity.DestinationImage;
 import com.traveler.app.scheduler.DestinationScheduler;
 import com.traveler.app.service.DestinationService;
+
+import lombok.extern.slf4j.Slf4j;  
+
 
 /**
  * 여행지 API 컨트롤러
  * 여행지 조회 및 동기화 기능 제공
+ * * 수정: 전체 조회(/list)와 타입별 조회(/list/{id}) 통합 지원
+ * * 수정: 정렬 옵션(sort) 추가 (latest, popular)
  */
+@Slf4j 
 @RestController
 @RequestMapping("/api/destination")
 public class DestinationController {
@@ -57,6 +62,52 @@ public class DestinationController {
         
         return response;
     }
+
+    // ============================================
+    // 지역 코드 조회 API
+    // ============================================
+
+    /**
+     * 시도 목록 조회
+     * URL: GET /api/destination/regions
+     */
+    @GetMapping("/regions")
+    public Map<String, Object> getRegions() {
+        Map<String, Object> response = new HashMap<>();
+        
+        try {
+            List<Map<String, Object>> regions = destinationService.getRegions();
+            
+            response.put("status", "success");
+            response.put("data", regions);
+        } catch (Exception e) {
+            response.put("status", "fail");
+            response.put("message", "시도 목록 조회 실패: " + e.getMessage());
+        }
+        
+        return response;
+    }
+
+    /**
+     * 시군구 목록 조회 (시도 코드로)
+     * URL: GET /api/destination/regions/{lDongRegnCd}/signgu
+     */
+    @GetMapping("/regions/{lDongRegnCd}/signgu")
+    public Map<String, Object> getSignguList(@PathVariable("lDongRegnCd") String lDongRegnCd) {
+        Map<String, Object> response = new HashMap<>();
+        
+        try {
+            List<Map<String, Object>> signguList = destinationService.getSignguList(lDongRegnCd);
+            
+            response.put("status", "success");
+            response.put("data", signguList);
+        } catch (Exception e) {
+            response.put("status", "fail");
+            response.put("message", "시군구 목록 조회 실패: " + e.getMessage());
+        }
+        
+        return response;
+    }
     
     /**
      * 관광타입별 API 총 데이터 개수 조회
@@ -86,8 +137,6 @@ public class DestinationController {
     /**
      * 특정 관광타입 여행지 동기화
      * URL: GET /api/destination/sync/{contenttypeid}?startPage=1&endPage=10
-     * 예시: /api/destination/sync/12?startPage=1&endPage=10 (관광지 1~1000건)
-     * 예시: /api/destination/sync/12?startPage=11&endPage=20 (관광지 1001~2000건)
      */
     @GetMapping("/sync/{contenttypeid}")
     public Map<String, Object> syncByType(
@@ -98,7 +147,7 @@ public class DestinationController {
         Map<String, Object> response = new HashMap<>();
         
         try {
-        	int count = destinationService.syncDestinationsByType(contenttypeid, startPage, endPage);
+           int count = destinationService.syncDestinationsByType(contenttypeid, startPage, endPage);
             response.put("status", "success");
             response.put("message", "여행지 동기화 완료");
             response.put("contenttypeid", contenttypeid);
@@ -116,7 +165,6 @@ public class DestinationController {
     /**
      * 전체 관광타입 여행지 동기화
      * URL: GET /api/destination/sync-all?maxCountPerType=100
-     * 주의: API 호출 제한이 있으므로 maxCountPerType을 적절히 설정
      */
     @GetMapping("/sync-all")
     public Map<String, Object> syncAll(
@@ -176,46 +224,27 @@ public class DestinationController {
         
         return response;
     }
-    
-    /**
-     * 특정 날짜 기준 변경 데이터 동기화 (테스트용)
-     * URL: GET /api/destination/sync-modified-test?date=20241224
-     */
-    @GetMapping("/sync-modified-test")
-    public Map<String, Object> syncModifiedTest(
-            @RequestParam(value = "date") String date) {
-        
-        Map<String, Object> response = new HashMap<>();
-        
-        try {
-            int count = destinationService.syncModifiedDestinationsByDate(date);
-            
-            response.put("status", "success");
-            response.put("message", "변경 데이터 동기화 완료");
-            response.put("date", date);
-            response.put("updatedCount", count);
-        } catch (Exception e) {
-            response.put("status", "fail");
-            response.put("message", "동기화 실패: " + e.getMessage());
-        }
-        
-        return response;
-    }
 
     /**
-     * 여행지 목록 조회 (관광타입별, 페이징)
-     * URL: GET /api/destination/list/{contenttypeid}?page=1&size=10
+     * 여행지 목록 조회 (통합)
+     * URL: GET /api/destination/list
+     * URL: GET /api/destination/list/{contenttypeid}
      */
-    @GetMapping("/list/{contenttypeid}")
-    public Map<String, Object> getDestinationsByType(
-            @PathVariable("contenttypeid") String contenttypeid,
+    @GetMapping({"/list", "/list/{contenttypeid}"})
+    public Map<String, Object> getDestinations(
+            @PathVariable(value = "contenttypeid", required = false) String contenttypeid,
             @RequestParam(value = "page", defaultValue = "1") int page,
-            @RequestParam(value = "size", defaultValue = "10") int size) {
+            @RequestParam(value = "size", defaultValue = "10") int size,
+            @RequestParam(value = "sort", defaultValue = "latest") String sort,
+            @RequestParam(value = "lDongRegnCd", required = false) String lDongRegnCd,
+            @RequestParam(value = "lDongSignguCd", required = false) String lDongSignguCd) {
         
         Map<String, Object> response = new HashMap<>();
         
         try {
-            Map<String, Object> result = destinationService.getDestinationsWithPaging(contenttypeid, page, size);
+            // ★ 통합된 메서드 호출
+            Map<String, Object> result = destinationService.getDestinations(
+                    contenttypeid, page, size, sort, lDongRegnCd, lDongSignguCd);
             
             response.put("status", "success");
             response.put("contenttypeid", contenttypeid);
@@ -227,8 +256,35 @@ public class DestinationController {
         
         return response;
     }
-    
-    
+
+    /**
+     * 여행지 검색 (통합)
+     * URL: GET /api/destination/search
+     */
+    @GetMapping("/search")
+    public Map<String, Object> searchDestinations(
+            @RequestParam(value = "keyword") String keyword,
+            @RequestParam(value = "page", defaultValue = "1") int page,
+            @RequestParam(value = "size", defaultValue = "10") int size,
+            @RequestParam(value = "lDongRegnCd", required = false) String lDongRegnCd,
+            @RequestParam(value = "lDongSignguCd", required = false) String lDongSignguCd) {
+        
+        Map<String, Object> response = new HashMap<>();
+        
+        try {
+            // ★ 통합된 메서드 호출
+            Map<String, Object> result = destinationService.searchDestinations(
+                    keyword, page, size, lDongRegnCd, lDongSignguCd);
+            
+            response.put("status", "success");
+            response.putAll(result);
+        } catch (Exception e) {
+            response.put("status", "fail");
+            response.put("message", e.getMessage());
+        }
+        
+        return response;
+    }
 
     /**
      * 여행지 상세 조회
@@ -254,10 +310,116 @@ public class DestinationController {
     }
     
     /**
+     * 플래너용 여행지 목록 (좌표 포함)
+     * GET /api/destination/planner/list/{contenttypeid}
+     */
+    @GetMapping("/planner/list/{contenttypeid}")
+    public ResponseEntity<Map<String, Object>> getDestinationsForPlanner(
+            @PathVariable("contenttypeid") String contenttypeid,
+            @RequestParam(name = "page", defaultValue = "1") int page,
+            @RequestParam(name = "size", defaultValue = "20") int size,
+            @RequestParam(name = "lDongRegnCd", required = false) String lDongRegnCd,
+            @RequestParam(name = "lDongSignguCd", required = false) String lDongSignguCd) {
+        
+        Map<String, Object> response = new HashMap<>();
+        try {
+            List<Map<String, Object>> list = destinationService.getDestinationsForPlanner(
+                contenttypeid, lDongRegnCd, lDongSignguCd, page, size);
+            int totalCount = destinationService.countDestinationsForPlanner(
+                contenttypeid, lDongRegnCd, lDongSignguCd);
+            
+            response.put("status", "success");
+            response.put("data", list);
+            response.put("totalCount", totalCount);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("플래너용 여행지 목록 조회 오류", e);
+            response.put("status", "error");
+            response.put("message", e.getMessage());
+            return ResponseEntity.status(500).body(response);
+        }
+    }
+
+    /**
+     * 플래너용 여행지 검색 (좌표 포함)
+     * GET /api/destination/planner/search
+     */
+    @GetMapping("/planner/search")
+    public ResponseEntity<Map<String, Object>> searchDestinationsForPlanner(
+            @RequestParam(name = "keyword") String keyword,
+            @RequestParam(name = "page", defaultValue = "1") int page,
+            @RequestParam(name = "size", defaultValue = "20") int size,
+            @RequestParam(name = "lDongRegnCd", required = false) String lDongRegnCd,
+            @RequestParam(name = "lDongSignguCd", required = false) String lDongSignguCd) {
+        
+        Map<String, Object> response = new HashMap<>();
+        try {
+            List<Map<String, Object>> list = destinationService.searchDestinationsForPlanner(
+                keyword, lDongRegnCd, lDongSignguCd, page, size);
+            int totalCount = destinationService.countSearchDestinationsForPlanner(
+                keyword, lDongRegnCd, lDongSignguCd);
+            
+            response.put("status", "success");
+            response.put("data", list);
+            response.put("totalCount", totalCount);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("플래너용 여행지 검색 오류", e);
+            response.put("status", "error");
+            response.put("message", e.getMessage());
+            return ResponseEntity.status(500).body(response);
+        }
+    }
+    
+    
+    /**
+     * 조회수 증가
+     * URL: PUT /api/destination/{contentid}/view
+     */
+    @PutMapping("/{contentid}/view")
+    public Map<String, Object> increaseViewCount(@PathVariable("contentid") String contentid) {
+        Map<String, Object> response = new HashMap<>();
+        
+        try {
+            destinationService.increaseViewCount(contentid);
+            Destination destination = destinationService.getDestinationById(contentid);
+            
+            response.put("status", "success");
+            response.put("message", "조회수가 증가했습니다.");
+            response.put("viewCount", destination != null ? destination.getViewCount() : 0);
+        } catch (Exception e) {
+            response.put("status", "fail");
+            response.put("message", e.getMessage());
+        }
+        
+        return response;
+    }
+    
+    /**
+     * 여행지 이미지 목록 조회
+     * URL: GET /api/destination/detail/{contentid}/images
+     */
+    @GetMapping("/detail/{contentid}/images")
+    public Map<String, Object> getDestinationImages(@PathVariable("contentid") String contentid) {
+        Map<String, Object> response = new HashMap<>();
+        
+        try {
+            List<DestinationImage> images = destinationService.getImagesByContentId(contentid);
+            
+            response.put("status", "success");
+            response.put("data", images);
+            response.put("totalCount", images.size());
+        } catch (Exception e) {
+            response.put("status", "fail");
+            response.put("message", e.getMessage());
+        }
+        
+        return response;
+    }
+    
+    /**
      * 상세정보 수집 (overview, homepage)
      * URL: GET /api/destination/sync-detail?startIndex=1&endIndex=1000
-     * 예시: 1~1000번째: startIndex=1&endIndex=1000
-     *       1001~2000번째: startIndex=1001&endIndex=2000
      */
     @GetMapping("/sync-detail")
     public Map<String, Object> syncDetail(
@@ -285,8 +447,6 @@ public class DestinationController {
     /**
      * 이미지 목록 수집
      * URL: GET /api/destination/sync-image?startIndex=1&endIndex=1000
-     * 예시: 1~1000번째: startIndex=1&endIndex=1000
-     *       1001~2000번째: startIndex=1001&endIndex=2000
      */
     @GetMapping("/sync-image")
     public Map<String, Object> syncImage(
@@ -367,5 +527,32 @@ public class DestinationController {
         response.put("data", destinationService.getThumbnailStatus());
         
         return response;
+    }
+    
+    /**
+     * 이미지가 있는 여행지 중 랜덤 N개 조회
+     * GET /api/destination/random?size=4
+     */
+    @GetMapping("/random")
+    public ResponseEntity<Map<String, Object>> getRandomDestinations(
+            @RequestParam(value = "size", defaultValue = "4") int size) {
+        
+        log.info("랜덤 여행지 조회: size={}", size);
+        
+        Map<String, Object> response = new HashMap<>();
+        try {
+            List<Destination> destinations = destinationService.getRandomDestinationsWithImage(size);
+            
+            response.put("status", "success");
+            response.put("data", destinations);
+            response.put("count", destinations.size());
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("랜덤 여행지 조회 실패", e);
+            response.put("status", "error");
+            response.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(response);
+        }
     }
 }

@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" 
+    "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+    RefreshTokenMapper.xml
+    리프레시 토큰 관련 SQL 매퍼
+-->
+<mapper namespace="com.traveler.app.dao.RefreshTokenDao">
+
+    <!-- 결과 매핑 -->
+    <resultMap id="RefreshTokenResultMap" type="com.traveler.app.entity.RefreshToken">
+        <id property="rtId" column="rt_id"/>
+        <result property="mId" column="m_id"/>
+        <result property="rtToken" column="rt_token"/>
+        <result property="rtExpiresAt" column="rt_expires_at"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <!-- 토큰으로 조회 -->
+    <select id="selectByToken" parameterType="string" resultMap="RefreshTokenResultMap">
+        SELECT * FROM refresh_token 
+        WHERE rt_token = #{token} 
+        AND rt_expires_at > SYSDATE
+    </select>
+
+    <!-- 회원 ID로 조회 -->
+    <select id="selectByMemberId" parameterType="long" resultMap="RefreshTokenResultMap">
+        SELECT * FROM refresh_token WHERE m_id = #{mId}
+    </select>
+
+    <!-- 토큰 저장 -->
+    <insert id="insertRefreshToken" parameterType="com.traveler.app.entity.RefreshToken">
+        <selectKey keyProperty="rtId" resultType="long" order="BEFORE">
+            SELECT seq_refresh_token.NEXTVAL FROM DUAL
+        </selectKey>
+        INSERT INTO refresh_token (rt_id, m_id, rt_token, rt_expires_at, created_at)
+        VALUES (#{rtId}, #{mId}, #{rtToken}, #{rtExpiresAt}, SYSDATE)
+    </insert>
+
+    <!-- 토큰 삭제 -->
+    <delete id="deleteByToken" parameterType="string">
+        DELETE FROM refresh_token WHERE rt_token = #{token}
+    </delete>
+
+    <!-- 회원의 모든 토큰 삭제 -->
+    <delete id="deleteByMemberId" parameterType="long">
+        DELETE FROM refresh_token WHERE m_id = #{mId}
+    </delete>
+
+    <!-- 만료된 토큰 삭제 -->
+    <delete id="deleteExpiredTokens">
+        DELETE FROM refresh_token WHERE rt_expires_at &lt; SYSDATE
+    </delete>
+
+</mapper>

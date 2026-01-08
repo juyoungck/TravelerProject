@@ -1,25 +1,49 @@
 /**
  * TravelDetailPage.tsx - 여행지 상세 페이지
- * 여행지 정보, 리뷰 작성/목록, 찜 기능, 고정 미니탭, 위로가기 버튼 포함
+ * 여행지 정보, 리뷰 작성/목록, 찜 기능, 조회수 증가, 고정 미니탭, 위로가기 버튼 포함
+ * 수정: 지도 로딩, 1인1리뷰, 내 리뷰 최상단, 수정/삭제 기능, 리뷰 이미지
+ * 수정: 페이지 진입 시 스크롤 맨 위로 이동
  */
 
-import { useState, useEffect } from 'react';
-import { Heart, Eye, MapPin, X, Star, ArrowUp } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Heart, Eye, MapPin, X, Star, ArrowUp, Edit2, Trash2 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Header } from '../../components/layout/Header';
-import { getDestinationDetail } from '../../api/destinationApi';
+import KakaoMap from '../../components/map/KakaoMap';
+import { ImageGalleryModal } from '../../components/modals/ImageGalleryModal';
+import { getContentTypeStyle } from '../../utils/contentTypeUtils';
+import { 
+  getDestinationDetail, 
+  increaseViewCount,
+  getReviewsByDestination,
+  createReview,
+  updateReview,
+  deleteReview,
+  toggleFavorite,
+  checkFavorite,
+  getFavoriteCount,
+  getDestinationImages,
+  getReviewImages
+} from '../../api/destinationApi';
 
-interface Review {
-  id: number;
-  destinationId?: string;
-  destinationName?: string;
-  destinationImage?: string;
-  author: string;
-  rating: number;
-  content: string;
-  date: string;
+declare global {
+  interface Window {
+    kakao: any;
+  }
 }
 
+/** 리뷰 타입 정의 */
+interface Review {
+  rvId: number;
+  mId: number;
+  contentid: string;
+  rvContent: string;
+  rvRating: number;
+  createdAt: string;
+  memberNickname: string;
+}
+
+/** 여행지 타입 정의 */
 interface Destination {
   contentid: string;
   contenttypeid: string;
@@ -31,44 +55,127 @@ interface Destination {
   overview: string;
   firstimage: string;
   firstimage2: string;
-  mapx: string;
-  mapy: string;
+  mapx: number;
+  mapy: number;
+  viewCount: number;
   lDongRegnCd: string;
   lDongSignguCd: string;
 }
 
+/** 리뷰 이미지 컴포넌트 */
+const ReviewImages = ({ reviewId }: { reviewId: number }) => {
+  const [images, setImages] = useState<string[]>([]);
+
+  useEffect(() => {
+    const fetchImages = async () => {
+      try {
+        const response = await getReviewImages(reviewId);
+        if (response.status === 'success') {
+          setImages(response.data || []);
+        }
+      } catch (err) {
+        console.error('리뷰 이미지 조회 실패:', err);
+      }
+    };
+    fetchImages();
+  }, [reviewId]);
+
+  if (images.length === 0) return null;
+
+  return (
+    <div className="flex gap-2 mt-3">
+      {images.map((url, index) => (
+        <img
+          key={index}
+          src={url}
+          alt={`리뷰 이미지 ${index + 1}`}
+          className="w-24 h-24 object-cover rounded-lg"
+        />
+      ))}
+    </div>
+  );
+};
+
+/** Props 타입 정의 */
 interface TravelDetailPageProps {
   destinationId: string;
   onClose: () => void;
   onNavigate?: (page: string) => void;
   isLoggedIn?: boolean;
-  favoriteDestinations?: any[];
-  onToggleFavorite?: (destination: any) => void;
+  currentUserId?: number;
   onOpenSearch?: () => void;
-  reviews?: Review[];
-  onAddReview?: (review: Review) => void;
 }
 
 export function TravelDetailPage({ 
   destinationId, 
   onClose, 
   onNavigate, 
-  isLoggedIn, 
-  favoriteDestinations = [], 
-  onToggleFavorite, 
-  onOpenSearch, 
-  reviews = [], 
-  onAddReview 
+  isLoggedIn = false,
+  currentUserId,
+  onOpenSearch
 }: TravelDetailPageProps) {
+  // 여행지 정보 상태
   const [destination, setDestination] = useState<Destination | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // 이미지 목록 상태
+  const [images, setImages] = useState<string[]>([]);
+
+  // 이미지 갤러리 모달 상태
+  const [isGalleryOpen, setIsGalleryOpen] = useState(false);
+  const [galleryStartIndex, setGalleryStartIndex] = useState(0);
+
+  // 지도 상태
+  const mapRef = useRef<any>(null);
+
+  // 리뷰 관련 상태
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [averageRating, setAverageRating] = useState(0);
+  const [reviewCount, setReviewCount] = useState(0);
   const [isWritingReview, setIsWritingReview] = useState(false);
   const [newReviewRating, setNewReviewRating] = useState(0);
   const [hoverRating, setHoverRating] = useState(0);
   const [newReviewContent, setNewReviewContent] = useState('');
+  const [reviewLoading, setReviewLoading] = useState(false);
+  
+  // 수정 모드 상태
+  const [editingReviewId, setEditingReviewId] = useState<number | null>(null);
+  const [editRating, setEditRating] = useState(0);
+  const [editContent, setEditContent] = useState('');
+  const [editHoverRating, setEditHoverRating] = useState(0);
+  // 수정 시 이미지 상태
+  const [editKeepImages, setEditKeepImages] = useState<string[]>([]);
+  const [editNewImages, setEditNewImages] = useState<File[]>([]);
+  const [editPreviewUrls, setEditPreviewUrls] = useState<string[]>([]);
+
+  // 찜 관련 상태
+  const [isFavorite, setIsFavorite] = useState(false);
+  const [favoriteCount, setFavoriteCount] = useState(0);
+  const [favoriteLoading, setFavoriteLoading] = useState(false);
+
+  // 이미지 업로드 상태 (새 리뷰 작성용)
+  const [reviewImages, setReviewImages] = useState<File[]>([]);
+  const [previewUrls, setPreviewUrls] = useState<string[]>([]);
+  
+  // UI 관련 상태
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [activeTab, setActiveTab] = useState<'photos' | 'info' | 'reviews' | 'notice'>('photos');
+  
+  /** 페이지 진입 시 스크롤 맨 위로 이동 */
+  useEffect(() => {
+    // 스크롤 컨테이너를 찾아서 맨 위로
+    const container = document.querySelector('.detail-scroll-container');
+    if (container) {
+      container.scrollTo({ top: 0, behavior: 'instant' });
+    }
+    // window 스크롤도 맨 위로
+    window.scrollTo({ top: 0, behavior: 'instant' });
+    
+    // 탭도 초기화
+    setActiveTab('photos');
+  }, [destinationId]);
+  
 
   /** 여행지 상세 정보 조회 */
   useEffect(() => {
@@ -76,7 +183,13 @@ export function TravelDetailPage({
       try {
         setLoading(true);
         const data = await getDestinationDetail(destinationId);
-        setDestination(data);
+        
+        await increaseViewCount(destinationId);
+        
+        setDestination({
+          ...data,
+          viewCount: (data.viewCount || 0) + 1
+        });
       } catch (err) {
         console.error('여행지 상세 조회 실패:', err);
         setError('여행지 정보를 불러오는데 실패했습니다.');
@@ -90,7 +203,84 @@ export function TravelDetailPage({
     }
   }, [destinationId]);
 
-  /** 로딩 중 */
+  /** 리뷰 목록 조회 */
+  useEffect(() => {
+    const fetchReviews = async () => {
+      try {
+        const response = await getReviewsByDestination(destinationId);
+        if (response.status === 'success') {
+          let reviewList = response.data || [];
+          
+          if (currentUserId) {
+            reviewList = reviewList.sort((a: Review, b: Review) => {
+              if (a.mId === currentUserId && b.mId !== currentUserId) return -1;
+              if (a.mId !== currentUserId && b.mId === currentUserId) return 1;
+              return 0;
+            });
+          }
+          
+          setReviews(reviewList);
+          setAverageRating(response.averageRating || 0);
+          setReviewCount(response.totalCount || 0);
+        }
+      } catch (err) {
+        console.error('리뷰 조회 실패:', err);
+      }
+    };
+
+    if (destinationId) {
+      fetchReviews();
+    }
+  }, [destinationId, currentUserId]);
+
+  /** 이미지 목록 조회 */
+  useEffect(() => {
+    const fetchImages = async () => {
+      try {
+        const response = await getDestinationImages(destinationId);
+        if (response.status === 'success' && response.data) {
+          const imageUrls = response.data.map((img: any) => img.originimgurl);
+          setImages(imageUrls);
+        }
+      } catch (err) {
+        console.error('이미지 조회 실패:', err);
+      }
+    };
+
+    if (destinationId) {
+      fetchImages();
+    }
+  }, [destinationId]);
+
+  /** 찜 상태 및 개수 조회 */
+  useEffect(() => {
+    const fetchFavoriteStatus = async () => {
+      try {
+        const countResponse = await getFavoriteCount(destinationId);
+        if (countResponse.status === 'success') {
+          setFavoriteCount(countResponse.favoriteCount || 0);
+        }
+
+        if (isLoggedIn && currentUserId) {
+          const checkResponse = await checkFavorite(currentUserId, destinationId);
+          if (checkResponse.status === 'success') {
+            setIsFavorite(checkResponse.isFavorite);
+          }
+        }
+      } catch (err) {
+        console.error('찜 상태 조회 실패:', err);
+      }
+    };
+
+    if (destinationId) {
+      fetchFavoriteStatus();
+    }
+  }, [destinationId, isLoggedIn, currentUserId]);
+
+  const myReview = reviews.find(review => review.mId === currentUserId);
+  const hasMyReview = !!myReview;
+
+  /** 로딩 중 화면 */
   if (loading) {
     return (
       <div className="fixed inset-0 z-50 bg-white flex items-center justify-center">
@@ -102,7 +292,7 @@ export function TravelDetailPage({
     );
   }
 
-  /** 에러 또는 데이터 없음 */
+  /** 에러 또는 데이터 없음 화면 */
   if (error || !destination) {
     return (
       <div className="fixed inset-0 z-50 bg-white flex items-center justify-center">
@@ -114,85 +304,291 @@ export function TravelDetailPage({
     );
   }
 
-  // 현재 여행지가 찜 목록에 있는지 확인
-  const isFavorite = favoriteDestinations.some((fav) => fav.contentid === destination.contentid);
-
-  // 찜 토글 핸들러
-  const handleToggleFavorite = () => {
-    if (!isLoggedIn) {
+  /** 찜 토글 핸들러 */
+  const handleToggleFavorite = async () => {
+    if (!isLoggedIn || !currentUserId) {
       alert('로그인이 필요한 서비스입니다.');
       return;
     }
-    
-    if (onToggleFavorite) {
-      onToggleFavorite({
-        contentid: destination.contentid,
-        title: destination.title,
-        firstimage: destination.firstimage,
-        firstimage2: destination.firstimage2,
-        addr1: destination.addr1,
-        overview: destination.overview,
-      });
+
+    try {
+      setFavoriteLoading(true);
+      const response = await toggleFavorite(currentUserId, destination.contentid);
+      
+      if (response.status === 'success') {
+        setIsFavorite(response.isFavorite);
+        setFavoriteCount(response.favoriteCount);
+      }
+    } catch (err) {
+      console.error('찜 토글 실패:', err);
+      alert('찜 처리 중 오류가 발생했습니다.');
+    } finally {
+      setFavoriteLoading(false);
     }
   };
 
-  // 스크롤 이벤트 핸들러
+  /** 이미지 클릭 시 갤러리 모달 열기 */
+  const handleImageClick = (index: number) => {
+    setGalleryStartIndex(index);
+    setIsGalleryOpen(true);
+  };
+
+  /** 리뷰 등록 핸들러 */
+  const handleSubmitReview = async () => {
+    if (!isLoggedIn || !currentUserId) {
+      alert('로그인이 필요한 서비스입니다.');
+      return;
+    }
+
+    if (hasMyReview) {
+      alert('이미 이 여행지에 후기를 작성하셨습니다.');
+      return;
+    }
+
+    if (newReviewRating === 0) {
+      alert('별점을 선택해주세요.');
+      return;
+    }
+
+    if (!newReviewContent.trim()) {
+      alert('후기 내용을 입력해주세요.');
+      return;
+    }
+
+    try {
+      setReviewLoading(true);
+      const response = await createReview({
+        mId: currentUserId,
+        contentid: destination.contentid,
+        rvRating: newReviewRating,
+        rvContent: newReviewContent
+      }, reviewImages);
+
+      if (response.status === 'success') {
+        const reviewsResponse = await getReviewsByDestination(destinationId);
+        if (reviewsResponse.status === 'success') {
+          let reviewList = reviewsResponse.data || [];
+          if (currentUserId) {
+            reviewList = reviewList.sort((a: Review, b: Review) => {
+              if (a.mId === currentUserId && b.mId !== currentUserId) return -1;
+              if (a.mId !== currentUserId && b.mId === currentUserId) return 1;
+              return 0;
+            });
+          }
+          setReviews(reviewList);
+          setAverageRating(reviewsResponse.averageRating || 0);
+          setReviewCount(reviewsResponse.totalCount || 0);
+        }
+
+        setNewReviewRating(0);
+        setNewReviewContent('');
+        setReviewImages([]);     
+        setPreviewUrls([]);  
+        setIsWritingReview(false);
+        alert('후기가 등록되었습니다.');
+      }
+    } catch (err) {
+      console.error('리뷰 등록 실패:', err);
+      alert('후기 등록 중 오류가 발생했습니다.');
+    } finally {
+      setReviewLoading(false);
+    }
+  };
+
+  /** 리뷰 수정 시작 */
+  const handleStartEdit = async (review: Review) => {
+    setEditingReviewId(review.rvId);
+    setEditRating(review.rvRating);
+    setEditContent(review.rvContent);
+    
+    // 기존 이미지 불러오기
+    try {
+      const response = await getReviewImages(review.rvId);
+      if (response.status === 'success') {
+        setEditKeepImages(response.data || []);
+      }
+    } catch (err) {
+      console.error('리뷰 이미지 조회 실패:', err);
+      setEditKeepImages([]);
+    }
+    
+    setEditNewImages([]);
+    setEditPreviewUrls([]);
+  };
+
+  /** 리뷰 수정 취소 */
+  const handleCancelEdit = () => {
+    setEditingReviewId(null);
+    setEditRating(0);
+    setEditContent('');
+    setEditHoverRating(0);
+    setEditKeepImages([]);
+    setEditNewImages([]);
+    setEditPreviewUrls([]);
+  };
+
+  /** 수정 시 기존 이미지 삭제 */
+  const handleRemoveKeepImage = (index: number) => {
+    setEditKeepImages(prev => prev.filter((_, i) => i !== index));
+  };
+
+  /** 수정 시 새 이미지 추가 */
+  const handleEditImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+
+    const currentTotal = editKeepImages.length + editNewImages.length;
+    const remaining = 3 - currentTotal;
+    
+    if (remaining <= 0) {
+      alert('이미지는 최대 3장까지 등록 가능합니다.');
+      return;
+    }
+
+    const newFiles = Array.from(files).slice(0, remaining);
+    setEditNewImages(prev => [...prev, ...newFiles]);
+    
+    const urls = newFiles.map(file => URL.createObjectURL(file));
+    setEditPreviewUrls(prev => [...prev, ...urls]);
+  };
+
+  /** 수정 시 새 이미지 삭제 */
+  const handleRemoveEditNewImage = (index: number) => {
+    setEditNewImages(prev => prev.filter((_, i) => i !== index));
+    setEditPreviewUrls(prev => prev.filter((_, i) => i !== index));
+  };
+
+  /** 리뷰 수정 저장 */
+  const handleSaveEdit = async (reviewId: number) => {
+    if (editRating === 0) {
+      alert('별점을 선택해주세요.');
+      return;
+    }
+
+    if (!editContent.trim()) {
+      alert('후기 내용을 입력해주세요.');
+      return;
+    }
+
+    try {
+      setReviewLoading(true);
+      const response = await updateReview(
+        reviewId, 
+        { rvRating: editRating, rvContent: editContent },
+        editKeepImages,
+        editNewImages
+      );
+
+      if (response.status === 'success') {
+        const reviewsResponse = await getReviewsByDestination(destinationId);
+        if (reviewsResponse.status === 'success') {
+          let reviewList = reviewsResponse.data || [];
+          if (currentUserId) {
+            reviewList = reviewList.sort((a: Review, b: Review) => {
+              if (a.mId === currentUserId && b.mId !== currentUserId) return -1;
+              if (a.mId !== currentUserId && b.mId === currentUserId) return 1;
+              return 0;
+            });
+          }
+          setReviews(reviewList);
+          setAverageRating(reviewsResponse.averageRating || 0);
+          setReviewCount(reviewsResponse.totalCount || 0);
+        }
+
+        handleCancelEdit();
+        alert('후기가 수정되었습니다.');
+      }
+    } catch (err) {
+      console.error('리뷰 수정 실패:', err);
+      alert('후기 수정 중 오류가 발생했습니다.');
+    } finally {
+      setReviewLoading(false);
+    }
+  };
+
+  /** 리뷰 삭제 */
+  const handleDeleteReview = async (reviewId: number) => {
+    if (!confirm('정말 이 후기를 삭제하시겠습니까?')) {
+      return;
+    }
+
+    try {
+      setReviewLoading(true);
+      const response = await deleteReview(reviewId);
+
+      if (response.status === 'success') {
+        const reviewsResponse = await getReviewsByDestination(destinationId);
+        if (reviewsResponse.status === 'success') {
+          let reviewList = reviewsResponse.data || [];
+          if (currentUserId) {
+            reviewList = reviewList.sort((a: Review, b: Review) => {
+              if (a.mId === currentUserId && b.mId !== currentUserId) return -1;
+              if (a.mId !== currentUserId && b.mId === currentUserId) return 1;
+              return 0;
+            });
+          }
+          setReviews(reviewList);
+          setAverageRating(reviewsResponse.averageRating || 0);
+          setReviewCount(reviewsResponse.totalCount || 0);
+        }
+
+        alert('후기가 삭제되었습니다.');
+      }
+    } catch (err) {
+      console.error('리뷰 삭제 실패:', err);
+      alert('후기 삭제 중 오류가 발생했습니다.');
+    } finally {
+      setReviewLoading(false);
+    }
+  };
+
+  /** 리뷰 이미지 선택 (새 리뷰 작성용) */
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+
+    const newFiles = Array.from(files);
+    const totalFiles = [...reviewImages, ...newFiles].slice(0, 3);
+
+    setReviewImages(totalFiles);
+
+    const urls = totalFiles.map(file => URL.createObjectURL(file));
+    setPreviewUrls(urls);
+  };
+
+  /** 이미지 삭제 (새 리뷰 작성용) */
+  const handleRemoveImage = (index: number) => {
+    const newImages = reviewImages.filter((_, i) => i !== index);
+    const newUrls = previewUrls.filter((_, i) => i !== index);
+    
+    setReviewImages(newImages);
+    setPreviewUrls(newUrls);
+  };
+
+  /** 스크롤 이벤트 핸들러 */
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const scrollTop = e.currentTarget.scrollTop;
     setShowScrollTop(scrollTop > 300);
   };
 
-  // 맨 위로 스크롤
+  /** 맨 위로 스크롤 */
   const scrollToTop = () => {
-    const container = document.querySelector('.overflow-y-auto');
+    const container = document.querySelector('.detail-scroll-container');
     if (container) {
       container.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
 
-  // 평균 별점 계산 - destinationId로 필터링
-  const destinationReviews = reviews.filter((review) => review.destinationId === destinationId);
-  const averageRating = destinationReviews.length > 0
-    ? destinationReviews.reduce((sum, review) => sum + review.rating, 0) / destinationReviews.length
-    : 0;
-
+  /** 섹션으로 스크롤 */
   const scrollToSection = (tab: 'photos' | 'info' | 'reviews' | 'notice') => {
+    setActiveTab(tab);
     const element = document.getElementById(`section-${tab}`);
     if (element) {
       element.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   };
 
-  const handleSubmitReview = () => {
-    if (newReviewRating === 0) {
-      alert('별점을 선택해주세요.');
-      return;
-    }
-    if (!newReviewContent.trim()) {
-      alert('후기 내용을 입력해주세요.');
-      return;
-    }
-
-    const newReview: Review = {
-      id: Date.now(),
-      destinationId: destination.contentid,
-      destinationName: destination.title,
-      destinationImage: destination.firstimage,
-      author: '사용자',
-      rating: newReviewRating,
-      content: newReviewContent,
-      date: new Date().toISOString().split('T')[0],
-    };
-
-    setNewReviewRating(0);
-    setNewReviewContent('');
-    setIsWritingReview(false);
-
-    if (onAddReview) {
-      onAddReview(newReview);
-    }
-  };
-
+  /** 별점 렌더링 */
   const renderStars = (rating: number, size: 'sm' | 'md' | 'lg' = 'md') => {
     const sizeClass = size === 'sm' ? 'h-3 w-3' : size === 'lg' ? 'h-5 w-5' : 'h-4 w-4';
     const fullStars = Math.floor(rating);
@@ -211,30 +607,57 @@ export function TravelDetailPage({
     );
   };
 
-  /** 콘텐츠 타입 이름 변환 */
-  const getContentTypeName = (typeId: string) => {
-    const types: { [key: string]: string } = {
-      '12': '관광지',
-      '14': '문화시설',
-      '15': '축제/공연/행사',
-      '25': '여행코스',
-      '28': '레포츠',
-      '32': '숙박',
-      '38': '쇼핑',
-      '39': '음식점',
-    };
-    return types[typeId] || '기타';
+  /** 날짜 포맷 */
+  const formatDate = (dateString: string) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('ko-KR');
+  };
+
+  /** 지도용 마커 데이터 생성 */
+  const mapDestination = destination.mapx != null && destination.mapy != null ? [{
+    contentid: destination.contentid,
+    contenttypeid: destination.contenttypeid,
+    title: destination.title,
+    addr1: destination.addr1,
+    addr2: null,
+    tel: null,
+    mapx: Number(destination.mapx),
+    mapy: Number(destination.mapy),
+    firstimage: destination.firstimage,
+    firstimage2: destination.firstimage2,
+    distance: null,
+    typeName: '관광지',
+    regnName: null,
+    signguName: null,
+  }] : [];
+
+  /** 마커 클릭 핸들러 */
+  const handleMarkerClick = () => {
+    if (mapRef.current && destination?.mapx && destination?.mapy) {
+      mapRef.current.setCenter(Number(destination.mapy), Number(destination.mapx), 3);
+    }
+  };
+
+  /** 지도에서 보기 클릭 핸들러 */
+  const handleViewInMap = () => {
+    if (onNavigate && destination) {
+      onNavigate(`map?contentid=${destination.contentid}`);
+    }
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-white overflow-y-auto" onScroll={handleScroll}>
-      {/* 헤더 - 네비게이션 포함 */}
+    <div 
+      className="fixed inset-0 z-50 bg-white overflow-y-auto detail-scroll-container" 
+      onScroll={handleScroll}
+    >
+      {/* 헤더 */}
       {onNavigate && (
         <Header
           onSearch={() => {}}
           onNavigate={onNavigate}
           onOpenSearch={onOpenSearch || (() => {})}
-          isLoggedIn={isLoggedIn || false}
+          isLoggedIn={isLoggedIn}
         />
       )}
 
@@ -242,58 +665,22 @@ export function TravelDetailPage({
       <div className="sticky top-16 z-50 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/60 border-b shadow-sm">
         <div className="container mx-auto px-4">
           <div className="flex gap-6">
-            <button
-              onClick={() => {
-                setActiveTab('photos');
-                scrollToSection('photos');
-              }}
-              className={`px-4 py-3 transition-colors border-b-2 ${
-                activeTab === 'photos'
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-600 hover:text-blue-600'
-              }`}
-            >
-              사진보기
-            </button>
-            <button
-              onClick={() => {
-                setActiveTab('info');
-                scrollToSection('info');
-              }}
-              className={`px-4 py-3 transition-colors border-b-2 ${
-                activeTab === 'info'
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-600 hover:text-blue-600'
-              }`}
-            >
-              상세정보
-            </button>
-            <button
-              onClick={() => {
-                setActiveTab('reviews');
-                scrollToSection('reviews');
-              }}
-              className={`px-4 py-3 transition-colors border-b-2 ${
-                activeTab === 'reviews'
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-600 hover:text-blue-600'
-              }`}
-            >
-              후기
-            </button>
-            <button
-              onClick={() => {
-                setActiveTab('notice');
-                scrollToSection('notice');
-              }}
-              className={`px-4 py-3 transition-colors border-b-2 ${
-                activeTab === 'notice'
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-600 hover:text-blue-600'
-              }`}
-            >
-              안내사항
-            </button>
+            {(['photos', 'info', 'reviews', 'notice'] as const).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => scrollToSection(tab)}
+                className={`px-4 py-3 transition-colors border-b-2 ${
+                  activeTab === tab
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-gray-600 hover:text-blue-600'
+                }`}
+              >
+                {tab === 'photos' && '사진보기'}
+                {tab === 'info' && '상세정보'}
+                {tab === 'reviews' && '후기'}
+                {tab === 'notice' && '안내사항'}
+              </button>
+            ))}
           </div>
         </div>
       </div>
@@ -303,6 +690,15 @@ export function TravelDetailPage({
         <div className="mb-6">
           <div className="flex items-start justify-between mb-2">
             <div className="flex-1">
+              {/* 카테고리 태그 (제목 위) */}
+              {(() => {
+                const style = getContentTypeStyle(destination.contenttypeid);
+                return (
+                  <span className={`inline-block px-2 py-0.5 text-xs rounded mb-2 ${style.bgColor} ${style.textColor}`}>
+                    {style.name}
+                  </span>
+                );
+              })()}
               <h1 className="text-2xl font-bold mb-2">{destination.title}</h1>
               <div className="flex items-center gap-2 text-gray-600">
                 <MapPin className="h-4 w-4" />
@@ -311,56 +707,63 @@ export function TravelDetailPage({
             </div>
           </div>
           
-          <div className="flex items-center justify-between py-4 border-y">
-            <div className="flex items-center gap-4">
-              <span className="px-3 py-1 bg-blue-100 text-blue-600 rounded">
-                {getContentTypeName(destination.contenttypeid)}
-              </span>
-            </div>
-            <div className="flex items-center gap-4">
-              <button 
-                onClick={handleToggleFavorite}
-                className="flex items-center gap-1 text-gray-600 hover:text-red-500 transition-colors cursor-pointer"
-              >
-                <Heart className={`h-5 w-5 ${isFavorite ? 'fill-red-500 text-red-500' : ''}`} />
-                <span>찜하기</span>
-              </button>
+          {/* 찜/조회수 */}
+          <div className="flex items-center justify-end gap-4 py-4 border-y">
+            <button 
+              onClick={handleToggleFavorite}
+              disabled={favoriteLoading}
+              className="flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-50"
+            >
+              <Heart className={`h-6 w-6 transition-colors ${
+                isFavorite 
+                  ? 'fill-red-500 text-red-500' 
+                  : 'text-gray-300 hover:text-red-400'
+              }`} />
+              <span className="text-gray-600">{favoriteCount}</span>
+            </button>
+            <div className="flex items-center gap-1 text-gray-600">
+              <Eye className="h-5 w-5" />
+              <span>{destination.viewCount || 0}</span>
             </div>
           </div>
         </div>
 
-        {/* 사진보기 */}
+        {/* 사진보기 섹션 */}
         <section id="section-photos" className="mb-12">
           <h3 className="text-xl font-semibold mb-4">사진보기</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {destination.firstimage ? (
+          <div className="flex gap-4 overflow-x-auto pb-4">
+            {destination.firstimage && (
               <img
                 src={destination.firstimage}
                 alt={destination.title}
-                className="w-full h-64 object-cover rounded-lg"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).src = '/placeholder-image.jpg';
-                }}
-              />
-            ) : (
-              <div className="w-full h-64 bg-gray-200 rounded-lg flex items-center justify-center">
-                <span className="text-gray-500">이미지 없음</span>
-              </div>
-            )}
-            {destination.firstimage2 && destination.firstimage2 !== destination.firstimage && (
-              <img
-                src={destination.firstimage2}
-                alt={`${destination.title} 썸네일`}
-                className="w-full h-64 object-cover rounded-lg"
+                className="flex-shrink-0 w-80 h-52 object-cover rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                onClick={() => handleImageClick(0)}
                 onError={(e) => {
                   (e.target as HTMLImageElement).style.display = 'none';
                 }}
               />
             )}
+            {images.map((imageUrl, index) => (
+              <img
+                key={index}
+                src={imageUrl}
+                alt={`${destination.title} ${index + 1}`}
+                className="flex-shrink-0 w-80 h-52 object-cover rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                onClick={() => handleImageClick(destination.firstimage ? index + 1 : index)}
+                onError={(e) => {
+                  (e.target as HTMLImageElement).style.display = 'none';
+                }}
+              />
+            ))}
+            {!destination.firstimage && images.length === 0 && (
+              <div className="w-full h-52 bg-gray-200 rounded-lg flex items-center justify-center">
+                <span className="text-gray-500">이미지가 없습니다</span>
+              </div>
+            )}
           </div>
         </section>
 
-        {/* 상세정보 */}
+        {/* 상세정보 섹션 */}
         <section id="section-info" className="mb-12">
           <h3 className="text-xl font-semibold mb-4">상세정보</h3>
           {destination.overview ? (
@@ -375,17 +778,34 @@ export function TravelDetailPage({
             </div>
           )}
 
-          {/* 지도 */}
           <div className="mb-6">
             <h4 className="font-semibold mb-3">위치</h4>
             {destination.mapx && destination.mapy ? (
-              <div className="w-full h-64 bg-gray-200 rounded-lg flex items-center justify-center">
-                <div className="text-center text-gray-500">
-                  <MapPin className="h-12 w-12 mx-auto mb-2" />
-                  <p>위도: {destination.mapy}</p>
-                  <p>경도: {destination.mapx}</p>
-                  <p className="text-sm mt-2">(카카오맵 연동 예정)</p>
-                </div>
+              <div className="relative w-full h-64 rounded-lg overflow-hidden border">
+                {mapDestination.length > 0 ? (
+                  <>
+                  <KakaoMap
+                    ref={mapRef}
+                    centerLat={Number(destination.mapy)}
+                    centerLng={Number(destination.mapx)}
+                    level={3}
+                    destinations={mapDestination}
+                    onMarkerClick={handleMarkerClick}
+                    height="256px"
+                  />
+                  <button
+                    onClick={handleViewInMap}
+                    className="absolute bottom-3 right-3 bg-white px-3 py-2 rounded-lg shadow-md text-sm font-medium text-blue-600 hover:bg-blue-50 transition-colors flex items-center gap-1 z-10"
+                  >
+                    <MapPin className="h-4 w-4" />
+                    지도에서 보기
+                  </button>
+                  </>
+                ) : (
+                  <div className="w-full h-64 bg-gray-200 rounded-lg flex items-center justify-center">
+                    <p className="text-gray-500">위치 정보가 없습니다.</p>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="w-full h-64 bg-gray-200 rounded-lg flex items-center justify-center">
@@ -394,7 +814,6 @@ export function TravelDetailPage({
             )}
           </div>
 
-          {/* 주소 */}
           <div className="bg-white border rounded-lg p-4">
             <div className="flex gap-2">
               <MapPin className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
@@ -406,16 +825,16 @@ export function TravelDetailPage({
           </div>
         </section>
 
-        {/* 후기 */}
+        {/* 후기 섹션 */}
         <section id="section-reviews" className="mb-12">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
               <h3 className="text-xl font-semibold">후기</h3>
-              {destinationReviews.length > 0 && (
+              {reviewCount > 0 && (
                 <div className="flex items-center gap-2">
                   {renderStars(averageRating, 'md')}
                   <span className="text-sm text-gray-600">
-                    {averageRating.toFixed(1)}/5 ({destinationReviews.length}개)
+                    {averageRating.toFixed(1)}/5 ({reviewCount}개)
                   </span>
                 </div>
               )}
@@ -426,19 +845,24 @@ export function TravelDetailPage({
                   alert('로그인이 필요한 서비스입니다.');
                   return;
                 }
+                if (hasMyReview) {
+                  alert('이미 이 여행지에 후기를 작성하셨습니다.\n기존 후기를 수정해주세요.');
+                  return;
+                }
                 setIsWritingReview(!isWritingReview);
               }}
+              disabled={hasMyReview}
+              className={hasMyReview ? 'opacity-50 cursor-not-allowed' : ''}
             >
-              후기 작성
+              {hasMyReview ? '작성 완료' : '후기 작성'}
             </Button>
           </div>
 
           {/* 후기 작성 폼 */}
-          {isWritingReview && (
+          {isWritingReview && !hasMyReview && (
             <div className="bg-gray-50 p-6 rounded-lg mb-6">
               <h4 className="font-semibold mb-3">후기 작성</h4>
               
-              {/* 별점 선택 */}
               <div className="mb-4">
                 <label className="block text-sm font-medium mb-2">별점</label>
                 <div className="flex items-center gap-2">
@@ -449,9 +873,15 @@ export function TravelDetailPage({
                       onClick={() => setNewReviewRating(star)}
                       onMouseEnter={() => setHoverRating(star)}
                       onMouseLeave={() => setHoverRating(0)}
-                      className="text-3xl transition-all"
+                      className="text-2xl w-8 h-8 flex items-center justify-center"
                     >
-                      {star <= (hoverRating || newReviewRating) ? '⭐' : '☆'}
+                      <Star 
+                        className={`h-6 w-6 ${
+                          star <= (hoverRating || newReviewRating) 
+                            ? 'fill-yellow-400 text-yellow-400' 
+                            : 'text-gray-300'
+                        }`}
+                      />
                     </button>
                   ))}
                   <span className="text-sm text-gray-600 ml-2">
@@ -460,7 +890,6 @@ export function TravelDetailPage({
                 </div>
               </div>
 
-              {/* 후기 내용 */}
               <div className="mb-4">
                 <label className="block text-sm font-medium mb-2">후기 내용</label>
                 <textarea
@@ -471,14 +900,66 @@ export function TravelDetailPage({
                 />
               </div>
 
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-2">
+                  사진 첨부 (최대 3장)
+                </label>
+                
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={handleImageSelect}
+                  className="hidden"
+                  id="review-image-input"
+                  disabled={reviewImages.length >= 3}
+                />
+                
+                <div className="flex gap-2 flex-wrap">
+                  {previewUrls.map((url, index) => (
+                    <div key={index} className="relative w-20 h-20">
+                      <img
+                        src={url}
+                        alt={`미리보기 ${index + 1}`}
+                        className="w-full h-full object-cover rounded-lg"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveImage(index)}
+                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                  
+                  {reviewImages.length < 3 && (
+                    <label
+                      htmlFor="review-image-input"
+                      className="w-20 h-20 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center cursor-pointer hover:border-blue-500"
+                    >
+                      <span className="text-gray-400 text-2xl">+</span>
+                    </label>
+                  )}
+                </div>
+                
+                <p className="text-xs text-gray-500 mt-1">
+                  {reviewImages.length}/3장
+                </p>
+              </div>
+
               <div className="flex gap-2">
-                <Button onClick={handleSubmitReview}>등록</Button>
+                <Button onClick={handleSubmitReview} disabled={reviewLoading}>
+                  {reviewLoading ? '등록 중...' : '등록'}
+                </Button>
                 <Button
                   variant="outline"
                   onClick={() => {
                     setIsWritingReview(false);
                     setNewReviewRating(0);
                     setNewReviewContent('');
+                    setReviewImages([]);
+                    setPreviewUrls([]);
                   }}
                 >
                   취소
@@ -489,17 +970,168 @@ export function TravelDetailPage({
 
           {/* 후기 목록 */}
           <div className="space-y-4">
-            {destinationReviews.length > 0 ? (
-              destinationReviews.map((review) => (
-                <div key={review.id} className="bg-white border rounded-lg p-4">
-                  <div className="flex items-start justify-between mb-2">
+            {reviews.length > 0 ? (
+              reviews.map((review) => (
+                <div 
+                  key={review.rvId} 
+                  className={`bg-white border rounded-lg p-4 ${
+                    review.mId === currentUserId ? 'border-blue-300 bg-blue-50/30' : ''
+                  }`}
+                >
+                  {/* 수정 모드 */}
+                  {editingReviewId === review.rvId ? (
                     <div>
-                      <span className="font-semibold">{review.author}</span>
-                      <span className="text-sm text-gray-500 ml-2">{review.date}</span>
+                      {/* 별점 수정 */}
+                      <div className="mb-3">
+                        <div className="flex items-center gap-2">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <button
+                              key={star}
+                              type="button"
+                              onClick={() => setEditRating(star)}
+                              onMouseEnter={() => setEditHoverRating(star)}
+                              onMouseLeave={() => setEditHoverRating(0)}
+                              className="text-2xl w-8 h-8 flex items-center justify-center"
+                            >
+                              <Star 
+                                className={`h-6 w-6 ${
+                                  star <= (editHoverRating || editRating) 
+                                    ? 'fill-yellow-400 text-yellow-400' 
+                                    : 'text-gray-300'
+                                }`}
+                              />
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      
+                      {/* 내용 수정 */}
+                      <textarea
+                        value={editContent}
+                        onChange={(e) => setEditContent(e.target.value)}
+                        className="w-full min-h-[80px] px-3 py-2 border rounded-md resize-vertical mb-3"
+                      />
+                      
+                      {/* 이미지 수정 */}
+                      <div className="mb-3">
+                        <label className="block text-sm font-medium mb-2">
+                          사진 ({editKeepImages.length + editNewImages.length}/3장)
+                        </label>
+                        
+                        <input
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          onChange={handleEditImageSelect}
+                          className="hidden"
+                          id="edit-image-input"
+                          disabled={editKeepImages.length + editNewImages.length >= 3}
+                        />
+                        
+                        <div className="flex gap-2 flex-wrap">
+                          {/* 기존 이미지 */}
+                          {editKeepImages.map((url, index) => (
+                            <div key={`keep-${index}`} className="relative w-20 h-20">
+                              <img
+                                src={url}
+                                alt={`기존 이미지 ${index + 1}`}
+                                className="w-full h-full object-cover rounded-lg"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveKeepImage(index)}
+                                className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs"
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))}
+                          
+                          {/* 새 이미지 미리보기 */}
+                          {editPreviewUrls.map((url, index) => (
+                            <div key={`new-${index}`} className="relative w-20 h-20">
+                              <img
+                                src={url}
+                                alt={`새 이미지 ${index + 1}`}
+                                className="w-full h-full object-cover rounded-lg border-2 border-blue-400"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveEditNewImage(index)}
+                                className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs"
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))}
+                          
+                          {/* 추가 버튼 */}
+                          {editKeepImages.length + editNewImages.length < 3 && (
+                            <label
+                              htmlFor="edit-image-input"
+                              className="w-20 h-20 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center cursor-pointer hover:border-blue-500"
+                            >
+                              <span className="text-gray-400 text-2xl">+</span>
+                            </label>
+                          )}
+                        </div>
+                      </div>
+                      
+                      <div className="flex gap-2">
+                        <Button 
+                          size="sm" 
+                          onClick={() => handleSaveEdit(review.rvId)}
+                          disabled={reviewLoading}
+                        >
+                          저장
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={handleCancelEdit}>
+                          취소
+                        </Button>
+                      </div>
                     </div>
-                    {renderStars(review.rating, 'sm')}
-                  </div>
-                  <p className="text-gray-700">{review.content}</p>
+                  ) : (
+                    <>
+                      {/* 일반 모드 */}
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold">{review.memberNickname}</span>
+                          {review.mId === currentUserId && (
+                            <span className="text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded">
+                              내 후기
+                            </span>
+                          )}
+                          <span className="text-sm text-gray-500">
+                            {formatDate(review.createdAt)}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {review.mId === currentUserId && (
+                            <>
+                              <button
+                                onClick={() => handleStartEdit(review)}
+                                className="p-1 text-gray-400 hover:text-blue-600 transition-colors"
+                                title="수정"
+                              >
+                                <Edit2 className="h-4 w-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteReview(review.rvId)}
+                                className="p-1 text-gray-400 hover:text-red-600 transition-colors"
+                                title="삭제"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </>
+                          )}
+                          {renderStars(review.rvRating, 'sm')}
+                        </div>
+                      </div>
+                      <p className="text-gray-700">{review.rvContent}</p>
+                      {/* 리뷰 이미지 표시 */}
+                      <ReviewImages reviewId={review.rvId} />
+                    </>
+                  )}
                 </div>
               ))
             ) : (
@@ -511,7 +1143,7 @@ export function TravelDetailPage({
           </div>
         </section>
 
-        {/* 안내사항 */}
+        {/* 안내사항 섹션 */}
         <section id="section-notice" className="mb-12">
           <h3 className="text-xl font-semibold mb-4">안내사항</h3>
           <div className="bg-gray-50 p-6 rounded-lg space-y-4">
@@ -537,7 +1169,7 @@ export function TravelDetailPage({
         </section>
       </div>
 
-      {/* 닫기 버튼 (우측 하단) */}
+      {/* 닫기 버튼 */}
       <button
         onClick={onClose}
         className="fixed bottom-8 right-8 bg-white shadow-lg rounded-full p-4 hover:bg-gray-100 transition-colors"
@@ -554,6 +1186,14 @@ export function TravelDetailPage({
           <ArrowUp className="h-6 w-6" />
         </button>
       )}
+
+            {/* 이미지 갤러리 모달 */}
+      <ImageGalleryModal
+        images={destination.firstimage ? [destination.firstimage, ...images] : images}
+        initialIndex={galleryStartIndex}
+        isOpen={isGalleryOpen}
+        onClose={() => setIsGalleryOpen(false)}
+      />
     </div>
   );
 }

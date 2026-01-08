@@ -1,0 +1,164 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" 
+    "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.traveler.app.dao.BoardDao">
+
+    <!-- 게시글 목록 조회 -->
+    <select id="selectBoardList" parameterType="map" resultType="com.traveler.app.dto.BoardDto">
+        SELECT * FROM (
+            SELECT 
+                ROWNUM AS rn,
+                a.*
+            FROM (
+                SELECT 
+                    b.bd_id,
+                    b.m_id,
+                    m.m_nickname AS author_nickname,
+                    b.bd_category,
+                    b.bd_title,
+                    b.bd_view_count,
+                    b.recruit_status,
+                    b.pln_id,
+                    b.bd_rating,
+                    b.created_at,
+                    (SELECT COUNT(*) FROM board_comment c WHERE c.bd_id = b.bd_id AND c.is_deleted = 0) AS comment_count
+                FROM board b
+                LEFT JOIN member m ON b.m_id = m.m_id
+                WHERE b.is_deleted = 0
+                <if test="category != null and category != '' and category != 'ALL'">
+                    AND b.bd_category = #{category}
+                </if>
+                <if test="keyword != null and keyword != ''">
+				  <choose>
+				    <when test="searchType == 'TITLE'">
+				      AND b.bd_title LIKE '%' || #{keyword} || '%'
+				    </when>
+				    <when test="searchType == 'AUTHOR'">
+				      AND m.m_nickname LIKE '%' || #{keyword} || '%'
+				    </when>
+				  </choose>
+				</if>
+                ORDER BY b.created_at DESC
+            ) a
+            WHERE ROWNUM &lt;= #{offset} + #{size}
+        )
+        WHERE rn > #{offset}
+    </select>
+
+    <!-- 게시글 총 개수 조회 -->
+	<select id="selectBoardCount" parameterType="map" resultType="int">
+	    SELECT COUNT(*)
+	    FROM board b
+	    LEFT JOIN member m ON b.m_id = m.m_id
+	    WHERE b.is_deleted = 0
+	    <if test="category != null and category != '' and category != 'ALL'">
+	        AND b.bd_category = #{category}
+	    </if>
+	    <if test="keyword != null and keyword != ''">
+	        <choose>
+	            <when test="searchType == 'TITLE'">
+	                AND b.bd_title LIKE '%' || #{keyword} || '%'
+	            </when>
+	            <when test="searchType == 'AUTHOR'">
+	                AND m.m_nickname LIKE '%' || #{keyword} || '%'
+	            </when>
+	        </choose>
+	    </if>
+	</select>
+
+    <!-- 게시글 상세 조회 -->
+    <select id="selectBoardDetail" parameterType="int" resultType="com.traveler.app.dto.BoardDto">
+        SELECT 
+            b.bd_id,
+            b.m_id,
+            m.m_nickname AS author_nickname,
+            b.bd_category,
+            b.bd_title,
+            b.bd_content,
+            b.bd_view_count,
+            b.recruit_status,
+            b.pln_id,
+            p.pln_title AS planner_title,
+            b.bd_rating,
+            b.created_at,
+            b.updated_at
+        FROM board b
+        LEFT JOIN member m ON b.m_id = m.m_id
+        LEFT JOIN planner p ON b.pln_id = p.pln_id
+        WHERE b.bd_id = #{bdId}
+        AND b.is_deleted = 0
+    </select>
+
+    <!-- ★ 게시글 등록 (트리거 사용 - bd_id 제외) -->
+    <!-- ★ 게시글 등록 (null 타입 명시) -->
+	<insert id="insertBoard" parameterType="com.traveler.app.dto.BoardDto">
+	    <selectKey keyProperty="bdId" resultType="int" order="AFTER">
+	        SELECT seq_board.CURRVAL FROM DUAL
+	    </selectKey>
+	    INSERT INTO board (
+	        m_id,
+	        bd_category,
+	        bd_title,
+	        bd_content,
+	        bd_view_count,
+	        recruit_status,
+	        pln_id,
+	        bd_rating,
+	        is_deleted,
+	        created_at,
+	        updated_at
+	    ) VALUES (
+	        #{mId},
+	        #{bdCategory},
+	        #{bdTitle},
+	        #{bdContent},
+	        0,
+	        #{recruitStatus, jdbcType=VARCHAR},
+	        #{plnId, jdbcType=INTEGER},
+	        #{bdRating, jdbcType=INTEGER},
+	        0,
+	        SYSDATE,
+	        SYSDATE
+	    )
+	</insert>
+
+    <!-- 게시글 수정 -->
+    <update id="updateBoard" parameterType="com.traveler.app.dto.BoardDto">
+        UPDATE board
+        SET 
+            bd_title = #{bdTitle},
+            bd_content = #{bdContent},
+            pln_id = #{plnId, jdbcType=INTEGER},
+       		bd_rating = #{bdRating, jdbcType=INTEGER},
+            updated_at = SYSDATE
+        WHERE bd_id = #{bdId}
+    </update>
+
+    <!-- 게시글 삭제 (soft delete) -->
+    <update id="deleteBoard" parameterType="int">
+        UPDATE board
+        SET 
+            is_deleted = 1,
+            deleted_at = SYSDATE
+        WHERE bd_id = #{bdId}
+    </update>
+
+    <!-- 조회수 증가 -->
+    <update id="updateViewCount" parameterType="int">
+        UPDATE board
+        SET bd_view_count = bd_view_count + 1
+        WHERE bd_id = #{bdId}
+    </update>
+
+    <!-- 모집 마감 -->
+    <update id="updateRecruitStatus" parameterType="int">
+        UPDATE board
+        SET 
+            recruit_status = 'CLOSED',
+            updated_at = SYSDATE
+        WHERE bd_id = #{bdId}
+    </update>
+
+	
+</mapper>

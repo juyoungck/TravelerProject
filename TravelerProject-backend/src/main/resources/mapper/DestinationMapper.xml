@@ -4,6 +4,38 @@
 
 <mapper namespace="com.traveler.app.dao.DestinationDao">
 
+    <!-- ============================================
+         지역 코드 조회
+         ============================================ -->
+
+    <select id="selectRegions" resultType="map">
+        SELECT 
+            lDongRegnCd AS "lDongRegnCd",
+            regn_name AS "regnName"
+        FROM ldong_regn_code
+        ORDER BY lDongRegnCd
+    </select>
+
+    <select id="selectSignguList" resultType="map">
+        SELECT 
+            lDongRegnCd AS "lDongRegnCd",
+            lDongSignguCd AS "lDongSignguCd",
+            signgu_name AS "signguName"
+        FROM ldong_signgu_code
+        WHERE lDongRegnCd = #{lDongRegnCd}
+        ORDER BY lDongSignguCd
+    </select>
+    
+    <select id="selectSignguName" resultType="String">
+        SELECT SIGNGU_NAME 
+        FROM ldong_signgu_code 
+        WHERE LDONGREGNCD = #{lDongRegnCd} AND LDONGSIGNGUCD = #{lDongSignguCd}
+    </select>
+
+    <!-- ============================================
+         여행지 CRUD
+         ============================================ -->
+
     <insert id="mergeDestination" parameterType="com.traveler.app.entity.Destination">
         MERGE INTO destination target
         USING (
@@ -63,104 +95,7 @@
     </insert>
 
     <select id="selectDestinationById" parameterType="String" resultType="com.traveler.app.entity.Destination">
-        SELECT
-            contentid,
-            contenttypeid,
-            title,
-            overview,
-            homepage,
-            tel,
-            addr1,
-            addr2,
-            zipcode,
-            lDongRegnCd,
-            lDongSignguCd,
-            mapx,
-            mapy,
-            mlevel,
-            firstimage,
-            firstimage2,
-            modifiedtime,
-            view_count AS viewCount,
-            sync_date AS syncDate,
-            created_at AS createdAt
-        FROM destination
-        WHERE contentid = #{contentid}
-    </select>
-
-    <select id="selectDestinationsByType" parameterType="String" resultType="com.traveler.app.entity.Destination">
-        SELECT
-            contentid,
-            contenttypeid,
-            title,
-            tel,
-            addr1,
-            addr2,
-            lDongRegnCd,
-            lDongSignguCd,
-            mapx,
-            mapy,
-            firstimage,
-            firstimage2,
-            view_count AS viewCount
-        FROM destination
-        WHERE contenttypeid = #{contenttypeid}
-        ORDER BY modifiedtime DESC
-    </select>
-
-    <select id="selectDestinationsByRegion" resultType="com.traveler.app.entity.Destination">
-        SELECT
-            contentid,
-            contenttypeid,
-            title,
-            tel,
-            addr1,
-            addr2,
-            lDongRegnCd,
-            lDongSignguCd,
-            mapx,
-            mapy,
-            firstimage,
-            firstimage2,
-            view_count AS viewCount
-        FROM destination
-        WHERE lDongRegnCd = #{lDongRegnCd}
-        <if test="lDongSignguCd != null and lDongSignguCd != ''">
-            AND lDongSignguCd = #{lDongSignguCd}
-        </if>
-        ORDER BY modifiedtime DESC
-    </select>
-    
-    <!-- 여행지 목록 조회 (페이징) -->
-	<select id="selectDestinationsByTypeWithPaging" resultType="com.traveler.app.entity.Destination">
-	    SELECT * FROM (
-	        SELECT 
-	            d.*,
-	            ROWNUM AS rn
-	        FROM (
-	            SELECT * FROM destination
-	            WHERE contenttypeid = #{contenttypeid}
-	            ORDER BY contentid DESC
-	        ) d
-	        WHERE ROWNUM &lt;= #{offset} + #{limit}
-	    )
-	    WHERE rn > #{offset}
-	</select>
-	
-	<!-- 시군구 이름 조회 -->
-	<select id="selectSignguName" resultType="String">
-	    SELECT SIGNGU_NAME 
-	    FROM ldong_signgu_code 
-	    WHERE LDONGREGNCD = #{lDongRegnCd} AND LDONGSIGNGUCD = #{lDongSignguCd}
-	</select>
-
-    <select id="countDestination" resultType="int">
-        SELECT COUNT(*) FROM destination
-    </select>
-
-    <select id="countDestinationByType" parameterType="String" resultType="int">
-        SELECT COUNT(*) FROM destination
-        WHERE contenttypeid = #{contenttypeid}
+        SELECT * FROM destination WHERE contentid = #{contentid}
     </select>
 
     <update id="updateDestinationDetail">
@@ -171,33 +106,349 @@
             sync_date = CURRENT_TIMESTAMP
         WHERE contentid = #{contentid}
     </update>
+    
+    <update id="increaseViewCount" parameterType="String">
+        UPDATE destination
+        SET view_count = view_count + 1
+        WHERE contentid = #{contentid}
+    </update>
 
-<!-- 여행지 목록 조회 (인덱스 범위) -->
-<select id="selectDestinationsByRange" resultType="com.traveler.app.entity.Destination">
-    SELECT * FROM (
-        SELECT 
-            contentid,
-            title,
-            firstimage2,
-            ROWNUM AS rn
-        FROM (
-            SELECT contentid, title, firstimage2
-            FROM destination
-            ORDER BY contentid
+    <!-- ============================================
+         여행지 목록 조회 (리뷰 통계 포함)
+         ★ 정렬 우선순위: 썸네일+상세정보 둘다 > 썸네일만 > 상세정보만 > 둘다없음
+         ============================================ -->
+
+    <select id="selectDestinationsWithReview" resultType="map">
+        SELECT * FROM (
+            SELECT 
+                inner_query.*,
+                ROWNUM AS rn
+            FROM (
+                SELECT 
+                    d.contentid AS "contentid",
+                    d.contenttypeid AS "contenttypeid",
+                    d.title AS "title",
+                    d.addr1 AS "addr1",
+                    d.firstimage AS "firstimage",
+                    d.view_count AS "viewCount",
+                    r.regn_name AS "regnName",
+                    s.signgu_name AS "signguName",
+                    NVL(rv.avg_rating, 0) AS "averageRating",
+                    NVL(rv.review_count, 0) AS "reviewCount"
+                FROM destination d
+                LEFT JOIN ldong_regn_code r ON d.lDongRegnCd = r.lDongRegnCd
+                LEFT JOIN ldong_signgu_code s ON d.lDongRegnCd = s.lDongRegnCd AND d.lDongSignguCd = s.lDongSignguCd
+                LEFT JOIN (
+                    SELECT 
+                        contentid,
+                        ROUND(AVG(rv_rating), 1) AS avg_rating,
+                        COUNT(*) AS review_count
+                    FROM review
+                    GROUP BY contentid
+                ) rv ON d.contentid = rv.contentid
+                <where>
+                    <choose>
+                        <when test="contenttypeid != null and contenttypeid != ''">
+                            AND d.contenttypeid = #{contenttypeid}
+                        </when>
+                        <otherwise>
+                            AND d.contenttypeid NOT IN ('15', '25')
+                        </otherwise>
+                    </choose>
+                    <if test="lDongRegnCd != null and lDongRegnCd != ''">
+                        AND d.lDongRegnCd = #{lDongRegnCd}
+                    </if>
+                    <if test="lDongSignguCd != null and lDongSignguCd != ''">
+                        AND INSTR(',' || #{lDongSignguCd} || ',', ',' || d.lDongSignguCd || ',') &gt; 0
+                    </if>
+                </where>
+                ORDER BY 
+                    CASE 
+                        WHEN d.firstimage2 IS NOT NULL AND d.firstimage2 != ' ' AND d.overview IS NOT NULL THEN 1
+                        WHEN d.firstimage2 IS NOT NULL AND d.firstimage2 != ' ' THEN 2
+                        WHEN d.overview IS NOT NULL THEN 3
+                        ELSE 4
+                    END ASC,
+                    <choose>
+                        <when test="sort == 'popular'">
+                            d.view_count DESC NULLS LAST, d.contentid DESC
+                        </when>
+                        <otherwise>
+                            d.modifiedtime DESC NULLS LAST, d.contentid DESC
+                        </otherwise>
+                    </choose>
+            ) inner_query
+            WHERE ROWNUM &lt;= #{offset} + #{limit}
         )
-    )
-    WHERE rn >= #{startIndex} AND rn &lt;= #{endIndex}
-</select>
-<!-- 상세정보 없는 여행지 개수 -->
-<select id="countDestinationsWithoutDetail" resultType="int">
-    SELECT COUNT(*) FROM destination
-    WHERE overview IS NULL
-</select>
+        WHERE rn &gt; #{offset}
+    </select>
 
-<!-- 썸네일이 있는 여행지 수 -->
-<select id="countDestinationsWithThumbnail" resultType="int">
-    SELECT COUNT(*) FROM destination
-    WHERE firstimage2 IS NOT NULL
-</select>
+    <!-- 여행지 개수 조회 (통합) -->
+    <select id="countDestinations" resultType="int">
+        SELECT COUNT(*) FROM destination d
+        <where>
+            <choose>
+                <when test="contenttypeid != null and contenttypeid != ''">
+                    AND d.contenttypeid = #{contenttypeid}
+                </when>
+                <otherwise>
+                    AND d.contenttypeid NOT IN ('15', '25')
+                </otherwise>
+            </choose>
+            <if test="lDongRegnCd != null and lDongRegnCd != ''">
+                AND d.lDongRegnCd = #{lDongRegnCd}
+            </if>
+            <if test="lDongSignguCd != null and lDongSignguCd != ''">
+                AND INSTR(',' || #{lDongSignguCd} || ',', ',' || d.lDongSignguCd || ',') &gt; 0
+            </if>
+        </where>
+    </select>
 
+    <!-- 여행지 검색 (리뷰 통계 포함 + 정렬 우선순위) -->
+    <select id="searchDestinationsWithReview" resultType="map">
+        SELECT * FROM (
+            SELECT 
+                inner_query.*,
+                ROWNUM AS rn
+            FROM (
+                SELECT 
+                    d.contentid AS "contentid",
+                    d.contenttypeid AS "contenttypeid",
+                    d.title AS "title",
+                    d.addr1 AS "addr1",
+                    d.firstimage AS "firstimage",
+                    d.view_count AS "viewCount",
+                    r.regn_name AS "regnName",
+                    s.signgu_name AS "signguName",
+                    NVL(rv.avg_rating, 0) AS "averageRating",
+                    NVL(rv.review_count, 0) AS "reviewCount"
+                FROM destination d
+                LEFT JOIN ldong_regn_code r ON d.lDongRegnCd = r.lDongRegnCd
+                LEFT JOIN ldong_signgu_code s ON d.lDongRegnCd = s.lDongRegnCd AND d.lDongSignguCd = s.lDongSignguCd
+                LEFT JOIN (
+                    SELECT 
+                        contentid,
+                        ROUND(AVG(rv_rating), 1) AS avg_rating,
+                        COUNT(*) AS review_count
+                    FROM review
+                    GROUP BY contentid
+                ) rv ON d.contentid = rv.contentid
+                WHERE (d.title LIKE '%' || #{keyword} || '%' OR d.addr1 LIKE '%' || #{keyword} || '%')
+                <if test="lDongRegnCd != null and lDongRegnCd != ''">
+                    AND d.lDongRegnCd = #{lDongRegnCd}
+                </if>
+                <if test="lDongSignguCd != null and lDongSignguCd != ''">
+                    AND INSTR(',' || #{lDongSignguCd} || ',', ',' || d.lDongSignguCd || ',') &gt; 0
+                </if>
+                ORDER BY 
+                    CASE 
+                        WHEN d.firstimage2 IS NOT NULL AND d.firstimage2 != ' ' AND d.overview IS NOT NULL THEN 1
+                        WHEN d.firstimage2 IS NOT NULL AND d.firstimage2 != ' ' THEN 2
+                        WHEN d.overview IS NOT NULL THEN 3
+                        ELSE 4
+                    END ASC,
+                    d.view_count DESC NULLS LAST, d.title ASC
+            ) inner_query
+            WHERE ROWNUM &lt;= #{offset} + #{limit}
+        )
+        WHERE rn &gt; #{offset}
+    </select>
+
+    <!-- 여행지 검색 개수 -->
+    <select id="countSearchDestinations" resultType="int">
+        SELECT COUNT(*) FROM destination d
+        WHERE (d.title LIKE '%' || #{keyword} || '%' OR d.addr1 LIKE '%' || #{keyword} || '%')
+        <if test="lDongRegnCd != null and lDongRegnCd != ''">
+            AND d.lDongRegnCd = #{lDongRegnCd}
+        </if>
+        <if test="lDongSignguCd != null and lDongSignguCd != ''">
+            AND INSTR(',' || #{lDongSignguCd} || ',', ',' || d.lDongSignguCd || ',') &gt; 0
+        </if>
+    </select>
+    
+    
+    <!-- ============================================
+     플래너용 여행지 조회 (좌표 포함, 리뷰 통계 제외)
+     ============================================ -->
+	<!-- 플래너용 여행지 목록 (카테고리별) -->
+	<select id="selectDestinationsForPlanner" resultType="map">
+	    SELECT * FROM (
+	        SELECT 
+	            inner_query.*,
+	            ROWNUM AS rn
+	        FROM (
+	            SELECT 
+	                d.contentid AS "contentid",
+	                d.contenttypeid AS "contenttypeid",
+	                d.title AS "title",
+	                d.addr1 AS "addr1",
+	                d.firstimage AS "firstimage",
+	                d.firstimage2 AS "firstimage2",
+	                d.mapx AS "mapx",
+	                d.mapy AS "mapy",
+	                r.regn_name AS "regnName"
+	            FROM destination d
+	            LEFT JOIN ldong_regn_code r ON d.lDongRegnCd = r.lDongRegnCd
+	            <where>
+	                <if test="contenttypeid != null and contenttypeid != ''">
+	                    AND d.contenttypeid = #{contenttypeid}
+	                </if>
+	                <if test="lDongRegnCd != null and lDongRegnCd != ''">
+	                    AND d.lDongRegnCd = #{lDongRegnCd}
+	                </if>
+	                <if test="lDongSignguCd != null and lDongSignguCd != ''">
+	                    AND d.lDongSignguCd = #{lDongSignguCd}
+	                </if>
+	                
+	                AND d.contenttypeid NOT IN ('15', '25')
+	            </where>
+	            ORDER BY 
+	                CASE 
+	                    WHEN d.firstimage2 IS NOT NULL AND d.firstimage2 != ' ' THEN 1
+	                    ELSE 2
+	                END ASC,
+	                d.view_count DESC NULLS LAST
+	        ) inner_query
+	        WHERE ROWNUM &lt;= #{offset} + #{limit}
+	    )
+	    WHERE rn &gt; #{offset}
+	</select>
+	
+	<!-- 플래너용 여행지 검색 (키워드) -->
+	<select id="searchDestinationsForPlanner" resultType="map">
+	    SELECT * FROM (
+	        SELECT 
+	            inner_query.*,
+	            ROWNUM AS rn
+	        FROM (
+	            SELECT 
+	                d.contentid AS "contentid",
+	                d.contenttypeid AS "contenttypeid",
+	                d.title AS "title",
+	                d.addr1 AS "addr1",
+	                d.firstimage AS "firstimage",
+	                d.firstimage2 AS "firstimage2",
+	                d.mapx AS "mapx",
+	                d.mapy AS "mapy",
+	                r.regn_name AS "regnName"
+	            FROM destination d
+	            LEFT JOIN ldong_regn_code r ON d.lDongRegnCd = r.lDongRegnCd
+	            WHERE (LOWER(d.title) LIKE '%' || LOWER(#{keyword}) || '%' 
+	                   OR LOWER(d.addr1) LIKE '%' || LOWER(#{keyword}) || '%')
+	              AND d.contenttypeid NOT IN ('15', '25')
+	            <if test="lDongRegnCd != null and lDongRegnCd != ''">
+	                AND d.lDongRegnCd = #{lDongRegnCd}
+	            </if>
+	            <if test="lDongSignguCd != null and lDongSignguCd != ''">
+	                AND d.lDongSignguCd = #{lDongSignguCd}
+	            </if>
+	            ORDER BY 
+	                CASE 
+	                    WHEN d.firstimage2 IS NOT NULL AND d.firstimage2 != ' ' THEN 1
+	                    ELSE 2
+	                END ASC,
+	                d.view_count DESC NULLS LAST
+	        ) inner_query
+	        WHERE ROWNUM &lt;= #{offset} + #{limit}
+	    )
+	    WHERE rn &gt; #{offset}
+	</select>
+	
+	<!-- 플래너용 여행지 검색 개수 -->
+	<select id="countDestinationsForPlanner" resultType="int">
+	    SELECT COUNT(*) FROM destination d
+	    <where>
+	        <if test="contenttypeid != null and contenttypeid != ''">
+	            AND d.contenttypeid = #{contenttypeid}
+	        </if>
+	        <if test="keyword != null and keyword != ''">
+	            AND (LOWER(d.title) LIKE '%' || LOWER(#{keyword}) || '%' 
+	                 OR LOWER(d.addr1) LIKE '%' || LOWER(#{keyword}) || '%')
+	            AND d.contenttypeid NOT IN ('15', '25')
+	        </if>
+	        <if test="lDongRegnCd != null and lDongRegnCd != ''">
+	            AND d.lDongRegnCd = #{lDongRegnCd}
+	        </if>
+	        <if test="lDongSignguCd != null and lDongSignguCd != ''">
+	            AND d.lDongSignguCd = #{lDongSignguCd}
+	        </if>
+	    </where>
+	</select>
+
+    <!-- ============================================
+         기타 조회 (기존 유지 - 동기화용)
+         ============================================ -->
+
+    <select id="selectDestinationsByType" parameterType="String" resultType="com.traveler.app.entity.Destination">
+        SELECT
+            contentid, contenttypeid, title, tel, addr1, addr2,
+            lDongRegnCd, lDongSignguCd, mapx, mapy, firstimage, firstimage2,
+            view_count AS viewCount
+        FROM destination
+        <where>
+            <if test="contenttypeid != null and contenttypeid != ''">
+                AND contenttypeid = #{contenttypeid}
+            </if>
+        </where>
+        ORDER BY modifiedtime DESC
+    </select>
+
+    <select id="selectDestinationsByRange" resultType="com.traveler.app.entity.Destination">
+        SELECT * FROM (
+            SELECT 
+                d.*,
+                ROWNUM AS rn
+            FROM (
+                SELECT * FROM destination ORDER BY contentid
+            ) d
+            WHERE ROWNUM &lt;= #{endIndex}
+        )
+        WHERE rn &gt;= #{startIndex}
+    </select>
+
+    <select id="countDestination" resultType="int">
+        SELECT COUNT(*) FROM destination
+    </select>
+
+    <select id="countDestinationByType" parameterType="String" resultType="int">
+        SELECT COUNT(*) FROM destination
+        <where>
+            <if test="contenttypeid != null and contenttypeid != ''">
+                AND contenttypeid = #{contenttypeid}
+            </if>
+            <if test="contenttypeid == null or contenttypeid == ''">
+                AND contenttypeid NOT IN ('15', '25')
+            </if>
+        </where>
+    </select>
+
+    <select id="countDestinationsWithoutDetail" resultType="int">
+        SELECT COUNT(*) FROM destination WHERE overview IS NULL
+    </select>
+
+    <select id="countDestinationsWithThumbnail" resultType="int">
+        SELECT COUNT(*) FROM destination WHERE firstimage2 IS NOT NULL AND firstimage2 != ' '
+    </select>
+
+    <!-- 랜덤 여행지 조회 (썸네일+상세정보 있는 것만) -->
+    <select id="selectRandomDestinationsWithImage" resultType="com.traveler.app.entity.Destination">
+        <![CDATA[
+        SELECT /*+ FIRST_ROWS(4) */ * FROM (
+            SELECT 
+                d.CONTENTID AS contentid,
+                d.TITLE AS title,
+                d.ADDR1 AS addr1,
+                d.MAPX AS mapx,
+                d.MAPY AS mapy,
+                d.CONTENTTYPEID AS contenttypeid,
+                d.FIRSTIMAGE AS firstimage,
+                DBMS_LOB.SUBSTR(d.OVERVIEW, 200, 1) AS overview
+            FROM DESTINATION d
+            WHERE d.FIRSTIMAGE IS NOT NULL 
+              AND d.FIRSTIMAGE != ' '
+              AND d.OVERVIEW IS NOT NULL
+            ORDER BY DBMS_RANDOM.VALUE
+        ) WHERE ROWNUM <= #{size}
+        ]]>
+    </select>
 </mapper>

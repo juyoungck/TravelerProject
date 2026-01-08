@@ -3,19 +3,18 @@
  * 네비게이션 메뉴, 검색, 로그인/마이페이지, 언어 선택 포함
  */
 
-import { MapPin, Menu, Search, X, User } from "lucide-react";
+import { MapPin, Menu, Search, User } from "lucide-react";
 import { Button } from "../ui/button";
 import { LanguageSelector } from "./LanguageSelector";
 
 interface HeaderProps {
   onSearch: (query: string) => void;
   onNavigate: (page: string) => void;
-  onOpenSearch: () => void;
+  onOpenSearch?: () => void;
   isLoggedIn: boolean;
 }
 
 export function Header({
-  onSearch,
   onNavigate,
   onOpenSearch,
   isLoggedIn,
@@ -49,7 +48,7 @@ export function Header({
               onClick={() => onNavigate("event")}
               className="text-sm hover:text-blue-600 transition-colors"
             >
-              공연, 축제
+              이벤트
             </button>
             <button
               onClick={() => onNavigate("board")}

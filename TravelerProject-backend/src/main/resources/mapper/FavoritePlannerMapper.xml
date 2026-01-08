@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.traveler.app.dao.FavoritePlannerDao">
+
+    <!-- 찜 추가 -->
+    <insert id="insertFavorite">
+        INSERT INTO FAVORITE_PLANNER (FAV_ID, M_ID, PLN_ID, CREATED_AT)
+        VALUES (SEQ_FAVORITE_PLANNER.NEXTVAL, #{mId}, #{plnId}, CURRENT_TIMESTAMP)
+    </insert>
+    
+    <!-- 찜 삭제 -->
+    <delete id="deleteFavorite">
+        DELETE FROM FAVORITE_PLANNER
+        WHERE M_ID = #{mId} AND PLN_ID = #{plnId}
+    </delete>
+    
+    <!-- 찜 여부 확인 -->
+    <select id="checkFavorite" resultType="int">
+        SELECT COUNT(*) 
+        FROM FAVORITE_PLANNER
+        WHERE M_ID = #{mId} AND PLN_ID = #{plnId}
+    </select>
+    
+    <!-- 플래너의 찜 개수 조회 -->
+    <select id="countFavoriteByPlanner" resultType="int">
+        SELECT COUNT(*) 
+        FROM FAVORITE_PLANNER
+        WHERE PLN_ID = #{plnId}
+    </select>
+
+</mapper>

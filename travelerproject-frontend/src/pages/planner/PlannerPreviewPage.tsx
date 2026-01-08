@@ -1,21 +1,33 @@
 /**
  * PlannerPreviewPage.tsx - 플래너 미리보기 페이지
- * 플래너 내용을 읽기 전용으로 보여주고 찜 기능 제공
+ * 
+ * 레이아웃:
+ * - 나의 작성한 플래너: 버튼(찜/삭제/공유/편집) 맨 위 → 제목 → 날짜 → 일정
+ * - 전체 플래너: 제목 → 날짜 → 일정(+찜 버튼 옆)
+ * 
+ * 수정: 사이드바 스크롤 PlannerEditPage처럼 적용
  */
 
-import { useState } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   ArrowLeft,
   MapPin as MapPinIcon,
   ChevronLeft,
   ChevronRight,
   Heart,
-  Sun,
   Edit,
-  Globe,
-  Lock,
+  Trash2,
+  Share2,
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
+import { getContentTypeStyle, getPlannerDayColor } from '../../utils/contentTypeUtils';
+import { getPlannerDetail } from '../../api/plannerApi';
+import type { PlannerDetail, DayPlanDetail } from '../../api/plannerApi';
+import KakaoMap from '../../components/map/KakaoMap';
+import type { KakaoMapRef, PlannerPlace } from '../../components/map/KakaoMap';
+import axios from 'axios';
+
+const API_BASE_URL = 'http://localhost:8080/api';
 
 interface Place {
   id: string;
@@ -23,6 +35,10 @@ interface Place {
   category: string;
   region: string;
   image: string;
+  mapx?: number;
+  mapy?: number;
+  contentid?: string;
+  contenttypeid?: string;
 }
 
 interface DayPlan {
@@ -34,13 +50,16 @@ interface DayPlan {
 
 interface PlannerPreviewPageProps {
   planner: {
-    id: number;
-    title: string;
-    author: string;
-    region: string;
-    days: number;
-    image: string;
-    likes: number;
+    id?: number;      // ★ PlannerMainPage에서 사용
+    plnId?: number;   // ★ MyPage, BoardPage에서 사용
+    title?: string;
+    plnTitle?: string;
+    author?: string;
+    region?: string;
+    days?: number;
+    image?: string;
+    likes?: number;
+    isOwn?: boolean;
   };
   onBack: () => void;
   onEdit?: (plannerData: {
@@ -52,276 +71,572 @@ interface PlannerPreviewPageProps {
     endDate: string;
     isPublic: boolean;
     dayPlans: DayPlan[];
+    lDongRegnCd?: string;
+    lDongSignguCd?: string;
   }) => void;
   isLoggedIn?: boolean;
   favoritePlanners?: any[];
   onToggleFavoritePlanner?: (planner: any) => void;
 }
 
-// Mock 장소 데이터
-const mockPlaces: Place[] = [
-  {
-    id: '1',
-    name: '경복궁',
-    category: '관광',
-    region: '서울',
-    image: 'https://images.unsplash.com/photo-1583417319070-4a69db38a482?w=400',
-  },
-  {
-    id: '2',
-    name: '북촌한옥마을',
-    category: '문화',
-    region: '서울',
-    image: 'https://images.unsplash.com/photo-1583417319070-4a69db38a482?w=400',
-  },
-  {
-    id: '3',
-    name: '명동',
-    category: '쇼핑',
-    region: '서울',
-    image: 'https://images.unsplash.com/photo-1583417319070-4a69db38a482?w=400',
-  },
-  {
-    id: '4',
-    name: '남산타워',
-    category: '관광',
-    region: '서울',
-    image: 'https://images.unsplash.com/photo-1583417319070-4a69db38a482?w=400',
-  },
-  {
-    id: '5',
-    name: '광안리해수욕장',
-    category: '레저',
-    region: '부산',
-    image: 'https://images.unsplash.com/photo-1590735213920-68192a487bc2?w=400',
-  },
-  {
-    id: '6',
-    name: '해운대',
-    category: '레저',
-    region: '부산',
-    image: 'https://images.unsplash.com/photo-1590735213920-68192a487bc2?w=400',
-  },
-  {
-    id: '7',
-    name: '감천문화마을',
-    category: '문화',
-    region: '부산',
-    image: 'https://images.unsplash.com/photo-1590735213920-68192a487bc2?w=400',
-  },
-  {
-    id: '8',
-    name: '성산일출봉',
-    category: '관광',
-    region: '제주',
-    image: 'https://images.unsplash.com/photo-1559827260-dc66d52bef19?w=400',
-  },
-];
+const DEFAULT_IMAGE = 'https://images.unsplash.com/photo-1583417319070-4a69db38a482?w=400';
 
-export function PlannerPreviewPage({ planner, onBack, onEdit, isLoggedIn, favoritePlanners, onToggleFavoritePlanner }: PlannerPreviewPageProps) {
+const shortenAddress = (addr: string): string => {
+  if (!addr) return '';
+  
+  const parts = addr.split(' ');
+  if (parts.length === 0) return addr;
+  
+  // 1. 시/도 간략화
+  let sido = parts[0]
+    .replace('특별시', '')
+    .replace('광역시', '')
+    .replace('특별자치시', '')
+    .replace('특별자치도', '')
+    .replace('충청남도', '충남')
+    .replace('충청북도', '충북')
+    .replace('경상북도', '경북')
+    .replace('경상남도', '경남')
+    .replace('전라남도', '전남')
+    .replace('전라북도', '전북')
+    .replace('경기도', '경기')
+    .replace('강원도', '강원')
+    .replace('제주도', '제주');
+  
+  if (parts.length < 2) return sido;
+  
+  const second = parts[1];
+  
+  // 2. 특별시/광역시는 시도 + 구
+  if (['서울', '부산', '대구', '인천', '광주', '대전', '울산'].includes(sido)) {
+    return `${sido} ${second}`;
+  }
+  
+  // 3. 세종은 그냥 세종
+  if (sido === '세종') {
+    return '세종';
+  }
+  
+  // 4. 도 지역은 시도 + 시/군
+  // 경북 경주시, 전북 전주시, 경기 성남시 등
+  if (second.endsWith('시') || second.endsWith('군')) {
+    return `${sido} ${second}`;
+  }
+  
+  return `${sido} ${second}`;
+};
+
+const convertToDayPlan = (dayPlanDetail: DayPlanDetail): DayPlan => ({
+  id: `day-${dayPlanDetail.dayNumber}`,
+  day: dayPlanDetail.dayNumber,
+  memo: dayPlanDetail.memo || '',
+  places: dayPlanDetail.places.map((place) => ({
+    id: `${place.contentid}-${place.placeId}`,
+    name: place.title,
+    category: place.contenttypeid || '12',
+    region: shortenAddress(place.addr1 || ''),
+    image: place.firstimage || DEFAULT_IMAGE,
+    contentid: place.contentid,
+    contenttypeid: place.contenttypeid,
+    mapx: Number(place.mapx),
+    mapy: Number(place.mapy),
+  })),
+});
+
+/**
+ * 현재 로그인한 사용자 ID 가져오기
+ */
+const getCurrentUserId = (): number | null => {
+  const memberInfo = localStorage.getItem('memberInfo');
+  if (memberInfo) {
+    try {
+      const member = JSON.parse(memberInfo);
+      return member.mId || null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+};
+
+export function PlannerPreviewPage({ 
+  planner, 
+  onBack, 
+  onEdit, 
+}: PlannerPreviewPageProps) {
+  const mapRef = useRef<KakaoMapRef>(null);
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  
+  const [plannerDetail, setPlannerDetail] = useState<PlannerDetail | null>(null);
+  const [dayPlans, setDayPlans] = useState<DayPlan[]>([]);
+  
+  // ★ plnId 또는 id 둘 다 지원
+  const plannerId = planner.plnId || planner.id;
+  
+  // 찜 상태 관리
+  const [isLiked, setIsLiked] = useState(false);
+  const [likeCount, setLikeCount] = useState(planner.likes || 0);
 
-  // favoritePlanners 배열에서 현재 플래너가 찜되어 있는지 확인
-  const isLiked = favoritePlanners?.some((fav) => fav.id === planner.id) || false;
-  const likes = planner.likes + (isLiked ? 1 : 0); // 찜 상태면 +1
+  // 본인 플래너인지 확인
+  const currentUserId = getCurrentUserId();
+  const isOwner = plannerDetail ? plannerDetail.mId === currentUserId : false;
 
-  // Mock 일정 데이터 생성 (planner.days 만큼 생성)
-  const mockDayPlans: DayPlan[] = Array.from({ length: planner.days }, (_, i) => ({
-    id: `day-${i + 1}`,
-    day: i + 1,
-    places: mockPlaces.slice(i * 2, i * 2 + 3),
-    memo: i === 0 ? '첫날은 여유롭게 시작하기' : i === planner.days - 1 ? '마지막 날 기념품 구매' : '',
-  }));
+  /**
+   * dayPlans를 KakaoMap용 PlannerPlace 배열로 변환
+   */
+  const plannerPlacesForMap = useMemo((): PlannerPlace[] => {
+    const places: PlannerPlace[] = [];
+    
+    dayPlans.forEach((dayPlan) => {
+      dayPlan.places.forEach((place, index) => {
+        if (place.mapx && place.mapy) {
+          places.push({
+            contentid: place.contentid || place.id,
+            contenttypeid: place.contenttypeid,
+            title: place.name,
+            mapx: place.mapx,
+            mapy: place.mapy,
+            dayNumber: dayPlan.day,
+            orderNumber: index + 1,
+            addr1: place.region,
+            firstimage: place.image,
+            firstimage2: place.image,
+          });
+        }
+      });
+    });
+    
+    return places;
+  }, [dayPlans]);
 
-  const isPublic = true; // Mock 데이터로 공개 플래너로 설정
-  const startDate = '2025-12-25';
-  const endDate = '2025-12-27';
+  /**
+   * 지도 중심 좌표 계산
+   */
+  const mapCenter = useMemo(() => {
+    if (plannerPlacesForMap.length > 0) {
+      return {
+        lat: plannerPlacesForMap[0].mapy,
+        lng: plannerPlacesForMap[0].mapx,
+      };
+    }
+    return { lat: 37.5665, lng: 126.9780 };
+  }, [plannerPlacesForMap]);
 
-  const getDaysDifference = () => {
-    return planner.days;
+  /**
+   * 찜 여부 확인 API
+   */
+  const checkFavoriteStatus = async () => {
+    const userId = getCurrentUserId();
+    if (!userId) return;
+    
+    try {
+      const response = await axios.get(`${API_BASE_URL}/planner/${plannerId}/favorite`, {
+        params: { mId: userId }
+      });
+      
+      if (response.data.status === 'success') {
+        setIsLiked(response.data.isFavorite);
+        setLikeCount(response.data.favoriteCount);
+      }
+    } catch (error) {
+      console.error('찜 상태 확인 실패:', error);
+    }
   };
 
-  const handleLike = () => {
-    if (!isLoggedIn) {
+  /**
+   * 플래너 상세 데이터 조회
+   */
+  const fetchPlannerDetail = async () => {
+    if (!plannerId) {
+      setError('플래너 ID가 없습니다.');
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      const detail = await getPlannerDetail(plannerId);
+      setPlannerDetail(detail);
+      setLikeCount(detail.favoriteCount || 0);
+      
+      if (detail.dayPlans && detail.dayPlans.length > 0) {
+        const converted = detail.dayPlans.map(convertToDayPlan);
+        setDayPlans(converted);
+      } else {
+        const emptyDays: DayPlan[] = Array.from({ length: detail.totalDays }, (_, i) => ({
+          id: `day-${i + 1}`,
+          day: i + 1,
+          places: [],
+          memo: '',
+        }));
+        setDayPlans(emptyDays);
+      }
+      
+      // 찜 상태 확인
+      await checkFavoriteStatus();
+    } catch (err: any) {
+      console.error('플래너 상세 조회 실패:', err);
+      setError('플래너 정보를 불러오는데 실패했습니다.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    // 페이지 진입 시 스크롤 맨 위로 초기화
+    window.scrollTo(0, 0);
+    fetchPlannerDetail();
+  }, [plannerId]);
+
+  /**
+   * 찜 토글 핸들러 (API 직접 호출)
+   */
+  const handleLike = async () => {
+    const userId = getCurrentUserId();
+    
+    if (!userId) {
       alert('로그인이 필요한 기능입니다.');
       return;
     }
-    if (onToggleFavoritePlanner) {
-      onToggleFavoritePlanner(planner);
+
+    try {
+      const response = await axios.post(`${API_BASE_URL}/planner/${plannerId}/favorite`, null, {
+        params: { mId: userId }
+      });
+      
+      if (response.data.status === 'success') {
+        setIsLiked(response.data.isFavorite);
+        setLikeCount(response.data.favoriteCount);
+      }
+    } catch (error) {
+      console.error('찜 토글 실패:', error);
+      alert('찜 기능 처리 중 오류가 발생했습니다.');
     }
   };
 
-  const handleShare = () => {
-    const shareLink = `https://간단여행.com/planner/${planner.id}`;
-    navigator.clipboard.writeText(shareLink);
-    alert(`공유 링크가 복사되었습니다!\n${shareLink}`);
+  /**
+   * 삭제 버튼 클릭 핸들러
+   */
+  const handleDelete = async () => {
+    if (!window.confirm('정말 이 플래너를 삭제하시겠습니까?')) {
+      return;
+    }
+
+    try {
+      const response = await axios.delete(`${API_BASE_URL}/planner/${plannerId}`);
+      
+      if (response.data.status === 'success') {
+        alert('플래너가 삭제되었습니다.');
+        onBack();
+      }
+    } catch (error) {
+      console.error('플래너 삭제 실패:', error);
+      alert('플래너 삭제 중 오류가 발생했습니다.');
+    }
   };
 
+  /**
+   * 공유 버튼 클릭 핸들러
+   */
+  const handleShare = async () => {
+    try {
+      const shareUrl = `${window.location.origin}/planner/preview/${plannerId}`;
+      await navigator.clipboard.writeText(shareUrl);
+      alert(`공유 링크가 복사되었습니다!\n\n${shareUrl}`);
+    } catch (error) {
+      console.error('공유 링크 복사 실패:', error);
+      alert('공유 링크 복사 중 오류가 발생했습니다.');
+    }
+  };
+
+  /**
+   * 편집 버튼 클릭 핸들러
+   */
   const handleEdit = () => {
-    if (!isLoggedIn) {
+    const userId = getCurrentUserId();
+    if (!userId) {
       alert('로그인이 필요한 서비스입니다.');
       return;
     }
-    if (onEdit) {
+    
+    if (!isOwner) {
+      alert('본인이 작성한 플래너만 편집할 수 있습니다.');
+      return;
+    }
+    
+    if (onEdit && plannerDetail) {
       onEdit({
-        id: planner.id,
-        title: planner.title,
-        author: planner.author,
-        region: planner.region,
-        startDate,
-        endDate,
-        isPublic,
-        dayPlans: mockDayPlans,
+        id: plannerDetail.plnId,
+        title: plannerDetail.plnTitle,
+        author: plannerDetail.authorNickname || '',
+        region: plannerDetail.regionName || '',
+        startDate: plannerDetail.startDate,
+        endDate: plannerDetail.endDate,
+        isPublic: plannerDetail.isPublic === 1,
+        dayPlans: dayPlans,
+        lDongRegnCd: plannerDetail.lDongRegnCd,
+        lDongSignguCd: plannerDetail.lDongSignguCd,
       });
     }
   };
 
-  const handleToggleFavorite = () => {
-    if (onToggleFavoritePlanner && isLoggedIn) {
-      onToggleFavoritePlanner(planner);
+  /**
+   * 장소 클릭 시 지도 이동
+   */
+  const handlePlaceClick = (place: Place) => {
+    if (place.mapx && place.mapy && mapRef.current) {
+      const contentid = place.contentid || place.id.split('-')[0];
+      mapRef.current.selectPlannerMarker(contentid);
     }
   };
 
+  // 로딩 중 화면
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">플래너 정보를 불러오는 중...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // 에러 화면
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <p className="text-red-500 mb-4">{error}</p>
+          <Button onClick={onBack}>돌아가기</Button>
+        </div>
+      </div>
+    );
+  }
+
+  // 데이터 표시용 변수
+  const title = plannerDetail?.plnTitle || planner.title || planner.plnTitle || '';
+  const author = plannerDetail?.authorNickname || planner.author || '';
+  const startDate = plannerDetail?.startDate || '';
+  const endDate = plannerDetail?.endDate || '';
+  const totalDays = plannerDetail?.totalDays || planner.days || 0;
+
+  /**
+   * DAY 리스트 렌더링 (공통)
+   */
+  const renderDayList = () => (
+    <div className="space-y-3">
+      {dayPlans.map((dayPlan) => {
+        const dayColor = getPlannerDayColor(dayPlan.day);
+
+        return (
+          <div key={dayPlan.id} className="border rounded-lg overflow-hidden bg-white shadow-sm">
+            {/* ★ Day 헤더 - 일차별 색상 */}
+            <div 
+              className="text-white p-3"
+              style={{ backgroundColor: dayColor }}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-sm">DAY {dayPlan.day}</span>
+                  {dayPlan.memo && (
+                    <span className="text-xs opacity-90">- {dayPlan.memo}</span>
+                  )}
+                </div>
+                <span className="text-xs opacity-90">
+                  {dayPlan.places.length}개 장소
+                </span>
+              </div>
+            </div>
+
+            {/* Day 내용 */}
+            <div className="p-3">
+              <div className="space-y-2">
+                {dayPlan.places.length > 0 ? (
+                  dayPlan.places.map((place, index) => {
+                    const categoryStyle = getContentTypeStyle(place.contenttypeid || place.category);
+                    
+                    return (
+                      <button
+                        key={place.id}
+                        onClick={() => handlePlaceClick(place)}
+                        className="w-full flex items-center gap-2 p-2 bg-gray-50 rounded border hover:bg-blue-50 hover:border-blue-300 transition-colors text-left"
+                      >
+                        {/* ★ 번호 아이콘 - 일차별 색상 */}
+                        <div 
+                          className="flex-shrink-0 w-6 h-6 text-white rounded-full flex items-center justify-center text-xs font-bold"
+                          style={{ backgroundColor: dayColor }}
+                        >
+                          {index + 1}
+                        </div>
+                        <img
+                          src={place.image}
+                          alt={place.name}
+                          className="w-12 h-12 object-cover rounded"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = DEFAULT_IMAGE;
+                          }}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="font-semibold text-sm truncate">
+                            {place.name}
+                          </div>
+                          <div className="flex items-center gap-1 text-xs text-gray-500">
+                            <MapPinIcon className="h-3 w-3" />
+                            <span>{place.region}</span>
+                          </div>
+                        </div>
+                        {/* ★ 카테고리 배지 - 색상 적용 */}
+                        <span 
+                          className="text-xs px-2 py-1 rounded flex-shrink-0"
+                          style={{
+                            backgroundColor: `${categoryStyle.markerColor}20`,
+                            color: categoryStyle.markerColor
+                          }}
+                        >
+                          {categoryStyle.name}
+                        </span>
+                      </button>
+                    );
+                  })
+                ) : (
+                  <p className="text-center text-gray-500 text-sm py-4">
+                    등록된 장소가 없습니다
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50">
+    <div className="h-screen flex flex-col bg-gray-100">
       {/* 상단 헤더 */}
-      <div className="bg-white border-b px-4 py-3 flex items-center justify-between">
+      <header className="bg-white border-b px-4 py-2 flex items-center justify-between">
         <Button variant="ghost" size="icon" onClick={onBack}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
-        <h1 className="text-xl font-bold">{planner.title}</h1>
-        <div className="w-10" /> {/* 균형 맞추기 */}
-      </div>
+        <h1 className="text-lg font-semibold">{title}</h1>
+        <div className="w-10" /> {/* 중앙 정렬을 위한 빈 공간 */}
+      </header>
 
-      {/* 메인 컨텐츠 */}
+      {/* 메인 콘텐츠 */}
       <div className="flex-1 flex overflow-hidden">
-        {/* 왼쪽 사이드바 - 플래너 미리보기 */}
+        {/* 왼쪽 사이드바 */}
         {isLeftSidebarOpen && (
-          <div className="w-80 bg-white border-r overflow-y-auto">
-            <div className="p-4">
-              {/* 플래너 미리보기 제목 & 편집하기, 좋아요 버튼 */}
-              <div className="flex items-center gap-2 mb-4">
-                <h3 className="whitespace-nowrap text-sm">플래너 미리보기</h3>
-                <div className="flex gap-1 flex-1">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleLike}
-                    className={`flex-1 text-xs px-2 py-1 h-7 ${
-                      isLiked ? 'text-red-500 border-red-500' : ''
-                    }`}
-                  >
-                    <Heart className={`h-3 w-3 mr-1 ${isLiked ? 'fill-current' : ''}`} />
-                    {likes}
-                  </Button>
-                  <Button
-                    size="sm"
-                    onClick={handleEdit}
-                    className="flex-1 text-xs px-2 py-1 h-7"
-                  >
-                    <Edit className="h-3 w-3 mr-1" />
-                    편집
-                  </Button>
-                </div>
-              </div>
-
-              {/* 제목 & 작성자 통합 */}
-              <div className="mb-3">
-                <div className="px-3 py-2 border rounded bg-gray-50 text-gray-700">
-                  <span className="font-semibold text-blue-600">{planner.author}</span>의 {planner.title}
-                </div>
-              </div>
-
-              {/* 날짜 (읽기 전용) */}
-              <div className="mb-4">
-                <div className="flex items-center gap-2">
-                  <div className="flex-1 text-sm text-gray-600 px-3 py-2 border rounded bg-gray-50">
-                    {startDate} ~ {endDate} ({getDaysDifference()}일)
+          <div className="w-80 bg-white border-r flex flex-col">
+            <div className="flex-1 overflow-y-auto p-4">
+              
+              {/* ===== 나의 플래너 레이아웃 (isOwner === true) ===== */}
+              {isOwner ? (
+                <>
+                  {/* 1. 삭제/공유/편집 버튼 맨 위 */}
+                  <div className="grid grid-cols-3 gap-2 mb-3">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleDelete}
+                      className="text-red-600 hover:bg-red-50"
+                    >
+                      <Trash2 className="h-4 w-4 mr-1" />
+                      삭제
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleShare}
+                    >
+                      <Share2 className="h-4 w-4 mr-1" />
+                      공유
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleEdit}
+                    >
+                      <Edit className="h-4 w-4 mr-1" />
+                      편집
+                    </Button>
                   </div>
-                </div>
 
-                {/* 지역 & 날씨 */}
-                <div className="flex items-center justify-between bg-blue-50 p-2 rounded mt-2">
-                  <div className="flex items-center gap-1 text-sm">
-                    <MapPinIcon className="h-4 w-4 text-blue-600" />
-                    <span>{planner.region}</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Sun className="h-4 w-4 text-yellow-500" />
-                    <span className="text-sm">15°C</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* DAY 리스트 (읽기 전용) */}
-              <div>
-                <h4 className="mb-3 text-sm font-semibold">일정</h4>
-                <div className="space-y-3">
-                  {mockDayPlans.map((dayPlan) => (
-                    <div key={dayPlan.id} className="border rounded-lg overflow-hidden bg-white">
-                      {/* Day 헤더 */}
-                      <div className="bg-blue-600 text-white p-3">
-                        <div className="flex items-center justify-between mb-1">
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-sm">DAY {dayPlan.day}</span>
-                            {dayPlan.memo && (
-                              <span className="text-xs opacity-90">- {dayPlan.memo}</span>
-                            )}
-                          </div>
-                          <span className="text-xs opacity-90">
-                            {dayPlan.places.length}개 장소
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Day 내용 */}
-                      <div className="p-3">
-                        {/* 장소 목록 */}
-                        <div className="space-y-2">
-                          {dayPlan.places.length > 0 ? (
-                            dayPlan.places.map((place, index) => (
-                              <div
-                                key={place.id}
-                                className="flex items-center gap-2 p-2 bg-gray-50 rounded border"
-                              >
-                                <div className="flex-shrink-0 w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs font-bold">
-                                  {index + 1}
-                                </div>
-                                <img
-                                  src={place.image}
-                                  alt={place.name}
-                                  className="w-12 h-12 object-cover rounded"
-                                />
-                                <div className="flex-1 min-w-0">
-                                  <div className="font-semibold text-sm truncate">
-                                    {place.name}
-                                  </div>
-                                  <div className="flex items-center gap-1 text-xs text-gray-600">
-                                    <span className="px-1.5 py-0.5 bg-white rounded border">
-                                      {place.category}
-                                    </span>
-                                    <MapPinIcon className="h-3 w-3" />
-                                    <span>{place.region}</span>
-                                  </div>
-                                </div>
-                              </div>
-                            ))
-                          ) : (
-                            <p className="text-center text-gray-500 text-sm py-4">
-                              등록된 장소가 없습니다
-                            </p>
-                          )}
-                        </div>
-                      </div>
+                  {/* 2. 제목 */}
+                  <div className="mb-3">
+                    <div className="px-3 py-2 border rounded bg-gray-50 text-gray-700">
+                      <span className="font-semibold text-blue-600">{author}</span>의 플래너
                     </div>
-                  ))}
-                </div>
-              </div>
+                  </div>
+
+                  {/* 3. 날짜 */}
+                  <div className="mb-4">
+                    <div className="text-sm text-gray-600 px-3 py-2 border rounded bg-gray-50">
+                      {startDate} ~ {endDate} ({totalDays}일)
+                    </div>
+                  </div>
+
+                  {/* 4. 일정 라벨 + 찜 버튼 */}
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-sm font-semibold">일정</h4>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleLike}
+                      className={`${isLiked ? 'text-red-500 border-red-500' : ''}`}
+                    >
+                      <Heart className={`h-4 w-4 mr-1 ${isLiked ? 'fill-current' : ''}`} />
+                      {likeCount}
+                    </Button>
+                  </div>
+
+                  {/* 5. DAY 리스트 */}
+                  {renderDayList()}
+                </>
+              ) : (
+                /* ===== 전체 플래너 레이아웃 (isOwner === false) ===== */
+                <>
+                  {/* 1. 제목 */}
+                  <div className="mb-3">
+                    <div className="px-3 py-2 border rounded bg-gray-50 text-gray-700">
+                      <span className="font-semibold text-blue-600">{author}</span>의 플래너
+                    </div>
+                  </div>
+
+                  {/* 2. 날짜 */}
+                  <div className="mb-4">
+                    <div className="text-sm text-gray-600 px-3 py-2 border rounded bg-gray-50">
+                      {startDate} ~ {endDate} ({totalDays}일)
+                    </div>
+                  </div>
+
+                  {/* 3. 일정 라벨 + 찜 버튼 */}
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-sm font-semibold">일정</h4>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleLike}
+                      className={`${isLiked ? 'text-red-500 border-red-500' : ''}`}
+                    >
+                      <Heart className={`h-4 w-4 mr-1 ${isLiked ? 'fill-current' : ''}`} />
+                      {likeCount}
+                    </Button>
+                  </div>
+
+                  {/* 4. DAY 리스트 */}
+                  {renderDayList()}
+                </>
+              )}
+
             </div>
           </div>
         )}
 
-        {/* 토글 버튼 (왼쪽) */}
+        {/* 토글 버튼 */}
         <button
           onClick={() => setIsLeftSidebarOpen(!isLeftSidebarOpen)}
           className="w-6 bg-gray-200 hover:bg-gray-300 flex items-center justify-center"
@@ -333,20 +648,16 @@ export function PlannerPreviewPage({ planner, onBack, onEdit, isLoggedIn, favori
           )}
         </button>
 
-        {/* 중앙 지도 */}
+        {/* 중앙 지도 - 카카오맵 */}
         <div className="flex-1 relative">
-          <div className="absolute inset-0 bg-gray-100 flex items-center justify-center">
-            <div className="text-center">
-              <MapPinIcon className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-              <h3 className="mb-2">지도 영역</h3>
-              <p className="text-gray-600">
-                실제 서비스에서는 지도 API가 표시됩니다.
-              </p>
-              <p className="text-sm text-gray-500 mt-2">
-                일정의 장소들이 선으로 연결되어 표시됩니다.
-              </p>
-            </div>
-          </div>
+          <KakaoMap
+            ref={mapRef}
+            centerLat={mapCenter.lat}
+            centerLng={mapCenter.lng}
+            level={7}
+            plannerPlaces={plannerPlacesForMap}
+            height="100%"
+          />
         </div>
       </div>
     </div>
