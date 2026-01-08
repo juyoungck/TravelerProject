@@ -78,6 +78,7 @@
                 AND d.lDongSignguCd = s.lDongSignguCd
             WHERE d.mapx IS NOT NULL 
               AND d.mapy IS NOT NULL
+              AND d.contenttypeid NOT IN ('15', '25')  /* ★ 이벤트 제외 */
               /* 관광 타입 필터 (선택) */
               <if test="contenttypeid != null">
                   AND d.contenttypeid = #{contenttypeid}
@@ -123,6 +124,7 @@
             WHERE d.mapx IS NOT NULL 
               AND d.mapy IS NOT NULL
               AND d.lDongRegnCd = #{lDongRegnCd}
+              AND d.contenttypeid NOT IN ('15', '25')  /* ★ 이벤트 제외 */
               /* 시군구 필터 (선택) */
               <if test="lDongSignguCd != null">
                   AND d.lDongSignguCd = #{lDongSignguCd}
@@ -169,6 +171,7 @@
                 AND d.lDongSignguCd = s.lDongSignguCd
             WHERE d.mapx IS NOT NULL 
               AND d.mapy IS NOT NULL
+              AND d.contenttypeid NOT IN ('15', '25')  /* ★ 이벤트 제외 */
               AND (
                   UPPER(d.title) LIKE '%' || UPPER(#{keyword}) || '%'
                   OR UPPER(d.addr1) LIKE '%' || UPPER(#{keyword}) || '%'

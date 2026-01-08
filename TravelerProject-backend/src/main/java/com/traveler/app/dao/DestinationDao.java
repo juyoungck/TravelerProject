@@ -98,6 +98,21 @@ public interface DestinationDao {
         @Param("lDongRegnCd") String lDongRegnCd,
         @Param("lDongSignguCd") String lDongSignguCd
     );
+    
+    /** 
+     * 플래너용 여행지 목록 
+     */
+    List<Map<String, Object>> selectDestinationsForPlanner(Map<String, Object> params);
+
+    /** 
+     * 플래너용 여행지 검색
+     */
+    List<Map<String, Object>> searchDestinationsForPlanner(Map<String, Object> params);
+
+    /** 
+     * 플래너용 여행지 검색 개수
+     */
+    int countDestinationsForPlanner(Map<String, Object> params);
 
     // ============================================
     // 기타 조회 (기존 유지)

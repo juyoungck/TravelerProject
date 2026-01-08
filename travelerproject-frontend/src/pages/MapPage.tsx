@@ -31,7 +31,6 @@ const categories = [
   { id: 'all', name: '전체', icon: '🗺️', contenttypeid: null },
   { id: '12', name: '관광', icon: '🏛️', contenttypeid: '12' },
   { id: '14', name: '문화', icon: '🎭', contenttypeid: '14' },
-  { id: '15,25', name: '이벤트', icon: '🎉', contenttypeid: '15,25' },
   { id: '28', name: '레저', icon: '⛷️', contenttypeid: '28' },
   { id: '32', name: '숙박', icon: '🏨', contenttypeid: '32' },
   { id: '38', name: '쇼핑', icon: '🛍️', contenttypeid: '38' },

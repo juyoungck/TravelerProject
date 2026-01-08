@@ -8,6 +8,7 @@
 import { useRef } from 'react';
 import { useDrag, useDrop } from 'react-dnd';
 import { GripVertical, MapPin, X } from 'lucide-react';
+import { getContentTypeStyle } from '../../utils/contentTypeUtils';
 
 interface Place {
   id: string;
@@ -15,6 +16,7 @@ interface Place {
   category: string;
   region: string;
   image: string;
+  contenttypeid?: string;
 }
 
 interface DraggablePlaceItemProps {
@@ -26,6 +28,17 @@ interface DraggablePlaceItemProps {
   onRemovePlace?: (dayId: string, placeId: string) => void;
 }
 
+/** 카테고리명 → contenttypeid 매핑 */
+const categoryToContentTypeId: { [key: string]: string } = {
+  '관광': '12',
+  '문화': '14',
+  '축제': '15',
+  '레저': '28',
+  '숙박': '32',
+  '쇼핑': '38',
+  '음식': '39',
+};
+
 export function DraggablePlaceItem({
   place,
   dayId,
@@ -35,6 +48,10 @@ export function DraggablePlaceItem({
   onRemovePlace,
 }: DraggablePlaceItemProps) {
   const ref = useRef<HTMLDivElement>(null);
+
+  // ★ 카테고리 색상 가져오기
+  const contenttypeid = place.contenttypeid || categoryToContentTypeId[place.category] || '12';
+  const categoryStyle = getContentTypeStyle(contenttypeid);
 
   const [{ isDragging }, drag] = useDrag({
     type: 'PLACE',
@@ -132,6 +149,9 @@ export function DraggablePlaceItem({
         src={place.image}
         alt={place.name}
         className="w-12 h-12 object-cover rounded flex-shrink-0"
+        onError={(e) => {
+          (e.target as HTMLImageElement).src = 'https://via.placeholder.com/200x200?text=No+Image';
+        }}
       />
       <div className="flex-1 min-w-0">
         <h5 className="text-sm font-medium truncate">{place.name}</h5>
@@ -140,8 +160,14 @@ export function DraggablePlaceItem({
           <span>{place.region}</span>
         </div>
       </div>
-      <span className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded flex-shrink-0">
-        {place.category}
+      <span 
+        className="text-xs px-2 py-1 rounded flex-shrink-0"
+        style={{ 
+          backgroundColor: `${categoryStyle.markerColor}20`,
+          color: categoryStyle.markerColor 
+        }}
+      >
+        {categoryStyle.name}
       </span>
       {onRemovePlace && (
         <X

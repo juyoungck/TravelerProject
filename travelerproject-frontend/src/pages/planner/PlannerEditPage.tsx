@@ -48,6 +48,7 @@ interface Place {
   mapx?: number;
   mapy?: number;
   contentid?: string;
+  contenttypeid?: string;
 }
 
 interface DayPlan {
@@ -317,6 +318,9 @@ export function PlannerEditPage({ onBack, initialData }: PlannerEditPageProps) {
             mapy: place.mapy,
             dayNumber: dayPlan.day,
             orderNumber: index + 1,
+            addr1: place.region,
+            firstimage: place.image,
+            firstimage2: place.image,
           });
         }
       });
@@ -537,6 +541,11 @@ export function PlannerEditPage({ onBack, initialData }: PlannerEditPageProps) {
    * 새 장소 추가 (검색 결과에서 드래그)
    */
   const handleAddPlaceAtIndex = (place: Place, dayId: string, index?: number) => {
+  
+    console.log('🟢 handleAddPlaceAtIndex 호출');
+    console.log('place:', place);
+    console.log('place.contenttypeid:', place.contenttypeid);
+
     setDayPlans((prevDayPlans) => {
       const newDayPlans = [...prevDayPlans];
       const dayIndex = newDayPlans.findIndex((d) => d.id === dayId);
@@ -550,6 +559,7 @@ export function PlannerEditPage({ onBack, initialData }: PlannerEditPageProps) {
         ...place,
         id: `${place.id}-${Date.now()}`,
         contentid: place.contentid || place.id,
+        contenttypeid: place.contenttypeid || place.category,
       };
 
       if (index !== undefined && index >= 0) {

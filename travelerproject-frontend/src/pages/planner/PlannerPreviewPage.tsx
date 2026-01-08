@@ -20,6 +20,7 @@ import {
   Share2,
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
+import { getContentTypeStyle, getPlannerDayColor } from '../../utils/contentTypeUtils';
 import { getPlannerDetail } from '../../api/plannerApi';
 import type { PlannerDetail, DayPlanDetail } from '../../api/plannerApi';
 import KakaoMap from '../../components/map/KakaoMap';
@@ -37,6 +38,7 @@ interface Place {
   mapx?: number;
   mapy?: number;
   contentid?: string;
+  contenttypeid?: string;
 }
 
 interface DayPlan {
@@ -79,15 +81,49 @@ interface PlannerPreviewPageProps {
 
 const DEFAULT_IMAGE = 'https://images.unsplash.com/photo-1583417319070-4a69db38a482?w=400';
 
-const contentTypeToCategory: { [key: string]: string } = {
-  '12': '관광지',
-  '14': '문화시설',
-  '15': '축제/행사',
-  '25': '여행코스',
-  '28': '레포츠',
-  '32': '숙박',
-  '38': '쇼핑',
-  '39': '음식점',
+const shortenAddress = (addr: string): string => {
+  if (!addr) return '';
+  
+  const parts = addr.split(' ');
+  if (parts.length === 0) return addr;
+  
+  // 1. 시/도 간략화
+  let sido = parts[0]
+    .replace('특별시', '')
+    .replace('광역시', '')
+    .replace('특별자치시', '')
+    .replace('특별자치도', '')
+    .replace('충청남도', '충남')
+    .replace('충청북도', '충북')
+    .replace('경상북도', '경북')
+    .replace('경상남도', '경남')
+    .replace('전라남도', '전남')
+    .replace('전라북도', '전북')
+    .replace('경기도', '경기')
+    .replace('강원도', '강원')
+    .replace('제주도', '제주');
+  
+  if (parts.length < 2) return sido;
+  
+  const second = parts[1];
+  
+  // 2. 특별시/광역시는 시도 + 구
+  if (['서울', '부산', '대구', '인천', '광주', '대전', '울산'].includes(sido)) {
+    return `${sido} ${second}`;
+  }
+  
+  // 3. 세종은 그냥 세종
+  if (sido === '세종') {
+    return '세종';
+  }
+  
+  // 4. 도 지역은 시도 + 시/군
+  // 경북 경주시, 전북 전주시, 경기 성남시 등
+  if (second.endsWith('시') || second.endsWith('군')) {
+    return `${sido} ${second}`;
+  }
+  
+  return `${sido} ${second}`;
 };
 
 const convertToDayPlan = (dayPlanDetail: DayPlanDetail): DayPlan => ({
@@ -97,10 +133,11 @@ const convertToDayPlan = (dayPlanDetail: DayPlanDetail): DayPlan => ({
   places: dayPlanDetail.places.map((place) => ({
     id: `${place.contentid}-${place.placeId}`,
     name: place.title,
-    category: contentTypeToCategory[place.contenttypeid] || '기타',
-    region: place.addr1?.split(' ')[0] || '',
+    category: place.contenttypeid || '12',
+    region: shortenAddress(place.addr1 || ''),
     image: place.firstimage || DEFAULT_IMAGE,
     contentid: place.contentid,
+    contenttypeid: place.contenttypeid,
     mapx: Number(place.mapx),
     mapy: Number(place.mapy),
   })),
@@ -157,11 +194,15 @@ export function PlannerPreviewPage({
         if (place.mapx && place.mapy) {
           places.push({
             contentid: place.contentid || place.id,
+            contenttypeid: place.contenttypeid,
             title: place.name,
             mapx: place.mapx,
             mapy: place.mapy,
             dayNumber: dayPlan.day,
             orderNumber: index + 1,
+            addr1: place.region,
+            firstimage: place.image,
+            firstimage2: place.image,
           });
         }
       });
@@ -341,7 +382,8 @@ export function PlannerPreviewPage({
    */
   const handlePlaceClick = (place: Place) => {
     if (place.mapx && place.mapy && mapRef.current) {
-      mapRef.current.setCenter(place.mapy, place.mapx, 5);
+      const contentid = place.contentid || place.id.split('-')[0];
+      mapRef.current.selectPlannerMarker(contentid);
     }
   };
 
@@ -381,67 +423,89 @@ export function PlannerPreviewPage({
    */
   const renderDayList = () => (
     <div className="space-y-3">
-      {dayPlans.map((dayPlan) => (
-        <div key={dayPlan.id} className="border rounded-lg overflow-hidden bg-white shadow-sm">
-          {/* Day 헤더 */}
-          <div className="bg-blue-600 text-white p-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-sm">DAY {dayPlan.day}</span>
-                {dayPlan.memo && (
-                  <span className="text-xs opacity-90">- {dayPlan.memo}</span>
+      {dayPlans.map((dayPlan) => {
+        const dayColor = getPlannerDayColor(dayPlan.day);
+
+        return (
+          <div key={dayPlan.id} className="border rounded-lg overflow-hidden bg-white shadow-sm">
+            {/* ★ Day 헤더 - 일차별 색상 */}
+            <div 
+              className="text-white p-3"
+              style={{ backgroundColor: dayColor }}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-sm">DAY {dayPlan.day}</span>
+                  {dayPlan.memo && (
+                    <span className="text-xs opacity-90">- {dayPlan.memo}</span>
+                  )}
+                </div>
+                <span className="text-xs opacity-90">
+                  {dayPlan.places.length}개 장소
+                </span>
+              </div>
+            </div>
+
+            {/* Day 내용 */}
+            <div className="p-3">
+              <div className="space-y-2">
+                {dayPlan.places.length > 0 ? (
+                  dayPlan.places.map((place, index) => {
+                    const categoryStyle = getContentTypeStyle(place.contenttypeid || place.category);
+                    
+                    return (
+                      <button
+                        key={place.id}
+                        onClick={() => handlePlaceClick(place)}
+                        className="w-full flex items-center gap-2 p-2 bg-gray-50 rounded border hover:bg-blue-50 hover:border-blue-300 transition-colors text-left"
+                      >
+                        {/* ★ 번호 아이콘 - 일차별 색상 */}
+                        <div 
+                          className="flex-shrink-0 w-6 h-6 text-white rounded-full flex items-center justify-center text-xs font-bold"
+                          style={{ backgroundColor: dayColor }}
+                        >
+                          {index + 1}
+                        </div>
+                        <img
+                          src={place.image}
+                          alt={place.name}
+                          className="w-12 h-12 object-cover rounded"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = DEFAULT_IMAGE;
+                          }}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="font-semibold text-sm truncate">
+                            {place.name}
+                          </div>
+                          <div className="flex items-center gap-1 text-xs text-gray-500">
+                            <MapPinIcon className="h-3 w-3" />
+                            <span>{place.region}</span>
+                          </div>
+                        </div>
+                        {/* ★ 카테고리 배지 - 색상 적용 */}
+                        <span 
+                          className="text-xs px-2 py-1 rounded flex-shrink-0"
+                          style={{
+                            backgroundColor: `${categoryStyle.markerColor}20`,
+                            color: categoryStyle.markerColor
+                          }}
+                        >
+                          {categoryStyle.name}
+                        </span>
+                      </button>
+                    );
+                  })
+                ) : (
+                  <p className="text-center text-gray-500 text-sm py-4">
+                    등록된 장소가 없습니다
+                  </p>
                 )}
               </div>
-              <span className="text-xs opacity-90">
-                {dayPlan.places.length}개 장소
-              </span>
             </div>
           </div>
-
-          {/* Day 내용 */}
-          <div className="p-3">
-            <div className="space-y-2">
-              {dayPlan.places.length > 0 ? (
-                dayPlan.places.map((place, index) => (
-                  <button
-                    key={place.id}
-                    onClick={() => handlePlaceClick(place)}
-                    className="w-full flex items-center gap-2 p-2 bg-gray-50 rounded border hover:bg-blue-50 hover:border-blue-300 transition-colors text-left"
-                  >
-                    <div className="flex-shrink-0 w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs font-bold">
-                      {index + 1}
-                    </div>
-                    <img
-                      src={place.image}
-                      alt={place.name}
-                      className="w-12 h-12 object-cover rounded"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).src = DEFAULT_IMAGE;
-                      }}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="font-semibold text-sm truncate">
-                        {place.name}
-                      </div>
-                      <div className="flex items-center gap-1 text-xs text-gray-500">
-                        <MapPinIcon className="h-3 w-3" />
-                        <span>{place.region}</span>
-                      </div>
-                    </div>
-                    <span className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded flex-shrink-0">
-                      {place.category}
-                    </span>
-                  </button>
-                ))
-              ) : (
-                <p className="text-center text-gray-500 text-sm py-4">
-                  등록된 장소가 없습니다
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 

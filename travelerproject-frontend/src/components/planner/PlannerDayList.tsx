@@ -9,6 +9,7 @@ import { useRef } from 'react';
 import { useDrop } from "react-dnd";
 import { DraggablePlaceItem } from "./DraggablePlaceItem";
 import { Input } from "../ui/input";
+import { getPlannerDayColor } from '../../utils/contentTypeUtils';
 
 interface Place {
   id: string;
@@ -19,6 +20,7 @@ interface Place {
   mapx?: number;
   mapy?: number;
   contentid?: string;
+  contenttypeid?: string;
 }
 
 interface DayPlan {
@@ -80,6 +82,8 @@ function DaySection({
 }: DaySectionProps) {
   const ref = useRef<HTMLDivElement>(null);
 
+  const dayColor = getPlannerDayColor(dayPlan.day);
+
   // 빈 영역에 드롭할 때 처리
   const [{ isOver, canDrop }, drop] = useDrop(() => ({
     accept: "PLACE",
@@ -109,10 +113,19 @@ function DaySection({
 
   return (
     <div className="border rounded-lg overflow-hidden">
-      <div className="bg-blue-50 px-3 py-2 border-b flex items-center gap-2">
-        <h4 className="text-sm font-semibold text-blue-700">
+      <div 
+        className="px-3 py-2 border-b flex items-center gap-2"
+        style={{ backgroundColor: `${dayColor}15` }}
+      >
+        <span 
+          className="text-xs font-bold px-2 py-1 rounded"
+          style={{ 
+            backgroundColor: dayColor,
+            color: 'white'
+          }}
+        >
           DAY {dayPlan.day}
-        </h4>
+        </span>
         <Input
           value={dayPlan.memo}
           onChange={(e) => onUpdateMemo(dayPlan.id, e.target.value)}
