@@ -196,7 +196,7 @@ export function MapPage({ initialContentId }: MapPageProps) {
       const response = await favoriteApi.getMyFavoriteDestinations();
       if (response.status === 'success' && response.data) {
         const ids = new Set(response.data.map((fav: any) => fav.contentid));
-        setFavoriteIds(ids);
+        setFavoriteIds(ids as Set<string>);
       }
     } catch (error) {
       console.error('찜 목록 조회 실패:', error);

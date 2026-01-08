@@ -4,6 +4,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
@@ -33,6 +34,12 @@ public class DestinationService {
 
     /** 관광타입 목록 */
     private static final Map<String, String> CONTENT_TYPES = new HashMap<>();
+    
+    @Value("${file.upload.path:./uploads/}")
+    private String uploadPath;
+    
+    @Value("${file.upload.url:http://localhost:8080}")
+    private String serverUrl;
     
     static {
         CONTENT_TYPES.put("12", "관광지");
@@ -477,8 +484,8 @@ public class DestinationService {
     public int downloadThumbnails(int startIndex, int endIndex) {
         log.info("========== 썸네일 다운로드 시작 ({}~{}번째) ==========", startIndex, endIndex);
         int downloadCount = 0;
-        String uploadDir = "src/main/resources/static/thumbnails/";
-        java.io.File dir = new java.io.File(uploadDir);
+        String thumbnailDir = uploadPath + "thumbnails/";
+        java.io.File dir = new java.io.File(thumbnailDir);
         if (!dir.exists()) dir.mkdirs();
 
         List<Destination> destinations = destinationDao.selectDestinationsByRange(startIndex, endIndex);
@@ -489,7 +496,7 @@ public class DestinationService {
                 String thumbnailUrl = dest.getFirstimage2();
                 if (thumbnailUrl == null || thumbnailUrl.isEmpty()) continue;
                 String fileName = dest.getContentid() + ".jpg";
-                String filePath = uploadDir + fileName;
+                String filePath = thumbnailDir + fileName;
                 java.io.File file = new java.io.File(filePath);
                 if (file.exists()) continue;
                 byte[] imageBytes = restTemplate.getForObject(thumbnailUrl, byte[].class);
@@ -509,8 +516,8 @@ public class DestinationService {
 
     public Map<String, Object> getThumbnailStatus() {
         Map<String, Object> status = new HashMap<>();
-        String uploadDir = "src/main/resources/static/thumbnails/";
-        java.io.File dir = new java.io.File(uploadDir);
+        String thumbnailDir = uploadPath + "thumbnails/";
+        java.io.File dir = new java.io.File(thumbnailDir);
         int downloadedCount = 0;
         if (dir.exists()) downloadedCount = dir.listFiles() != null ? dir.listFiles().length : 0;
         int totalWithThumbnail = destinationDao.countDestinationsWithThumbnail();

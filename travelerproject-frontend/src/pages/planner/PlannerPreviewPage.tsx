@@ -249,6 +249,12 @@ export function PlannerPreviewPage({
    * 플래너 상세 데이터 조회
    */
   const fetchPlannerDetail = async () => {
+    if (!plannerId) {
+      setError('플래너 ID가 없습니다.');
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {

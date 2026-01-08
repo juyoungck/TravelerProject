@@ -36,9 +36,7 @@ export default function App() {
   const [selectedDestinationId, setSelectedDestinationId] = useState<string | null>(null);
   const [selectedPlanner, setSelectedPlanner] = useState<any>(null);
   const [selectedMapContentId, setSelectedMapContentId] = useState<string | undefined>(undefined);
-  const [favoriteDestinations, setFavoriteDestinations] = useState<any[]>([]);
   const [favoritePlanners, setFavoritePlanners] = useState<any[]>([]);
-  const [reviews, setReviews] = useState<any[]>([]);
 
   // 소셜 로그인 콜백 상태
   const [oauthStatus, setOauthStatus] = useState<'loading' | 'success' | 'error' | null>(null);
