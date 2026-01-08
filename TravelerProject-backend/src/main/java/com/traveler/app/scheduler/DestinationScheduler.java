@@ -29,9 +29,14 @@ public class DestinationScheduler {
     }
 
     /**
-     * 매일 새벽 3시에 여행지 데이터 업데이트
+     * 매일 새벽 4시에 여행지 데이터 업데이트
      * 크론 표현식: 초 분 시 일 월 요일
-     * "0 0 3 * * *" = 매일 03:00:00
+     * "0 0 3 * * *" = 매일 04:00:00
+     * 
+     * ★ 업데이트 내용:
+     * 1. 기본 정보 (title, addr, mapx, mapy, firstimage 등)
+     * 2. 상세 정보 (overview, homepage)
+     * 3. 이미지 정보 (destination_image 테이블)
      */
     @Scheduled(cron = "0 0 4 * * *")
     public void updateDestinationData() {
@@ -39,8 +44,8 @@ public class DestinationScheduler {
         log.info("========== [스케줄러] 여행지 데이터 업데이트 시작: {} ==========", startTime);
 
         try {
-            // 변경된 여행지만 업데이트 (어제 이후 수정된 데이터)
-            log.info("[스케줄러] 변경된 여행지 동기화 시작");
+            // ★ 변경된 여행지 기본정보 + 상세정보 + 이미지 모두 업데이트
+            log.info("[스케줄러] 변경된 여행지 동기화 시작 (기본정보 + 상세정보 + 이미지)");
             int destCount = destinationService.syncModifiedDestinations();
             log.info("[스케줄러] 변경된 여행지 동기화 완료: {}건", destCount);
 

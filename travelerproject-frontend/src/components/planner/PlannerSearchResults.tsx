@@ -3,13 +3,14 @@
  * 백엔드 API에서 destination 데이터를 가져와 표시
  * 다중 카테고리 + 지역 필터 지원
  * 
- * ★ 수정: mapx, mapy 좌표 추가 (지도 실시간 업데이트용)
+ * ★ 수정: contentTypeUtils 적용, 주소 간략화
  */
 
 import { useState, useEffect } from 'react';
 import { useDrag } from 'react-dnd';
 import { MapPin, Loader2 } from 'lucide-react';
 import axios from 'axios';
+import { getContentTypeStyle } from '../../utils/contentTypeUtils';
 
 const API_BASE_URL = 'http://localhost:8080/api';
 
@@ -20,8 +21,9 @@ interface Place {
   region: string;
   image: string;
   contentid?: string;
-  mapx?: number;  // ★ 추가
-  mapy?: number;  // ★ 추가
+  contenttypeid?: string;
+  mapx?: number;
+  mapy?: number;
 }
 
 interface DayPlan {
@@ -52,20 +54,58 @@ const categoryToContentType: { [key: string]: string } = {
   '음식': '39',
 };
 
-/** contenttypeid -> 카테고리 매핑 */
-const contentTypeToCategory: { [key: string]: string } = {
-  '12': '관광',
-  '14': '문화',
-  '15': '축제',
-  '25': '코스',
-  '28': '레저',
-  '32': '숙박',
-  '38': '쇼핑',
-  '39': '음식',
-};
-
 /** 모든 카테고리 contenttypeid 목록 */
 const allContentTypes = ['12', '14', '15', '28', '32', '38', '39'];
+
+/**
+ * ★ 주소 간략화 함수
+ * 서울특별시 종로구 → 서울 종로구
+ * 경상북도 경주시 → 경북 경주시
+ * 전라북도 전주시 완산구 → 전북 전주시
+ */
+const shortenAddress = (addr: string): string => {
+  if (!addr) return '';
+  
+  const parts = addr.split(' ');
+  if (parts.length === 0) return addr;
+  
+  // 1. 시/도 간략화
+  let sido = parts[0]
+    .replace('특별시', '')
+    .replace('광역시', '')
+    .replace('특별자치시', '')
+    .replace('특별자치도', '')
+    .replace('충청남도', '충남')
+    .replace('충청북도', '충북')
+    .replace('경상북도', '경북')
+    .replace('경상남도', '경남')
+    .replace('전라남도', '전남')
+    .replace('전라북도', '전북')
+    .replace('경기도', '경기')
+    .replace('강원도', '강원')
+    .replace('제주도', '제주');
+  
+  if (parts.length < 2) return sido;
+  
+  const second = parts[1];
+  
+  // 2. 특별시/광역시는 시도 + 구
+  if (['서울', '부산', '대구', '인천', '광주', '대전', '울산'].includes(sido)) {
+    return `${sido} ${second}`;
+  }
+  
+  // 3. 세종은 그냥 세종
+  if (sido === '세종') {
+    return '세종';
+  }
+  
+  // 4. 도 지역은 시도 + 시/군
+  if (second.endsWith('시') || second.endsWith('군')) {
+    return `${sido} ${second}`;
+  }
+  
+  return `${sido} ${second}`;
+};
 
 export function PlannerSearchResults({
   category,
@@ -81,26 +121,22 @@ export function PlannerSearchResults({
   const [page, setPage] = useState(1);
   const pageSize = 20;
 
-  // 카테고리를 문자열로 변환 (배열 비교 문제 해결)
   const categoryKey = category.sort().join(',');
 
-  // 카테고리, 검색어, 지역이 변경되면 데이터 다시 로드
   useEffect(() => {
     setPage(1);
     fetchPlaces(1, true);
   }, [categoryKey, searchQuery, lDongRegnCd, lDongSignguCd]);
 
-  // 페이지 변경 시 데이터 로드
   useEffect(() => {
     if (page > 1) {
-      fetchPlaces(page, false);  // false = 추가 로드 (기존 결과에 추가)
+      fetchPlaces(page, false);
     }
   }, [page]);
 
   const fetchPlaces = async (pageNum: number, isNewSearch: boolean = false) => {
     setIsLoading(true);
     try {
-      // 검색어가 있으면 검색 API 사용
       if (searchQuery.trim()) {
         const params: any = { 
           keyword: searchQuery.trim(), 
@@ -108,7 +144,6 @@ export function PlannerSearchResults({
           size: pageSize 
         };
         
-        // 지역 필터 추가
         if (lDongRegnCd) {
           params.lDongRegnCd = lDongRegnCd;
           if (lDongSignguCd) {
@@ -116,19 +151,18 @@ export function PlannerSearchResults({
           }
         }
 
-        const response = await axios.get(`${API_BASE_URL}/destination/search`, { params });
+        const response = await axios.get(`${API_BASE_URL}/destination/planner/search`, { params });
         
         if (response.data.status === 'success') {
           const newPlaces = mapResponseToPlaces(response.data.data || []);
           if (isNewSearch) {
-            setPlaces(newPlaces);  // 새 검색이면 교체
+            setPlaces(newPlaces);
           } else {
-            setPlaces(prev => [...prev, ...newPlaces]);  // 추가 로드면 추가
+            setPlaces(prev => [...prev, ...newPlaces]);
           }
           setTotalCount(response.data.totalCount || 0);
         }
       } 
-      // 카테고리 선택 시
       else {
         let contentTypeIds: string[] = [];
         
@@ -144,14 +178,12 @@ export function PlannerSearchResults({
           contentTypeIds = ['12'];
         }
 
-        // 여러 카테고리 동시 조회
         const promises = contentTypeIds.map(typeId => {
           const params: any = { 
             page: pageNum, 
             size: Math.ceil(pageSize / contentTypeIds.length) 
           };
           
-          // 지역 필터 추가
           if (lDongRegnCd) {
             params.lDongRegnCd = lDongRegnCd;
             if (lDongSignguCd) {
@@ -159,7 +191,7 @@ export function PlannerSearchResults({
             }
           }
 
-          return axios.get(`${API_BASE_URL}/destination/list/${typeId}`, { params });
+          return axios.get(`${API_BASE_URL}/destination/planner/list/${typeId}`, { params });
         });
 
         const responses = await Promise.all(promises);
@@ -175,13 +207,12 @@ export function PlannerSearchResults({
           }
         });
 
-        // 중복 제거
         const uniquePlaces = allPlaces.filter((place, index, self) =>
           index === self.findIndex(p => p.id === place.id)
         );
 
         if (isNewSearch) {
-          setPlaces(uniquePlaces);  // 새 검색이면 교체
+          setPlaces(uniquePlaces);
         } else {
           setPlaces(prev => {
             const combined = [...prev, ...uniquePlaces];
@@ -201,17 +232,19 @@ export function PlannerSearchResults({
   };
 
   /**
-   * ★ API 응답을 Place 객체로 변환 (좌표 포함)
+   * ★ API 응답을 Place 객체로 변환 (주소 간략화 적용)
    */
   const mapResponseToPlaces = (data: any[]): Place[] => {
     return data.map((item: any) => ({
       id: item.contentid,
       contentid: item.contentid,
+      contenttypeid: item.contenttypeid,
       name: item.title,
-      category: contentTypeToCategory[item.contenttypeid] || '기타',
-      region: item.regionName || item.addr1?.split(' ').slice(0, 2).join(' ') || '',
+      category: item.contenttypeid,  // ★ contenttypeid 저장 (DraggableSearchItem에서 처리)
+      region: shortenAddress(item.regnName 
+        ? `${item.regnName} ${item.addr1?.split(' ').slice(1, 2).join(' ') || ''}`.trim()
+        : item.addr1 || ''),
       image: item.firstimage2 || item.firstimage || 'https://via.placeholder.com/200x200?text=No+Image',
-      // ★ 좌표 추가 (지도 실시간 업데이트용)
       mapx: item.mapx ? parseFloat(item.mapx) : undefined,
       mapy: item.mapy ? parseFloat(item.mapy) : undefined,
     }));
@@ -289,12 +322,15 @@ function DraggableSearchItem({ place }: DraggableSearchItemProps) {
       id: `new-${place.id}-${Date.now()}`,
       dayId: 'search',
       index: -1,
-      place: place,  // ★ 좌표 포함된 place 객체 전달
+      place: place,
     },
     collect: (monitor) => ({
       isDragging: monitor.isDragging(),
     }),
   });
+
+  // ★ contentTypeUtils에서 카테고리 스타일 가져오기
+  const categoryStyle = getContentTypeStyle(place.contenttypeid || place.category || '12');
 
   return (
     <div
@@ -319,8 +355,15 @@ function DraggableSearchItem({ place }: DraggableSearchItemProps) {
             <span className="truncate">{place.region}</span>
           </div>
         </div>
-        <span className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded flex-shrink-0">
-          {place.category}
+        {/* ★ 카테고리 색상 적용 */}
+        <span 
+          className="text-xs px-2 py-1 rounded flex-shrink-0"
+          style={{
+            backgroundColor: `${categoryStyle.markerColor}20`,
+            color: categoryStyle.markerColor
+          }}
+        >
+          {categoryStyle.name}
         </span>
       </div>
     </div>

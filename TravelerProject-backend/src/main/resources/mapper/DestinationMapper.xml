@@ -265,6 +265,115 @@
             AND INSTR(',' || #{lDongSignguCd} || ',', ',' || d.lDongSignguCd || ',') &gt; 0
         </if>
     </select>
+    
+    
+    <!-- ============================================
+     플래너용 여행지 조회 (좌표 포함, 리뷰 통계 제외)
+     ============================================ -->
+	<!-- 플래너용 여행지 목록 (카테고리별) -->
+	<select id="selectDestinationsForPlanner" resultType="map">
+	    SELECT * FROM (
+	        SELECT 
+	            inner_query.*,
+	            ROWNUM AS rn
+	        FROM (
+	            SELECT 
+	                d.contentid AS "contentid",
+	                d.contenttypeid AS "contenttypeid",
+	                d.title AS "title",
+	                d.addr1 AS "addr1",
+	                d.firstimage AS "firstimage",
+	                d.firstimage2 AS "firstimage2",
+	                d.mapx AS "mapx",
+	                d.mapy AS "mapy",
+	                r.regn_name AS "regnName"
+	            FROM destination d
+	            LEFT JOIN ldong_regn_code r ON d.lDongRegnCd = r.lDongRegnCd
+	            <where>
+	                <if test="contenttypeid != null and contenttypeid != ''">
+	                    AND d.contenttypeid = #{contenttypeid}
+	                </if>
+	                <if test="lDongRegnCd != null and lDongRegnCd != ''">
+	                    AND d.lDongRegnCd = #{lDongRegnCd}
+	                </if>
+	                <if test="lDongSignguCd != null and lDongSignguCd != ''">
+	                    AND d.lDongSignguCd = #{lDongSignguCd}
+	                </if>
+	                
+	                AND d.contenttypeid NOT IN ('15', '25')
+	            </where>
+	            ORDER BY 
+	                CASE 
+	                    WHEN d.firstimage2 IS NOT NULL AND d.firstimage2 != ' ' THEN 1
+	                    ELSE 2
+	                END ASC,
+	                d.view_count DESC NULLS LAST
+	        ) inner_query
+	        WHERE ROWNUM &lt;= #{offset} + #{limit}
+	    )
+	    WHERE rn &gt; #{offset}
+	</select>
+	
+	<!-- 플래너용 여행지 검색 (키워드) -->
+	<select id="searchDestinationsForPlanner" resultType="map">
+	    SELECT * FROM (
+	        SELECT 
+	            inner_query.*,
+	            ROWNUM AS rn
+	        FROM (
+	            SELECT 
+	                d.contentid AS "contentid",
+	                d.contenttypeid AS "contenttypeid",
+	                d.title AS "title",
+	                d.addr1 AS "addr1",
+	                d.firstimage AS "firstimage",
+	                d.firstimage2 AS "firstimage2",
+	                d.mapx AS "mapx",
+	                d.mapy AS "mapy",
+	                r.regn_name AS "regnName"
+	            FROM destination d
+	            LEFT JOIN ldong_regn_code r ON d.lDongRegnCd = r.lDongRegnCd
+	            WHERE (LOWER(d.title) LIKE '%' || LOWER(#{keyword}) || '%' 
+	                   OR LOWER(d.addr1) LIKE '%' || LOWER(#{keyword}) || '%')
+	              AND d.contenttypeid NOT IN ('15', '25')
+	            <if test="lDongRegnCd != null and lDongRegnCd != ''">
+	                AND d.lDongRegnCd = #{lDongRegnCd}
+	            </if>
+	            <if test="lDongSignguCd != null and lDongSignguCd != ''">
+	                AND d.lDongSignguCd = #{lDongSignguCd}
+	            </if>
+	            ORDER BY 
+	                CASE 
+	                    WHEN d.firstimage2 IS NOT NULL AND d.firstimage2 != ' ' THEN 1
+	                    ELSE 2
+	                END ASC,
+	                d.view_count DESC NULLS LAST
+	        ) inner_query
+	        WHERE ROWNUM &lt;= #{offset} + #{limit}
+	    )
+	    WHERE rn &gt; #{offset}
+	</select>
+	
+	<!-- 플래너용 여행지 검색 개수 -->
+	<select id="countDestinationsForPlanner" resultType="int">
+	    SELECT COUNT(*) FROM destination d
+	    <where>
+	        <if test="contenttypeid != null and contenttypeid != ''">
+	            AND d.contenttypeid = #{contenttypeid}
+	        </if>
+	        <if test="keyword != null and keyword != ''">
+	            AND (LOWER(d.title) LIKE '%' || LOWER(#{keyword}) || '%' 
+	                 OR LOWER(d.addr1) LIKE '%' || LOWER(#{keyword}) || '%')
+	            AND d.contenttypeid NOT IN ('15', '25')
+	        </if>
+	        <if test="lDongRegnCd != null and lDongRegnCd != ''">
+	            AND d.lDongRegnCd = #{lDongRegnCd}
+	        </if>
+	        <if test="lDongSignguCd != null and lDongSignguCd != ''">
+	            AND d.lDongSignguCd = #{lDongSignguCd}
+	        </if>
+	    </where>
+	</select>
 
     <!-- ============================================
          기타 조회 (기존 유지 - 동기화용)
