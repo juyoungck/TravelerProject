@@ -371,11 +371,6 @@ export function AdminPanel({
     return new Date(dateString).toLocaleDateString('ko-KR');
   };
 
-  const formatDateTime = (dateString: string) => {
-    if (!dateString) return '-';
-    return new Date(dateString).toLocaleString('ko-KR');
-  };
-
   // ============================================
   // 렌더링
   // ============================================

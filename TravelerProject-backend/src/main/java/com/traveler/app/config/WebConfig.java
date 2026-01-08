@@ -30,7 +30,11 @@ public class WebConfig implements WebMvcConfigurer {
                 .allowedOriginPatterns(
                         "http://localhost:3000",    // React 개발 서버
                         "http://localhost:5173",    // Vite 개발 서버
-                        "http://localhost:5174"     // Vite 추가 포트
+                        "http://localhost:5174",     // Vite 추가 포트
+                        "http://3.35.195.153:3000",
+                        "http://3.35.195.153:5173",
+                        "http://3.35.195.153:5174",
+                        "http://3.35.195.153"
                 )
                 // 허용할 HTTP 메서드
                 .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")

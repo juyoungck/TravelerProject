@@ -108,7 +108,6 @@ export function PlannerEditPage({ onBack, initialData }: PlannerEditPageProps) {
   const [isPublic, setIsPublic] = useState(initialData?.isPublic ?? false);
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(true);
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(true);
-  const [showDatePicker, setShowDatePicker] = useState(false);
   const [startDate, setStartDate] = useState(initialData?.startDate || '2025-12-25');
   const [endDate, setEndDate] = useState(initialData?.endDate || '2025-12-27');
   const [selectedRegion, setSelectedRegion] = useState(initialData?.region || '전체');

@@ -50,7 +50,6 @@ export function PlannerPage({
   isLoggedIn,
   favoritePlanners,
   onToggleFavoritePlanner,
-  onNavigate
 }: PlannerPageProps) {
   const [currentPage, setCurrentPage] = useState<PageType>('main');
   const [selectedPlanner, setSelectedPlanner] = useState<any>(null);
@@ -117,7 +116,6 @@ export function PlannerPage({
         setSelectedPlanner(planner);
         setCurrentPage('preview');
       }}
-      onNavigate={onNavigate}
     />
   );
 }
