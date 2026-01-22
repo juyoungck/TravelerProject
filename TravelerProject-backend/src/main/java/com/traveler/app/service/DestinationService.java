@@ -37,8 +37,8 @@ public class DestinationService {
     
     @Value("${file.upload.path:./uploads/}")
     private String uploadPath;
-    
-    @Value("${file.upload.url:http://localhost:8080}")
+
+    @Value("${app.base-url}:8080")
     private String serverUrl;
     
     static {

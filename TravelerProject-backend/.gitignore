@@ -35,3 +35,12 @@ out/
 
 ### VS Code ###
 .vscode/
+
+# ============================
+# 환경 설정 (보안) ⚠️ 중요
+# ============================
+*.env
+.env.local
+.env.production
+application-prod.properties
+**/application-secret.properties
