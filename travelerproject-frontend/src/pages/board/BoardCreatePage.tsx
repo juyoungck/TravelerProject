@@ -17,6 +17,8 @@ import { getMyPlannerList } from '../../api/plannerApi';
 import '@toast-ui/editor/dist/toastui-editor.css';
 import favoriteApi from '../../api/favoriteApi';
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL + ":8080/api";
+
 
 interface BoardCreatePageProps {
   onClose: () => void;
@@ -147,7 +149,7 @@ export function BoardCreatePage({
     formData.append('file', blob);
 
     try {
-      const response = await fetch('http://localhost:8080/api/upload/board', {
+      const response = await fetch(`${API_BASE_URL}/upload/board`, {
         method: 'POST',
         body: formData,
       });

@@ -61,7 +61,7 @@ export const socialApi = {
    * 실제로는 백엔드로 리다이렉트됨
    */
   getSocialLinkUrl: (provider: string): string => {
-    const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
+    const baseUrl = import.meta.env.VITE_API_BASE_URL;
     return `${baseUrl}/api/auth/oauth2/link/${provider.toLowerCase()}`;
   }
 };

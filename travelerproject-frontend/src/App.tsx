@@ -20,6 +20,8 @@ import { SharedPlannerPage } from "./pages/planner/SharedPlannerPage";
 import { socialApi } from "./api/socialApi";
 import { onPageChange } from './utils/translate';
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL + ":8080/api";
+
 /**
  * App.tsx - 메인 애플리케이션
  * 라우팅 및 전역 상태 관리
@@ -128,7 +130,7 @@ export default function App() {
       // 2. 회원 정보 조회 API 호출
       const fetchMemberInfo = async () => {
         try {
-          const response = await fetch('http://localhost:8080/api/auth/me', {
+          const response = await fetch(`${API_BASE_URL}/auth/me`, {
             headers: {
               'Authorization': `Bearer ${accessToken}`,
               'Content-Type': 'application/json'

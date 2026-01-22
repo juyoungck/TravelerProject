@@ -6,7 +6,7 @@
  */
 
 // 백엔드 서버 주소
-const API_BASE_URL = 'http://localhost:8080';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL + ":8080";
 
 /**
  * 소셜 로그인 API
