@@ -28,7 +28,9 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
-    
+    @Value("${app.base-url}")
+    private String baseUrl;
+
     /**
      * 비밀번호 암호화 Bean
      * BCrypt 알고리즘 사용 (강력한 단방향 암호화)
@@ -81,7 +83,7 @@ public class SecurityConfig {
     
     /**
      * CORS 설정
-     * 프론트엔드(localhost:5173)에서의 요청을 허용
+     * 프론트엔드({baseUrl}:5173)에서의 요청을 허용
      * 
      * @return CorsConfigurationSource
      */
@@ -91,8 +93,8 @@ public class SecurityConfig {
         
         // 허용할 Origin (프론트엔드 주소)
         configuration.setAllowedOrigins(Arrays.asList(
-            "http://localhost:5173",    // Vite 개발 서버
-            "http://localhost:3000",    // 대체 포트
+            baseUrl + ":5173",    // Vite 개발 서버
+            baseUrl + ":3000",    // 대체 포트
             "http://127.0.0.1:5173"
         ));
         

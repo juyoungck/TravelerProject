@@ -69,6 +69,6 @@ public class OAuth2Config {
     // ============================================
     // 프론트엔드 URL
     // ============================================
-    @Value("${app.frontend-url}")
+    @Value("${app.base-url}:5173")
     private String frontendUrl;
 }

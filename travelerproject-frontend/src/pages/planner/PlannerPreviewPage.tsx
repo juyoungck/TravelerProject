@@ -27,7 +27,7 @@ import KakaoMap from '../../components/map/KakaoMap';
 import type { KakaoMapRef, PlannerPlace } from '../../components/map/KakaoMap';
 import axios from 'axios';
 
-const API_BASE_URL = 'http://localhost:8080/api';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL + ":8080/api";
 
 interface Place {
   id: string;

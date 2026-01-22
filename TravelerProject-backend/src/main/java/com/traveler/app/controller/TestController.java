@@ -21,7 +21,7 @@ public class TestController {
 
     /**
      * 서버 동작 확인용 API
-     * 접속 URL: http://localhost:8080/test
+     * 접속 URL: http://{baseUrl}:8080/test
      */
     @GetMapping("/test")
     public Map<String, String> test() {
@@ -33,7 +33,7 @@ public class TestController {
 
     /**
      * Oracle DB 연결 테스트 API
-     * 접속 URL: http://localhost:8080/test/db
+     * 접속 URL: http://{baseUrl}:8080/test/db
      */
     @GetMapping("/test/db")
     public Map<String, String> testDbConnection() {

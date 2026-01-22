@@ -12,7 +12,7 @@ import { Plus, Calendar, MapPin, User, ChevronRight, ChevronLeft, Loader2, Heart
 import { Button } from '../../components/ui/button';
 import axios from 'axios';
 
-const API_BASE_URL = 'http://localhost:8080/api';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL + ":8080/api";
 
 interface Planner {
   id: number;

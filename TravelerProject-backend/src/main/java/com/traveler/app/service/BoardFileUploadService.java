@@ -23,7 +23,7 @@ public class BoardFileUploadService {
     private String uploadPath;
     
     // 서버 URL (이미지 접근용)
-    @Value("${file.upload.url:http://localhost:8080}")
+    @Value("${app.base-url}:8080")
     private String serverUrl;
     
     // 허용되는 이미지 확장자

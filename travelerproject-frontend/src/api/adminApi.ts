@@ -8,7 +8,7 @@
 
 import axios from 'axios';
 
-const API_BASE_URL = 'http://localhost:8080/api';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL + ":8080/api";
 
 /** Axios 인스턴스 (토큰 자동 포함) */
 const adminAxios = axios.create({

@@ -18,6 +18,8 @@ import favoriteApi from '../../api/favoriteApi';
 import { Editor } from '@toast-ui/react-editor';
 import '@toast-ui/editor/dist/toastui-editor.css';
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL + ":8080/api";
+
 interface PlannerItem {
   plnId: number;
   plnTitle: string;
@@ -249,7 +251,7 @@ export function BoardEditPage({
     formData.append('file', blob);
 
     try {
-      const response = await fetch('http://localhost:8080/api/upload/board', {
+      const response = await fetch(`${API_BASE_URL}/upload/board`, {
         method: 'POST',
         body: formData,
       });
