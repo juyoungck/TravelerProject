@@ -36,6 +36,8 @@ desktop.ini
 # 환경 설정 (보안) ⚠️ 중요
 # ============================
 *.env
+*.env.dev
+*.env.prod
 .env.local
 .env.production
 application-prod.properties
